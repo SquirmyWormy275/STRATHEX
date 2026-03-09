@@ -1,6 +1,6 @@
 # Project Structure - Quick Reference
 
-**Last Updated**: January 4, 2026
+**Last Updated**: March 9, 2026
 
 ---
 
@@ -11,7 +11,7 @@ woodchopping-handicap-system/
 │
 ├── README.md                      # ← START HERE: Project overview
 ├── CLAUDE.md                      # AI assistant & architecture guide
-├── MainProgramV5_0.py             # ← RUN THIS: Main program
+├── MainProgramV5_2.py             # ← RUN THIS: Main program
 ├── config.py                      # System configuration
 ├── woodchopping.xlsx              # Historical results database
 ├── tournament_state.json          # Saved tournament state
@@ -26,6 +26,12 @@ woodchopping-handicap-system/
 │   ├── simulation/                #   Monte Carlo fairness
 │   └── ui/                        #   User interface
 │
+├── STRATHMARK/                    # Pip-installable handicap engine (own git repo)
+│   ├── strathmark/                #   Pure calculation core (no UI, no Excel)
+│   ├── tests/                     #   28 unit tests (all passing)
+│   ├── pyproject.toml
+│   └── README.md
+│
 ├── docs/                          # All documentation (organized!)
 └── tests/                         # Test scripts
 ```
@@ -36,7 +42,7 @@ woodchopping-handicap-system/
 
 ### Want to USE the program?
 ```
-1. Open: MainProgramV5_0.py
+1. Open: MainProgramV5_2.py
 2. Read: docs/ReadMe.md (user manual)
 ```
 
@@ -134,7 +140,7 @@ woodchopping/
 ## File Naming Conventions
 
 ### Python Files
-- `MainProgramV5_0.py` - Main entry point (CamelCase + version)
+- `MainProgramV5_2.py` - Main entry point (CamelCase + version)
 - `module_name.py` - Modules (snake_case)
 - `test_feature.py` - Tests (test_ prefix)
 
@@ -187,7 +193,7 @@ cd tests
 python test_both_events.py
 
 # Start program
-python MainProgramV5_0.py
+python MainProgramV5_2.py
 ```
 
 ---

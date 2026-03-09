@@ -40,3 +40,6 @@ data/results/*.csv
 
 # pytest cache
 .pytest_cache/
+
+# STRATHMARK lives in its own git repo
+STRATHMARK/

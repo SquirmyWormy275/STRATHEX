@@ -893,6 +893,41 @@ Fairness Validation (Monte Carlo simulation)
 
 ---
 
+## STRATHMARK — Pip-Installable Calculation Engine
+
+**Added**: March 2026
+**Status**: V0.1.0, fully implemented, 28/28 tests passing
+
+STRATHMARK is the calculation core of STRATHEX extracted into a standalone
+pip-installable Python package. It allows external applications to compute
+AAA-compliant handicap marks without depending on the full STRATHEX codebase.
+
+**What it includes:**
+- Complete handicap mark calculation (`calculator.py`)
+- Full prediction cascade: Manual > LLM > ML > panel fallback (`predictor.py`)
+- Absolute variance model and Monte Carlo simulation (`variance.py`)
+- Species properties, diameter scaling, quality adjustment (`wood.py`)
+- Exponential time-decay weighting with 2-year half-life (`decay.py`)
+- Panel mark and event baseline fallbacks (`fallback.py`)
+- All constants as frozen dataclasses (`config.py`)
+
+**What it does NOT include:**
+- Tournament management UI
+- Excel save/load
+- Championship race simulator
+- Competitor roster management
+
+**Repository**: https://github.com/SquirmyWormy275/STRATHMARK
+**Location in repo**: `STRATHMARK/` (own git repo, excluded from STRATHEX git)
+
+**Test coverage:**
+```
+tests/test_calculator.py  -- 15 tests (mark floor, ceiling, gap logic, tournament weighting)
+tests/test_variance.py    -- 13 tests (absolute variance, consistency ratings, Monte Carlo)
+```
+
+---
+
 ## Conclusion
 
 The Woodchopping Handicap System is now in **excellent operational condition** with all major features fully implemented, tested, and validated. The recent time-decay consistency fix ensures aging competitors are predicted based on current ability rather than historical peaks, completing the fairness optimization.
@@ -904,5 +939,6 @@ The Woodchopping Handicap System is now in **excellent operational condition** w
 - Wood quality adjustments
 - Excellent fairness (< 1s finish spread)
 - AAA rules compliant
+- STRATHMARK pip package for external integrations
 
 **Recommended for production use at official AAA woodchopping events.**
