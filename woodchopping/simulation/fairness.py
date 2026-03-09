@@ -1,744 +1,79 @@
 """
-AI-powered fairness assessment for handicap marks.
+Handicap fairness assessment — STRATHMARK wrapper.
 
-This module uses LLM analysis to evaluate Monte Carlo simulation results and provide
-expert assessment of handicap quality, pattern diagnosis, and adjustment recommendations.
+This module is now a thin wrapper around STRATHMARK's fairness module.
+All assessment logic (LLM prompts, statistical fallback, validation)
+lives in STRATHMARK; improvements there are immediately available here.
+
+The public function signatures are unchanged for backward compatibility
+with all STRATHEX UI callers.
 """
 
 from typing import Dict, Any, List, Optional
-import textwrap
-import numpy as np
-import os
-import sys
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-from config import sim_config, llm_config
-from woodchopping.predictions.llm import call_ollama
-from woodchopping.simulation.monte_carlo import run_monte_carlo_simulation
-from woodchopping.simulation.visualization import (
-    generate_simulation_summary,
-    visualize_simulation_results
+from strathmark.fairness import (
+    get_ai_assessment_of_handicaps as _sm_assess,
+    get_championship_race_analysis as _sm_championship,
+    simulate_and_assess_handicaps as _sm_simulate_and_assess,
+    format_ai_assessment,
 )
-
-
-def _validate_fairness_assessment(
-    response: str,
-    analysis: Dict[str, Any],
-    win_rate_spread: float,
-    ideal_win_rate: float,
-    most_favored: str,
-    most_disadvantaged: str,
-    win_rate_deviations: Dict[str, float]
-) -> str:
-    """
-    Validate that LLM response contains required sections for fairness assessment.
-
-    Checks for presence of all 5 required sections:
-    - FAIRNESS RATING
-    - STATISTICAL ANALYSIS
-    - PATTERN DIAGNOSIS
-    - PREDICTION ACCURACY
-    - RECOMMENDATIONS
-
-    If any sections are missing, appends warning messages highlighting the gaps.
-
-    Args:
-        response: Raw LLM response text
-        analysis: Simulation analysis dict (for fallback data)
-        win_rate_spread: Win rate spread percentage
-        ideal_win_rate: Ideal win rate per competitor
-        most_favored: Name of most favored competitor
-        most_disadvantaged: Name of most disadvantaged competitor
-        win_rate_deviations: Dict mapping competitor names to win rate deviations
-
-    Returns:
-        Validated response with warnings appended if sections are missing
-    """
-    required_sections = [
-        "FAIRNESS RATING:",
-        "STATISTICAL ANALYSIS:",
-        "PATTERN DIAGNOSIS:",
-        "PREDICTION ACCURACY:",
-        "RECOMMENDATIONS:"
-    ]
-
-    missing_sections = []
-    for section in required_sections:
-        if section not in response.upper():
-            missing_sections.append(section.rstrip(':'))
-
-    if missing_sections:
-        # Append warnings about missing sections
-        warning = f"\n\n[WARN]? AI RESPONSE VALIDATION WARNING:\nThe following expected sections were not found in the AI analysis:\n"
-        warning += "\n".join(f"  - {section}" for section in missing_sections)
-        warning += "\n\nThis may indicate the AI response was truncated or malformed."
-        warning += "\nConsider reviewing the raw simulation statistics above for complete assessment."
-
-        return response + warning
-
-    # Check for valid fairness rating
-    valid_ratings = ["EXCELLENT", "VERY GOOD", "GOOD", "FAIR", "POOR", "UNACCEPTABLE"]
-    has_valid_rating = any(rating in response.upper() for rating in valid_ratings)
-
-    if not has_valid_rating:
-        # Extract rating from win_rate_spread as fallback hint
-        if win_rate_spread < 3:
-            expected_rating = "EXCELLENT"
-        elif win_rate_spread < 6:
-            expected_rating = "VERY GOOD"
-        elif win_rate_spread < 10:
-            expected_rating = "GOOD"
-        elif win_rate_spread < 16:
-            expected_rating = "FAIR"
-        else:
-            expected_rating = "POOR"
-
-        warning = f"\n\n[WARN]? RATING VALIDATION WARNING:\nNo recognized fairness rating found (expected: {expected_rating} based on {win_rate_spread:.1f}% spread)."
-        return response + warning
-
-    return response
 
 
 def get_ai_assessment_of_handicaps(analysis: Dict[str, Any]) -> str:
     """
-    Use LLM to provide expert assessment of handicap fairness.
+    Use LLM to assess fairness of handicap marks from Monte Carlo results.
 
-    Analyzes Monte Carlo simulation results using an AI model to:
-    - Rate overall fairness (Excellent/Very Good/Good/Fair/Poor/Unacceptable)
-    - Diagnose systematic bias patterns (front marker advantage, etc.)
-    - Assess prediction accuracy and identify problematic competitors
-    - Provide specific, actionable recommendations for improvement
+    Delegates to STRATHMARK's implementation.  Public signature unchanged.
 
     Args:
-        analysis: Simulation results dictionary from run_monte_carlo_simulation()
+        analysis: Simulation results dict from run_monte_carlo_simulation().
 
     Returns:
-        Formatted assessment text containing:
-        - FAIRNESS RATING: Overall quality rating
-        - STATISTICAL ANALYSIS: Interpretation of win rate spreads and finish times
-        - PATTERN DIAGNOSIS: Identification of systematic biases
-        - PREDICTION ACCURACY: Assessment of time prediction quality
-        - RECOMMENDATIONS: Specific actions to improve fairness
-
-    Fairness Rating Scale:
-        EXCELLENT (spread <= 3%): All win rates within +/- 1.5% of ideal
-        VERY GOOD (spread <= 6%): All win rates within +/- 3% of ideal
-        GOOD (spread <= 10%): Acceptable for competition
-        FAIR (spread <= 16%): Noticeable imbalance, adjustments recommended
-        POOR (spread > 16%): Significant bias requiring recalibration
-        UNACCEPTABLE: Any competitor >2x or <0.5x ideal win rate
-
-    Common Diagnostic Patterns:
-        1. Front Marker Advantage: Soft wood bias in predictions
-        2. Back Marker Advantage: Hard wood bias in predictions
-        3. Middle Compression: Predictions too conservative at extremes
-        4. Experience Bias: Better predictions for experienced competitors
-        5. Species Miscalibration: Systematic bias across all competitors
-
-    Example:
-        >>> analysis = run_monte_carlo_simulation(competitors)
-        >>> assessment = get_ai_assessment_of_handicaps(analysis)
-        >>> print(assessment)
-        FAIRNESS RATING: VERY GOOD
-
-        STATISTICAL ANALYSIS: With 4 competitors, ideal win rate is 25.0% each...
-        ...
-
-    Note:
-        If Ollama is unavailable, returns a simplified fallback assessment
-        based on statistical thresholds.
+        Formatted assessment with FAIRNESS RATING, STATISTICAL ANALYSIS,
+        PATTERN DIAGNOSIS, PREDICTION ACCURACY, RECOMMENDATIONS sections.
+        Falls back to statistical assessment if Ollama is unavailable.
     """
-    # Calculate fairness metrics
-    max_win_rate = max(analysis['winner_percentages'].values())
-    min_win_rate = min(analysis['winner_percentages'].values())
-    win_rate_spread = max_win_rate - min_win_rate
-    ideal_win_rate = 100.0 / len(analysis['competitors'])
-
-    # Calculate per-competitor deviations
-    win_rate_deviations = {}
-    for name, pct in analysis['winner_percentages'].items():
-        deviation = pct - ideal_win_rate
-        win_rate_deviations[name] = deviation
-
-    # Identify extremes
-    most_favored = max(win_rate_deviations, key=win_rate_deviations.get)
-    most_disadvantaged = min(win_rate_deviations, key=win_rate_deviations.get)
-
-    # Format data for prompt
-    winner_data = "\n".join([f"  - {name}: {pct:.2f}% win rate (deviation: {win_rate_deviations[name]:+.2f}%)"
-                            for name, pct in sorted(analysis['winner_percentages'].items(),
-                                                   key=lambda x: x[1], reverse=True)])
-
-    competitor_details = "\n".join([f"  - {comp['name']}: {comp['predicted_time']:.1f}s predicted +/- Mark {comp['mark']}"
-                                    for comp in sorted(analysis['competitors'],
-                                                      key=lambda x: x['predicted_time'], reverse=True)])
-
-    win_rate_std_dev = np.std(list(analysis['winner_percentages'].values()))
-    coefficient_of_variation = (win_rate_std_dev / ideal_win_rate) * 100 if ideal_win_rate > 0 else 0
-
-    # Format competitor time statistics if available (V5.0 feature)
-    competitor_stats_section = ""
-    if 'competitor_time_stats' in analysis and analysis['competitor_time_stats']:
-        stats_lines = []
-        for name, stats in sorted(analysis['competitor_time_stats'].items(),
-                                  key=lambda x: x[1]['mean']):
-            stats_lines.append(
-                f"  - {name}: mean={stats['mean']:.1f}s, std_dev={stats['std_dev']:.2f}s, "
-                f"range={stats['min']:.1f}s-{stats['max']:.1f}s, consistency={stats['consistency_rating']}"
-            )
-        competitor_stats_section = "\n\nPER-COMPETITOR STATISTICS:\n" + "\n".join(stats_lines)
-        competitor_stats_section += """
-
-CONSISTENCY RATING THRESHOLDS:
-- Very High (std_dev <= 2.5s): Elite consistency, highly predictable
-- High (std_dev <= 3.0s): Normal variance, matches ±3s model assumption
-- Moderate (std_dev <= 3.5s): Above expected variance
-- Low (std_dev > 3.5s): High variability, unpredictable outcomes
-
-VARIANCE MODEL VALIDATION:
-The system assumes ±3s absolute performance variation for all competitors.
-If a competitor's std_dev significantly exceeds 3.0s, this suggests:
-1. Prediction may be inaccurate (wrong baseline time)
-2. Competitor has genuinely high performance variability
-3. Wood quality or conditions introduce extra uncertainty
-
-CONSISTENCY ANALYSIS REQUIRED:
-In your PATTERN DIAGNOSIS section, you MUST comment on:
-- Are there competitors with unusually high variance (std_dev > 3.5s)?
-- Does high variance correlate with prediction confidence (LOW confidence -> high variance)?
-- Are there competitors with surprisingly tight clustering (std_dev < 2.5s)?
-- Does the ±3s model hold across all competitors, or are there outliers?
-- Do biased competitors also show unusual variance patterns?"""
-
-    prompt = f"""You are a master woodchopping handicapper and statistician analyzing the fairness of predicted handicap marks through Monte Carlo simulation.
-
-HANDICAPPING PRINCIPLES
-
-PRIMARY GOAL: Create handicaps where ALL competitors have EQUAL probability of winning.
-- In a fair handicap system, skill level should NOT predict victory
-- A novice with Mark 3 should win as often as an expert with Mark 25
-- The slowest competitor should have the same chance as the fastest
-
-HANDICAPPING MECHANISM:
-1. Predict each competitor's raw cutting time
-2. Slowest predicted time receives Mark 3 (starts first)
-3. Faster predicted times receive higher marks (delayed starts)
-4. If predictions are perfect, everyone finishes simultaneously
-5. Natural variation (+/-3s) creates competitive spread
-
-QUALITY FACTORS IN PREDICTIONS:
-- Wood species (hardness variations)
-- Block diameter (volume to cut)
-- Wood quality rating (1-10 scale, higher = harder, affects cutting speed)
-- Historical competitor performance
-
-SIMULATION METHODOLOGY
-
-WHAT WE TESTED:
-- Simulated {analysis['num_simulations']:,} races with {len(analysis['competitors'])} competitors
-- Applied +/-3 second ABSOLUTE performance variation (realistic race conditions)
-- Variation represents: technique consistency, wood grain, fatigue, environmental conditions
-
-WHY ABSOLUTE VARIANCE (+/-3s for everyone):
-- Real factors affect all skill levels equally in absolute seconds
-- Wood grain knot costs 2s for novice AND expert (not proportional to skill)
-- Technique wobble affects everyone by similar absolute time
-- This is a CRITICAL breakthrough in fair handicapping
-
-STATISTICAL SIGNIFICANCE:
-- With {analysis['num_simulations']:,} simulations, margin of error is extremely small
-- Patterns in results are REAL, not random noise
-- Even 1-2% win rate differences are statistically meaningful
-
-SIMULATION RESULTS
-
-COMPETITOR PREDICTIONS AND MARKS:
-{competitor_details}
-
-IDEAL WIN RATE: {ideal_win_rate:.2f}% per competitor
-(Perfect handicapping means all competitors win exactly {ideal_win_rate:.2f}% of races)
-
-ACTUAL WIN RATES:
-{winner_data}
-
-STATISTICAL MEASURES:
-- Win Rate Spread: {win_rate_spread:.2f}% (maximum minus minimum)
-- Standard Deviation: {win_rate_std_dev:.2f}%
-- Coefficient of Variation: {coefficient_of_variation:.1f}%
-
-FINISH TIME ANALYSIS:
-- Average finish spread: {analysis['avg_spread']:.1f} seconds
-- Median finish spread: {analysis['median_spread']:.1f} seconds
-- Tight finishes (<10s): {analysis['tight_finish_prob']*100:.1f}% of races
-- Very tight finishes (<5s): {analysis['very_tight_finish_prob']*100:.1f}% of races
-
-INDIVIDUAL COMPETITOR TIME STATISTICS (PERFORMANCE CONSISTENCY):
-
-The simulation tracked individual finish times across all {analysis['num_simulations']:,} races.
-This reveals which competitors have PREDICTABLE vs UNPREDICTABLE performance patterns.
-{competitor_stats_section}
-
-FRONT AND BACK MARKER PERFORMANCE:
-- Front Marker (slowest): {analysis['front_marker_name']} - {analysis['front_marker_wins']/analysis['num_simulations']*100:.1f}% wins
-- Back Marker (fastest): {analysis['back_marker_name']} - {analysis['back_marker_wins']/analysis['num_simulations']*100:.1f}% wins
-
-PATTERN IDENTIFICATION:
-- Most Favored: {most_favored} ({analysis['winner_percentages'][most_favored]:.2f}%, +{win_rate_deviations[most_favored]:.2f}%)
-- Most Disadvantaged: {most_disadvantaged} ({analysis['winner_percentages'][most_disadvantaged]:.2f}%, {win_rate_deviations[most_disadvantaged]:.2f}%)
-
-FAIRNESS CRITERIA
-
-RATING SCALE (based on win rate spread):
-
-EXCELLENT (Spread d 3%):
-- All win rates within +/-1.5% of ideal ({ideal_win_rate-1.5:.1f}% to {ideal_win_rate+1.5:.1f}%)
-- Handicaps are nearly perfect
-- Predictions are highly accurate
-- No adjustments needed
-
-VERY GOOD (Spread d 6%):
-- All win rates within +/-3% of ideal ({ideal_win_rate-3:.1f}% to {ideal_win_rate+3:.1f}%)
-- Handicaps are working well
-- Minor prediction inaccuracies
-- Only minor adjustments if desired
-
-GOOD (Spread d 10%):
-- All win rates within +/-5% of ideal ({ideal_win_rate-5:.1f}% to {ideal_win_rate+5:.1f}%)
-- Acceptable fairness for competition
-- Some prediction bias exists
-- Consider adjustments for championship events
-
-FAIR (Spread d 16%):
-- Win rates within +/-8% of ideal
-- Noticeable imbalance
-- Predictions need refinement
-- Adjustments recommended
-
-POOR (Spread > 16%):
-- Significant imbalance detected
-- Predictions are systematically biased
-- Handicaps require major adjustment
-- Not suitable for fair competition
-
-UNACCEPTABLE (Any competitor >2x or <0.5x ideal):
-- Extreme bias detected
-- One competitor has double (or half) expected win rate
-- Fundamental prediction error
-- Complete recalibration required
-
-DIAGNOSTIC PATTERNS
-
-COMMON ISSUES TO IDENTIFY:
-
-1. FRONT MARKER ADVANTAGE (soft wood bias):
-   Pattern: Front marker wins >ideal, back marker wins <ideal
-   Cause: Predictions underestimate benefit of soft wood to slower competitors
-   Fix: Increase quality adjustment for front markers on soft wood
-
-2. BACK MARKER ADVANTAGE (hard wood bias):
-   Pattern: Back marker wins >ideal, front marker wins <ideal
-   Cause: Predictions underestimate difficulty of hard wood for slower competitors
-   Fix: Increase time penalties for front markers on hard wood
-
-3. MIDDLE COMPRESSION:
-   Pattern: Extreme competitors (fastest/slowest) win less than middle competitors
-   Cause: Predictions too conservative at extremes
-   Fix: Increase handicap spread (widen gaps between marks)
-
-4. EXPERIENCE BIAS:
-   Pattern: Competitors with more historical data win more often
-   Cause: Better predictions for experienced competitors
-   Fix: Adjust confidence weighting or baseline calculations
-
-5. SPECIES MISCALIBRATION:
-   Pattern: Systematic bias across all competitors
-   Cause: Species hardness factor incorrect
-   Fix: Adjust species baseline percentage
-
-YOUR ANALYSIS TASK
-
-Provide a comprehensive assessment in the following structure:
-
-1. FAIRNESS RATING: State one of: Excellent / Very Good / Good / Fair / Poor / Unacceptable
-
-2. STATISTICAL ANALYSIS (2-3 sentences):
-   - Interpret the win rate spread of {win_rate_spread:.2f}%
-   - Comment on finish time spreads (average {analysis['avg_spread']:.1f}s)
-   - Assess if variation is appropriate for exciting competition
-
-3. PATTERN DIAGNOSIS (2-3 sentences):
-   - Identify which diagnostic pattern (if any) is present
-   - Explain WHY this pattern occurred based on competitor times
-   - Reference specific competitors showing the bias
-
-4. PREDICTION ACCURACY (1-2 sentences):
-   - Are the predictions systematically biased or just slightly off?
-   - Is the issue with one competitor or system-wide?
-
-5. RECOMMENDATIONS (2-3 specific actions):
-   If EXCELLENT or VERY GOOD: Affirm handicaps are ready for use
-   If GOOD: Suggest optional refinements
-   If FAIR, POOR, or UNACCEPTABLE: Provide specific adjustment recommendations
-
-   Format recommendations as bullet points:
-   " First specific action (include numbers when possible)
-   " Second specific action
-   " Final recommendation
-
-RESPONSE REQUIREMENTS:
-- Keep total response to 8-12 sentences maximum
-- Be specific and actionable
-- Use technical terms confidently
-- Cite actual numbers from the data above
-- Base analysis on ACTUAL DATA, not generic observations
-- Reference specific competitors, percentages, and patterns you observe
-
-Your Expert Assessment:"""
-
-    response = call_ollama(prompt, num_predict=llm_config.TOKENS_FAIRNESS_ASSESSMENT)
-
-    if response:
-        # Validate response contains required sections
-        validated_response = _validate_fairness_assessment(response, analysis, win_rate_spread,
-                                                           ideal_win_rate, most_favored, most_disadvantaged,
-                                                           win_rate_deviations)
-        return validated_response
-    else:
-        # Enhanced fallback assessment
-        if win_rate_spread < 3:
-            rating = "EXCELLENT"
-            assessment = "Handicaps are nearly perfect. Predictions are highly accurate with minimal bias."
-        elif win_rate_spread < 6:
-            rating = "VERY GOOD"
-            assessment = "Handicaps are working very well. Minor prediction variations are within acceptable range."
-        elif win_rate_spread < 10:
-            rating = "GOOD"
-            assessment = "Handicaps are acceptable for competition. Some prediction refinement would improve fairness."
-        elif win_rate_spread < 16:
-            rating = "FAIR"
-            assessment = "Noticeable imbalance detected. Predictions show systematic bias requiring adjustment."
-        else:
-            rating = "POOR"
-            assessment = "Significant imbalance requiring major prediction recalibration."
-
-        front_wins = analysis['front_marker_wins']/analysis['num_simulations']*100
-        back_wins = analysis['back_marker_wins']/analysis['num_simulations']*100
-
-        if front_wins > ideal_win_rate + 3:
-            pattern = "Front marker advantage detected (soft wood bias likely)."
-        elif back_wins > ideal_win_rate + 3:
-            pattern = "Back marker advantage detected (hard wood bias likely)."
-        else:
-            pattern = "No clear front/back marker bias pattern."
-
-        return f"""FAIRNESS RATING: {rating}
-
-STATISTICAL ANALYSIS: With {len(analysis['competitors'])} competitors, ideal win rate is {ideal_win_rate:.1f}% each. Actual spread is {win_rate_spread:.2f}% (from {min_win_rate:.1f}% to {max_win_rate:.1f}%). {assessment} Average finish spread of {analysis['avg_spread']:.1f}s creates exciting competition.
-
-PATTERN DIAGNOSIS: {pattern} {most_favored} is most favored at {analysis['winner_percentages'][most_favored]:.1f}% wins (+{win_rate_deviations[most_favored]:.1f}% above ideal), while {most_disadvantaged} is disadvantaged at {analysis['winner_percentages'][most_disadvantaged]:.1f}% wins ({win_rate_deviations[most_disadvantaged]:.1f}% below ideal).
-
-RECOMMENDATIONS:
-- {"Handicaps are ready for competition use - no adjustments needed." if win_rate_spread < 6 else f"Review predictions for {most_favored} and {most_disadvantaged} - time estimates may need adjustment."}
-- {"Continue collecting historical data to improve future predictions." if win_rate_spread < 10 else "Consider adjusting quality/species factors in prediction model."}
-- {"Monitor real competition results to validate simulation predictions." if win_rate_spread < 16 else "Recalibrate baseline calculations before using these handicaps in competition."}"""
+    return _sm_assess(analysis)
 
 
-def format_ai_assessment(assessment_text: str, width: int = 100) -> None:
+def get_championship_race_analysis(
+    analysis: Dict[str, Any],
+    predictions: List[Dict],
+) -> str:
     """
-    Format and print AI assessment with intelligent text wrapping.
+    Use LLM to generate sports-commentary for a championship race.
 
-    Preserves structure while wrapping long lines:
-    - Section headers (lines ending with colon or ALL CAPS) stay on single line
-    - Bullet points get hanging indent (initial=2 spaces, subsequent=4 spaces)
-    - Regular paragraphs wrap at word boundaries
-    - Blank lines between sections are maintained
+    Delegates to STRATHMARK's implementation.  Public signature unchanged.
 
     Args:
-        assessment_text: Raw AI assessment text
-        width: Maximum line width for wrapping (default 100)
+        analysis: Monte Carlo results dict from run_monte_carlo_simulation().
+        predictions: List of competitor prediction dicts with 'name',
+                     'predicted_time', 'method_used', 'confidence'.
 
-    Example:
-        >>> format_ai_assessment(ai_response, width=100)
+    Returns:
+        Formatted race analysis with RACE FAVORITE, KEY MATCHUPS,
+        PODIUM BATTLE, DARK HORSE, CONSISTENCY ANALYSIS, RACE DYNAMICS.
     """
-    paragraphs = assessment_text.split('\n\n')
-
-    for paragraph in paragraphs:
-        if not paragraph.strip():
-            continue
-
-        lines = paragraph.split('\n')
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-
-            # Check if it's a section header (contains colon, typically uppercase)
-            if ':' in stripped and (
-                stripped.isupper() or
-                stripped.split(':')[0].isupper()
-            ):
-                # Don't wrap section headers - keep on single line
-                print(stripped)
-            # Check if it's a bullet point
-            elif stripped.startswith(('-', '*', '-', '?', '?')):
-                # Wrap bullet points with hanging indent
-                wrapped = textwrap.wrap(
-                    stripped,
-                    width=width,
-                    initial_indent='  ',
-                    subsequent_indent='    '
-                )
-                for wrapped_line in wrapped:
-                    print(wrapped_line)
-            else:
-                # Regular paragraph text - wrap with no special indent
-                wrapped = textwrap.wrap(stripped, width=width)
-                for wrapped_line in wrapped:
-                    print(wrapped_line)
-
-        print()  # Blank line between paragraphs/sections
+    return _sm_championship(analysis, predictions)
 
 
 def simulate_and_assess_handicaps(
     competitors_with_marks: List[Dict[str, Any]],
-    num_simulations: Optional[int] = None
+    num_simulations: Optional[int] = None,
 ) -> None:
     """
-    Run complete simulation and AI assessment workflow.
+    Run complete Monte Carlo + display + AI assessment workflow.
 
-    This is the main high-level function that:
-    1. Runs Monte Carlo simulation
-    2. Displays statistical summary
-    3. Shows visual win rate chart
-    4. Provides AI fairness assessment
+    Delegates to STRATHMARK's implementation with show=True so output
+    is printed to the console as before.  Return value is None for
+    backward compatibility (STRATHMARK returns a dict; callers ignore it).
 
     Args:
-        competitors_with_marks: List of competitor dicts with marks and predicted times
-        num_simulations: Number of race simulations (defaults to config value)
-
-    Displays:
-        - Monte Carlo simulation progress
-        - Comprehensive statistical summary
-        - Visual bar chart of win rates
-        - AI-generated fairness assessment with recommendations
-
-    Example:
-        >>> competitors = [
-        ...     {'name': 'Alice', 'mark': 3, 'predicted_time': 60},
-        ...     {'name': 'Bob', 'mark': 25, 'predicted_time': 38}
-        ... ]
-        >>> simulate_and_assess_handicaps(competitors)
-
-        ======================================================================
-        RUNNING MONTE CARLO SIMULATION (1,000,000 races)
-        ======================================================================
-        ...
-
-    Note:
-        This function prints directly to console and does not return a value.
-        Use run_monte_carlo_simulation() directly if you need the raw data.
+        competitors_with_marks: List of dicts with 'name', 'mark', 'predicted_time'.
+        num_simulations: Override for simulation count (defaults to config value).
     """
-    if not competitors_with_marks or len(competitors_with_marks) < 2:
-        print("Need at least 2 competitors to run simulation.")
-        return
-
-    # Use config default if not specified
-    if num_simulations is None:
-        num_simulations = sim_config.NUM_SIMULATIONS
-
-    # Run simulation
-    analysis = run_monte_carlo_simulation(competitors_with_marks, num_simulations)
-
-    # Display results
-    summary = generate_simulation_summary(analysis)
-    print(summary)
-
-    # Visualize
-    visualize_simulation_results(analysis)
-
-    # Get AI assessment
-    print("\n" + "="*70)
-    print("AI HANDICAPPING ASSESSMENT")
-    print("="*70)
-    print("\nAnalyzing fairness of handicaps...")
-
-    ai_assessment = get_ai_assessment_of_handicaps(analysis)
-
-    # Format and display with intelligent text wrapping
-    print("")  # Add spacing
-    format_ai_assessment(ai_assessment, width=100)
-
-    print("="*70)
-
-
-def get_championship_race_analysis(analysis: Dict[str, Any], predictions: List[Dict]) -> str:
-    """
-    Use LLM to provide engaging race outcome predictions for championship format.
-
-    Analyzes Monte Carlo simulation results for a championship event (all competitors
-    start together, fastest time wins) and provides sports-commentary style analysis
-    focusing on competitive dynamics, likely winners, key matchups, and excitement factors.
-
-    Args:
-        analysis: Monte Carlo simulation results dict from run_monte_carlo_simulation()
-        predictions: List of competitor prediction dicts containing:
-            - name: Competitor name
-            - predicted_time: Predicted cutting time
-            - method_used: Prediction method (ML/LLM/Baseline)
-            - confidence: Confidence level
-
-    Returns:
-        Formatted championship race analysis text containing:
-            - RACE FAVORITE: Most likely winner identification
-            - KEY MATCHUPS: Competitors with similar predicted times
-            - PODIUM BATTLE: 2nd/3rd place competition analysis
-            - DARK HORSE: Potential upsets
-            - CONSISTENCY ANALYSIS: Notable variance patterns
-            - RACE DYNAMICS: Competitive narrative
-
-    Analysis Focus:
-        - Race outcome predictions (NOT fairness assessment)
-        - Competitive matchups and rivalries
-        - Upset potential and long-shot contenders
-        - Consistency patterns (high/low variance competitors)
-        - Overall race excitement and competitive balance
-
-    Example:
-        >>> analysis = run_monte_carlo_simulation(predictions)
-        >>> race_analysis = get_championship_race_analysis(analysis, predictions)
-        >>> print(race_analysis)
-        RACE FAVORITE: Alice
-        With a 45.2% win probability and fastest predicted time of 24.5s,
-        Alice is the clear favorite to win this championship event...
-
-    Note:
-        If Ollama is unavailable, returns a simplified statistical summary
-        instead of AI-generated analysis.
-    """
-    # Extract key metrics
-    winner_pcts = analysis['winner_percentages']
-    avg_positions = analysis['avg_finish_positions']
-    competitor_stats = analysis['competitor_time_stats']
-
-    # Identify race favorite (highest win rate)
-    favorite_name = max(winner_pcts.items(), key=lambda x: x[1])[0]
-    favorite_win_rate = winner_pcts[favorite_name]
-
-    # Find predicted times for context
-    pred_times = {pred['name']: pred['predicted_time'] for pred in predictions}
-
-    # Identify close matchups (competitors within 2 seconds predicted time)
-    matchups = []
-    for i, pred1 in enumerate(predictions):
-        for pred2 in predictions[i+1:]:
-            time_diff = abs(pred1['predicted_time'] - pred2['predicted_time'])
-            if time_diff <= 2.0:
-                matchups.append((pred1['name'], pred2['name'], time_diff))
-
-    # Identify dark horses (>10% win rate despite not being favorite)
-    dark_horses = [
-        (name, pct) for name, pct in winner_pcts.items()
-        if pct >= 10.0 and name != favorite_name
-    ]
-
-    # Identify consistency outliers (unusually high/low variance)
-    consistency_outliers = []
-    for name, stats in competitor_stats.items():
-        if stats['std_dev'] <= 2.5:
-            consistency_outliers.append((name, 'very high', stats['std_dev']))
-        elif stats['std_dev'] > 3.5:
-            consistency_outliers.append((name, 'very low', stats['std_dev']))
-
-    # Build detailed prompt for AI
-    prompt = f"""You are a professional woodchopping race analyst providing an engaging race preview for a championship event. All competitors start together (no handicaps) - fastest time wins.
-
-SIMULATION RESULTS ({analysis['num_simulations']:,} races):
-
-WIN PROBABILITIES:
-{chr(10).join(f"- {name}: {pct:.1f}% (predicted time: {pred_times[name]:.1f}s, avg finish: {avg_positions[name]:.2f})" for name, pct in sorted(winner_pcts.items(), key=lambda x: x[1], reverse=True))}
-
-INDIVIDUAL TIME STATISTICS:
-{chr(10).join(f"- {name}: mean={stats['mean']:.1f}s, std_dev={stats['std_dev']:.2f}s, range={stats['min']:.1f}s-{stats['max']:.1f}s, {stats['consistency_rating']}" for name, stats in competitor_stats.items())}
-
-CLOSE MATCHUPS (within 2 seconds):
-{chr(10).join(f"- {name1} vs {name2} ({diff:.1f}s difference)" for name1, name2, diff in matchups) if matchups else "- No particularly close matchups"}
-
-DARK HORSE CANDIDATES (>10% win rate):
-{chr(10).join(f"- {name}: {pct:.1f}% win rate" for name, pct in dark_horses) if dark_horses else "- None identified"}
-
-CONSISTENCY OUTLIERS:
-{chr(10).join(f"- {name}: {rating} consistency (std_dev={std:.2f}s)" for name, rating, std in consistency_outliers) if consistency_outliers else "- All competitors show normal variance"}
-
-YOUR TASK:
-Provide an engaging championship race analysis in sports-commentary style with these sections:
-
-1. RACE FAVORITE
-   - Identify most likely winner ({favorite_name}: {favorite_win_rate:.1f}%)
-   - Explain why they're favored (predicted time, consistency, win probability)
-   - Assess strength of favoritism (dominant or vulnerable?)
-
-2. KEY MATCHUPS
-   - Highlight 2-3 most interesting competitive matchups
-   - Focus on competitors with similar predicted times or win rates
-   - Create narrative tension and rivalry storylines
-
-3. PODIUM BATTLE
-   - Analyze the race for 2nd and 3rd place
-   - Identify which competitors are most likely to podium
-   - Discuss the competitive dynamics outside the winner
-
-4. DARK HORSE / UPSET POTENTIAL
-   - Identify long-shot competitors with realistic upset chances
-   - Explain what would need to happen for an upset
-   - Create "what if" excitement narratives
-
-5. CONSISTENCY ANALYSIS
-   - Comment on competitors with unusual consistency (very high or very low variance)
-   - Explain what consistency means for race outcomes
-   - Identify "boom or bust" performers vs reliable competitors
-
-6. RACE DYNAMICS
-   - Describe the overall competitive narrative
-   - Rate excitement level (blowout expected vs tight competition)
-   - Provide final prediction with caveats
-
-STYLE GUIDELINES:
-- Engaging, sports-commentary tone (think ESPN analyst)
-- Build excitement and narrative tension
-- Use specific statistics but make them accessible
-- Balance objective analysis with engaging storytelling
-- Keep each section concise (2-4 sentences)
-
-Generate the analysis now:"""
-
-    try:
-        # Call Ollama for AI analysis
-        ai_response = call_ollama(
-            prompt,
-            model=llm_config.PREDICTION_MODEL,
-            num_predict=llm_config.TOKENS_CHAMPIONSHIP_ANALYSIS
-        )
-
-        return ai_response.strip()
-
-    except Exception as e:
-        # Fallback if Ollama unavailable
-        return f"""RACE FAVORITE: {favorite_name}
-{favorite_name} is the clear favorite with a {favorite_win_rate:.1f}% win probability and predicted time of {pred_times[favorite_name]:.1f}s.
-
-KEY MATCHUPS:
-{chr(10).join(f"- {name1} vs {name2}: Separated by only {diff:.1f}s in predicted time" for name1, name2, diff in matchups[:3]) if matchups else "No particularly close matchups identified."}
-
-PODIUM BATTLE:
-Top podium contenders based on win probabilities: {', '.join(f"{name} ({pct:.1f}%)" for name, pct in sorted(winner_pcts.items(), key=lambda x: x[1], reverse=True)[:3])}
-
-DARK HORSE:
-{chr(10).join(f"- {name} has upset potential with {pct:.1f}% win rate" for name, pct in dark_horses[:2]) if dark_horses else "No significant dark horse candidates."}
-
-CONSISTENCY ANALYSIS:
-{chr(10).join(f"- {name}: Avg finish {stats['mean']:.1f}s, std dev {stats['std_dev']:.1f}s ({stats['consistency_rating']} consistency)" for name, stats in list(competitor_stats.items())[:3])}
-
-RACE DYNAMICS:
-This race features {len(predictions)} competitors with win rates ranging from {min(winner_pcts.values()):.1f}% to {max(winner_pcts.values()):.1f}%. {"The favorite is heavily favored - expect a dominant performance." if favorite_win_rate > 50 else "Multiple competitors have realistic win chances - expect tight competition."}
-
-(Note: Statistical race analysis based on {analysis['num_simulations']:,} simulations)"""
+    _sm_simulate_and_assess(
+        competitors_with_marks,
+        num_simulations=num_simulations,
+        show=True,
+    )

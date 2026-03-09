@@ -637,6 +637,36 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
         wb.close()
         print("Results appended to Excel successfully.")
 
+        # Dual-write to STRATHMARK ResultStore (persists results for improving future predictions)
+        try:
+            from woodchopping.data.store_registry import get_store as _get_store
+            _store = _get_store()
+            if _store is not None:
+                from woodchopping.strathmark_adapter import record_round_results as _record_rr
+                if round_object is not None:
+                    _record_rr(
+                        round_object,
+                        {'species': species, 'size_mm': size_mm, 'quality': quality, 'event': event_code},
+                        _store,
+                    )
+                else:
+                    # Legacy single-heat mode: write each time directly
+                    for _name, _time in times_collected.items():
+                        try:
+                            _store.record_result(
+                                competitor_name=str(_name),
+                                event_code=str(event_code),
+                                time_seconds=float(_time),
+                                species=str(species),
+                                diameter_mm=float(size_mm),
+                                quality=int(quality),
+                                heat_id=str(heat_id),
+                            )
+                        except Exception:
+                            pass
+        except Exception:
+            pass  # Store write failure must never break the main Excel save flow
+
         # NEW: Update round status if using tournament system
         if round_object is not None:
             round_object['status'] = 'in_progress'  # Mark as in progress (not completed until advancers selected)

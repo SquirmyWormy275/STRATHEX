@@ -148,6 +148,21 @@ except Exception as e:
     print(f"Error loading roster from Excel: {e}")
     comp_df = pd.DataFrame(columns=["competitor_name", "competitor_country"])
 
+# Initialize STRATHMARK ResultStore and migrate historical Excel data (idempotent)
+try:
+    from strathmark.store import ResultStore as _ResultStore
+    from woodchopping.data.store_registry import set_store as _set_store
+    from woodchopping.strathmark_adapter import migrate_excel_to_store as _migrate
+    _result_store = _ResultStore()
+    _set_store(_result_store)
+    _results_for_migration = load_results_df()
+    _migrated_count = _migrate(_results_for_migration, _result_store)
+    if _migrated_count > 0:
+        print(f"  STRATHMARK: migrated {_migrated_count} historical results to persistent store.")
+    del _results_for_migration, _migrated_count, _migrate
+except Exception as _store_err:
+    print(f"  Note: STRATHMARK store unavailable ({_store_err}). Predictions will use Excel only.")
+
 #Wood Selection Dictionary - initialize with all expected keys
 wood_selection = {
     "species": None, 
