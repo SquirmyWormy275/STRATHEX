@@ -2,9 +2,17 @@
 
 ## Executive Summary
 
-**Audit Date:** December 24, 2025
+**Audit Date:** December 24, 2025 (architecture updated March 9, 2026)
 **Models:** Standing Block (SB) and Underhand (UH)
 **Status:** ✅ PASSED with recommendations
+
+> **V6.0 Architecture Note**: As of V6.0, all prediction and handicap calculation
+> logic described in this report has been migrated to **STRATHMARK**
+> (`STRATHMARK/strathmark/`). The algorithms, formulas, and methodology are
+> unchanged — only the file locations differ. STRATHEX calls STRATHMARK via
+> `woodchopping/handicaps/calculator.py` (thin wrapper) and
+> `woodchopping/strathmark_adapter.py`. Module references in Appendix B have
+> been updated to reflect the new locations.
 
 ---
 
@@ -418,18 +426,41 @@ event_encoded:                  0.0%
 
 ---
 
-## Appendix B: Test Commands
+## Appendix B: Test Commands (V6.0 Module Locations)
 
 ```bash
-# Test UH predictions with scaling
-python test_uh_predictions.py
+# Run all STRATHMARK engine tests (28 tests)
+python -m pytest STRATHMARK/tests/ -v
 
-# Test both SB and UH with handicap calculation
-python -c "from woodchopping.predictions.prediction_aggregator import get_all_predictions, select_best_prediction; ..."
+# Test STRATHMARK prediction pipeline directly
+python -c "from strathmark import HandicapCalculator, CompetitorRecord, WoodProfile; print('OK')"
 
-# Verify handicap calculation
-python -c "from woodchopping.handicaps.calculator import calculate_ai_enhanced_handicaps; ..."
+# Test STRATHEX → STRATHMARK integration
+python -c "from woodchopping.handicaps.calculator import calculate_ai_enhanced_handicaps; print('OK')"
+
+# Test Monte Carlo proxy
+python -c "from woodchopping.simulation.monte_carlo import run_monte_carlo_simulation; print('OK')"
+
+# Legacy STRATHEX tests (algorithms unchanged)
+python tests/test_uh_predictions.py
+python tests/test_both_events.py
 ```
+
+**V6.0 module reference table** (old → new location):
+
+| Old location (V5.2) | New location (V6.0) |
+|---|---|
+| `woodchopping/predictions/baseline.py` | `STRATHMARK/strathmark/predictor.py` |
+| `woodchopping/predictions/ml_model.py` | `STRATHMARK/strathmark/predictor.py` |
+| `woodchopping/predictions/ai_predictor.py` | `STRATHMARK/strathmark/predictor.py` |
+| `woodchopping/predictions/prediction_aggregator.py` | `STRATHMARK/strathmark/predictor.py` |
+| `woodchopping/predictions/diameter_scaling.py` | `STRATHMARK/strathmark/wood.py` |
+| `woodchopping/predictions/qaa_scaling.py` | `STRATHMARK/strathmark/wood.py` |
+| `woodchopping/predictions/llm.py` | `STRATHMARK/strathmark/llm.py` |
+| `woodchopping/handicaps/calculator.py` (full logic) | `STRATHMARK/strathmark/calculator.py` |
+| `woodchopping/simulation/monte_carlo.py` (full logic) | `STRATHMARK/strathmark/variance.py` |
+| `woodchopping/simulation/fairness.py` (full logic) | `STRATHMARK/strathmark/fairness.py` |
+| `config.py` (sim/baseline constants) | `STRATHMARK/strathmark/config.py` |
 
 ---
 

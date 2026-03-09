@@ -1,7 +1,7 @@
 # Woodchopping Handicap System - Complete Status Report
 
-**Date**: January 19, 2026
-**Version**: 5.2
+**Date**: March 9, 2026
+**Version**: 6.0
 **Status**: PRODUCTION READY
 
 ---
@@ -40,6 +40,11 @@ All major prediction methods are now fully functional, consistent, and validated
 [PASSED] Ollama Connection Caching (prevents error spam) (NEW V5.2)
 [PASSED] Multi-Event Round Generation Fix (heats to finals) (NEW V5.2)
 [PASSED] DataFrame JSON Serialization (tournament state saving) (NEW V5.2)
+[PASSED] STRATHMARK Engine Integration — all calculations delegated (V6.0)
+[PASSED] SQLite ResultStore — persistent cross-competition history (V6.0)
+[PASSED] FastAPI HTTP REST API — /calculate, /simulate, /predict, /results (V6.0)
+[PASSED] Excel dual-write to ResultStore on every results save (V6.0)
+[PASSED] Startup migration of woodchopping.xlsx history into ResultStore (V6.0)
 ```
 
 ---
@@ -96,26 +101,32 @@ All major prediction methods are now fully functional, consistent, and validated
 
 **Status**: Fully implemented
 
-### 2. Prediction Selection Logic - [OPTIMIZED]
+### 2. Prediction Selection Logic - [OPTIMIZED — V6.0 STRATHMARK]
 
-**Priority Order**:
+**Method (V6.0)**: Expected-error scoring via `strathmark.predictor.select_best_prediction()`
+
 ```
-1. IF baseline scaled diameter AND confidence >= MEDIUM:
-     USE Baseline (scaled)  [Most reliable for cross-diameter]
+score = base_error(confidence)     # VERY HIGH=2.0, HIGH=3.0, MEDIUM=5.0, LOW=7.0, VERY LOW=9.0
+      + 0.5  if method == LLM       # LLM penalty (inherently less reliable)
+      + 1.5  if prediction scaled    # Scaling uncertainty penalty
+      - 1.0  if tournament_weighted  # Bonus for same-tournament data (floor 0.5)
+      + spread_penalty              # +1-2 if predictions diverge >= 4s or 12%
 
-2. ELSE IF ML prediction available:
-     USE ML  [Best for exact diameter matches]
-
-3. ELSE IF LLM prediction available:
-     USE LLM  [Good general fallback]
-
-4. ELSE:
-     USE Baseline  [Statistical fallback]
+Lowest score wins.  Manual override always wins.  Panel mark is last resort.
 ```
 
-**Rationale**: Direct diameter scaling (physics-based) beats ML extrapolation
+**Rationale**: Confidence-based scoring more nuanced than fixed cascade — a VERY HIGH
+confidence LLM prediction beats a LOW confidence baseline.
 
-**Status**: Validated through testing
+**Legacy fallback order** (when all confidences equal):
+```
+1. Baseline (scaled, confidence >= MEDIUM)
+2. ML (exact diameter match)
+3. LLM (general fallback)
+4. Baseline (statistical fallback)
+```
+
+**Status**: Implemented in STRATHMARK v0.2.0, validated through testing
 
 ### 3. Feature Engineering - [COMPLETE]
 
@@ -601,6 +612,38 @@ Diameter scaling applied: 1/4 competitors
 
 ## Recent Improvements
 
+### Version 6.0 (March 9, 2026)
+
+#### STRATHMARK Engine Integration
+
+**Change**: All handicap calculation, Monte Carlo simulation, and fairness assessment
+is now performed by STRATHMARK — a separate pip-installable Python package located
+in `STRATHMARK/`. STRATHEX calls STRATHMARK via direct Python import (zero overhead).
+
+**Key improvements**:
+- **Live integration**: STRATHMARK installed with `pip install -e ./STRATHMARK` (editable mode). Any improvement to the engine is immediately available to STRATHEX on next run. No code changes in STRATHEX required.
+- **Expected-error selection**: `select_best_prediction()` replaces the fixed priority cascade with confidence-based scoring. A VERY HIGH LLM prediction now correctly beats a LOW baseline.
+- **HTTP REST API**: `strathmark.api` (FastAPI) exposes all calculation features over HTTP for future web/mobile consumers. STRATHEX continues to use the Python import API (zero overhead).
+
+#### SQLite Persistence (ResultStore)
+
+**Change**: STRATHMARK maintains a persistent SQLite database at `~/.strathmark/results.db`.
+Every tournament result is automatically written on save (dual-write: Excel + SQLite).
+
+**Why this matters**: Predictions grow more accurate as more competitions are recorded.
+Results from all past tournaments are available as training/prediction data, not just
+data in the current `woodchopping.xlsx`.
+
+**On startup**: STRATHEX migrates all historical Excel results into ResultStore (idempotent
+— safe to run multiple times; `INSERT OR IGNORE` skips duplicates).
+
+#### Branch Structure
+
+- `main` = V6.0 (STRATHMARK engine, SQLite persistence)
+- `v5.2-legacy` = V5.2 (pure local calculation, no STRATHMARK dependency, occasional maintenance)
+
+---
+
 ### Version 5.1 (January 12, 2026)
 
 #### Comprehensive Wood Properties Integration
@@ -786,41 +829,60 @@ Diameter scaling applied: 1/4 competitors
 
 ## System Architecture
 
-### Data Flow
+### Data Flow (V6.0 — STRATHMARK Engine)
 
 ```
-Historical Results (Excel)
+Historical Results (Excel + SQLite ResultStore)
     ↓
-Data Validation & Cleaning
+STRATHEX strathmark_adapter.py
+  [DataFrame → CompetitorRecord + WoodProfile objects]
     ↓
-Feature Engineering (time-decay, wood properties)
+STRATHMARK HandicapCalculator.calculate()
+  — Baseline predictions (time-decay, QAA scaling)
+  — ML predictions (XGBoost, 23 features)
+  — LLM predictions (Ollama quality adjustment)
+  — select_best_prediction() [expected-error scoring]
+  — Mark assignment (AAA rules: floor 3, ceiling 183)
     ↓
-Model Training (SB & UH separately)
+STRATHEX strathmark_adapter.mark_results_to_dicts()
+  [MarkResult → STRATHEX handicap dicts, 3-column display]
     ↓
-Prediction Generation (Baseline, ML, LLM)
+STRATHEX Judge Approval UI + Manual Adjustments
     ↓
-Prediction Selection (priority logic)
+STRATHMARK run_monte_carlo_simulation()
+  — 2 million race iterations
+  — Win rates, finish spreads, podium margins
+  — Per-competitor statistics
     ↓
-Diameter Scaling (if needed)
+STRATHMARK get_ai_assessment_of_handicaps()
+  — LLM fairness report (Ollama)
+  — Statistical fallback if Ollama unavailable
     ↓
-Quality Adjustment (±2% per point)
-    ↓
-Handicap Calculation (AAA rules)
-    ↓
-Fairness Validation (Monte Carlo simulation)
+Results saved: Excel (primary) + SQLite ResultStore (dual-write, V6.0)
 ```
 
-### Key Modules
+### Key Modules (V6.0)
 
-1. **woodchopping/data/excel_io.py**: Data loading and validation
-2. **woodchopping/predictions/baseline.py**: Statistical predictions + time-decay
-3. **woodchopping/predictions/ml_model.py**: XGBoost training and prediction
-4. **woodchopping/predictions/llm.py**: Ollama API integration
-5. **woodchopping/predictions/ai_predictor.py**: LLM prediction logic
-6. **woodchopping/predictions/diameter_scaling.py**: Scaling calculations
-7. **woodchopping/predictions/prediction_aggregator.py**: Selection logic
-8. **woodchopping/handicaps/calculator.py**: Handicap mark calculation
-9. **woodchopping/simulation/fairness.py**: Monte Carlo validation
+**STRATHMARK engine** (`STRATHMARK/strathmark/`):
+1. **calculator.py**: HandicapCalculator — mark assignment, AAA rules
+2. **predictor.py**: Baseline, ML (XGBoost), LLM predictions + selection logic
+3. **variance.py**: Monte Carlo simulation, per-competitor stats, consistency ratings
+4. **fairness.py**: AI fairness assessment, championship race analysis
+5. **store.py**: SQLite ResultStore — persistent cross-competition history
+6. **llm.py**: Ollama API wrapper with connection caching
+7. **wood.py**: QAA empirical scaling tables
+8. **decay.py**: Time-decay weighting (2-year half-life)
+9. **fallback.py**: Cascading prediction fallback logic
+10. **visualization.py**: Simulation bar charts and summary text
+11. **analytics.py**: Backtesting, competitor profiling
+12. **api.py**: FastAPI HTTP REST API
+
+**STRATHEX adapter layer** (`woodchopping/`):
+13. **strathmark_adapter.py**: DataFrame ↔ STRATHMARK typed objects
+14. **data/store_registry.py**: Module-level ResultStore singleton
+15. **handicaps/calculator.py**: Thin wrapper → HandicapCalculator
+16. **simulation/monte_carlo.py**: Proxy → strathmark.variance
+17. **simulation/fairness.py**: Proxy → strathmark.fairness
 
 ---
 
