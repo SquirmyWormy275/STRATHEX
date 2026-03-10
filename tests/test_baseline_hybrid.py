@@ -330,7 +330,7 @@ def test_fit_and_cache_baseline_v2_model():
     try:
         results_df = load_results_df()
         wood_df = load_wood_data()
-    except:
+    except Exception:
         pytest.skip("Excel file not available - skipping integration test")
 
     # Clear cache first
@@ -359,7 +359,7 @@ def test_predict_baseline_v2_hybrid_with_cache():
     try:
         results_df = load_results_df()
         wood_df = load_wood_data()
-    except:
+    except Exception:
         pytest.skip("Excel file not available - skipping integration test")
 
     # Ensure cache exists
@@ -394,7 +394,7 @@ def test_predict_baseline_v2_hybrid_tournament_weighting():
     try:
         results_df = load_results_df()
         wood_df = load_wood_data()
-    except:
+    except Exception:
         pytest.skip("Excel file not available - skipping integration test")
 
     competitor_name = 'Arden Cogar Jr'
@@ -440,7 +440,7 @@ def test_predict_baseline_v2_hybrid_quality_adjustment():
     try:
         results_df = load_results_df()
         wood_df = load_wood_data()
-    except:
+    except Exception:
         pytest.skip("Excel file not available - skipping integration test")
 
     competitor_name = 'Arden Cogar Jr'
@@ -494,7 +494,7 @@ def test_predict_baseline_v2_hybrid_new_competitor():
     try:
         results_df = load_results_df()
         wood_df = load_wood_data()
-    except:
+    except Exception:
         pytest.skip("Excel file not available - skipping integration test")
 
     # Predict for completely new competitor
@@ -519,7 +519,7 @@ def test_predict_baseline_v2_hybrid_convergence_disabled():
     try:
         results_df = load_results_df()
         wood_df = load_wood_data()
-    except:
+    except Exception:
         pytest.skip("Excel file not available - skipping integration test")
 
     # Prediction WITH convergence
@@ -563,7 +563,7 @@ def test_cache_persistence():
     try:
         results_df = load_results_df()
         wood_df = load_wood_data()
-    except:
+    except Exception:
         pytest.skip("Excel file not available - skipping integration test")
 
     # Clear cache
@@ -586,7 +586,7 @@ def test_prediction_consistency():
     try:
         results_df = load_results_df()
         wood_df = load_wood_data()
-    except:
+    except Exception:
         pytest.skip("Excel file not available - skipping integration test")
 
     # Make same prediction twice

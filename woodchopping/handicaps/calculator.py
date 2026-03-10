@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Handicap mark calculation — STRATHMARK wrapper.
 

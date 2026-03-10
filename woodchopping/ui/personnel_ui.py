@@ -220,7 +220,7 @@ def add_historical_times_for_competitor(competitor_name: str) -> None:
             try:
                 quality = int(quality_str)
                 quality = max(1, min(10, quality))
-            except:
+            except Exception:
                 quality = 5
         else:
             quality = 5
@@ -233,7 +233,7 @@ def add_historical_times_for_competitor(competitor_name: str) -> None:
             try:
                 date_obj = datetime.strptime(date_str, "%Y-%m-%d")
                 timestamp = date_obj.isoformat(timespec="seconds")
-            except:
+            except Exception:
                 timestamp = datetime.now().isoformat(timespec="seconds")
 
         # Save to results sheet

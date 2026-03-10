@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Schedule Printout Generator (A1)
 

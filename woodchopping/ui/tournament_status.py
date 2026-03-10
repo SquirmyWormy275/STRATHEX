@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Tournament status tracking and progress visualization.
 
 This module provides:

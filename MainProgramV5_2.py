@@ -18,12 +18,11 @@ from datetime import datetime
 # Fix Windows console encoding for Unicode characters
 if sys.platform == 'win32':
     try:
-        # Try to set UTF-8 encoding for Windows console
-        os.system('chcp 65001 >nul 2>&1')
-        # Also set stdout encoding
+        import subprocess
+        subprocess.run(['chcp', '65001'], capture_output=True, shell=True)
         if hasattr(sys.stdout, 'reconfigure'):
             sys.stdout.reconfigure(encoding='utf-8')
-    except:
+    except Exception:
         pass  # If it fails, we'll fallback to ASCII banner
 
 # Import functions from modular woodchopping package
@@ -504,6 +503,25 @@ def manage_bracket_competitors(tournament_state: dict, comp_df: pd.DataFrame, ma
 def single_event_menu():
     """Menu for designing and running a single event"""
     global tournament_state, wood_selection, heat_assignment_df, heat_assignment_names, comp_df
+
+    # Reset all state at the start of each new event to prevent data leakage
+    # between consecutive tournament runs.
+    tournament_state = {
+        'event_name': None,
+        'num_stands': None,
+        'tentative_competitors': None,
+        'format': None,
+        'all_competitors': [],
+        'all_competitors_df': pd.DataFrame(),
+        'rounds': [],
+        'current_round_index': 0,
+        'capacity_info': {},
+        'handicap_results_all': [],
+        'payout_config': None,
+    }
+    wood_selection = {"species": None, "size_mm": None, "quality": None, "event": None}
+    heat_assignment_df = pd.DataFrame()
+    heat_assignment_names = []
 
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')

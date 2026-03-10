@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 Visualization and display functions for Monte Carlo simulation results.
 

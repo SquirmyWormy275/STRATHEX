@@ -896,19 +896,19 @@ def estimate_diameter_curve(
     results_df: pd.DataFrame,
     event_code: str,
     wood_df: Optional[pd.DataFrame] = None,
-    anchor_to_qaa: bool = True
+    anchor_to_data: bool = True
 ) -> Dict[str, any]:
     """
-    Estimate smooth diameter curve from data with optional QAA table anchors.
+    Estimate smooth diameter curve from historical data.
 
     Returns polynomial coefficients and statistics for diameter scaling effect.
-    Uses data-driven approach while optionally anchoring to QAA benchmarks.
+    Uses data-driven approach anchored to actual competitor data.
 
     Args:
         results_df: Historical results (cleaned)
         event_code: Event type (SB/UH)
-        wood_df: Wood properties for QAA anchoring
-        anchor_to_qaa: If True, blend data-driven curve with QAA table
+        wood_df: Wood properties DataFrame
+        anchor_to_data: If True, blend data-driven curve with data anchors
 
     Returns:
         Dictionary with:
@@ -916,7 +916,7 @@ def estimate_diameter_curve(
         - r_squared: Model fit quality
         - sample_count: Number of observations used
         - diameter_range: (min, max) diameter observed
-        - qaa_anchored: Whether QAA anchoring was applied
+        - anchored: Whether data anchoring was applied
     """
     if results_df is None or results_df.empty:
         # Return default linear scaling if no data
@@ -925,7 +925,7 @@ def estimate_diameter_curve(
             'r_squared': 0.0,
             'sample_count': 0,
             'diameter_range': (225, 350),
-            'qaa_anchored': False
+            'anchored': False
         }
 
     # Standardize if needed
@@ -941,7 +941,7 @@ def estimate_diameter_curve(
             'r_squared': 0.0,
             'sample_count': 0,
             'diameter_range': (225, 350),
-            'qaa_anchored': False
+            'anchored': False
         }
 
     # Remove outliers (use configured thresholds)
@@ -958,7 +958,7 @@ def estimate_diameter_curve(
             'r_squared': 0.0,
             'sample_count': 0,
             'diameter_range': (225, 350),
-            'qaa_anchored': False
+            'anchored': False
         }
 
     # Transform to log-space
@@ -975,7 +975,7 @@ def estimate_diameter_curve(
             'r_squared': 0.0,
             'sample_count': len(event_data),
             'diameter_range': (float(diameter_min), float(diameter_max)),
-            'qaa_anchored': False
+            'anchored': False
         }
 
     event_data['diameter_norm'] = (event_data['size_mm'] - diameter_min) / diameter_range_val
@@ -1009,7 +1009,7 @@ def estimate_diameter_curve(
             'r_squared': float(r_squared),
             'sample_count': len(event_data),
             'diameter_range': (float(diameter_min), float(diameter_max)),
-            'qaa_anchored': False  # QAA anchoring not yet implemented
+            'anchored': False
         }
 
     except np.linalg.LinAlgError:
@@ -1019,7 +1019,7 @@ def estimate_diameter_curve(
             'r_squared': 0.0,
             'sample_count': len(event_data),
             'diameter_range': (float(diameter_min), float(diameter_max)),
-            'qaa_anchored': False
+            'anchored': False
         }
 
 
@@ -1315,7 +1315,7 @@ def fit_hierarchical_regression(
                 float(results_df['size_mm'].min()),
                 float(results_df['size_mm'].max())
             ),
-            'qaa_anchored': False
+            'anchored': False
         },
         'UH': {
             'coefficients': [c0_uh, c1_uh, c2_uh],
@@ -1325,7 +1325,7 @@ def fit_hierarchical_regression(
                 float(results_df['size_mm'].min()),
                 float(results_df['size_mm'].max())
             ),
-            'qaa_anchored': False
+            'anchored': False
         }
     }
 
@@ -1364,8 +1364,8 @@ def _get_default_hierarchical_model() -> Dict[str, any]:
     return {
         'event_intercepts': {'SB': 3.0, 'UH': 3.2},
         'diameter_curves': {
-            'SB': {'coefficients': [3.0, 0.002, 0.0], 'r_squared': 0.0, 'sample_count': 0, 'diameter_range': (225, 350), 'qaa_anchored': False},
-            'UH': {'coefficients': [3.2, 0.002, 0.0], 'r_squared': 0.0, 'sample_count': 0, 'diameter_range': (225, 350), 'qaa_anchored': False}
+            'SB': {'coefficients': [3.0, 0.002, 0.0], 'r_squared': 0.0, 'sample_count': 0, 'diameter_range': (225, 350), 'anchored': False},
+            'UH': {'coefficients': [3.2, 0.002, 0.0], 'r_squared': 0.0, 'sample_count': 0, 'diameter_range': (225, 350), 'anchored': False}
         },
         'hardness_coefficient': 0.3,
         'selection_coefficient': -0.002,

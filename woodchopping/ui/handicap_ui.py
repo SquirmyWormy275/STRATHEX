@@ -23,7 +23,6 @@ from woodchopping.data.validation import (
     check_diameter_sample_size
 )
 from woodchopping.handicaps import calculate_ai_enhanced_handicaps
-from woodchopping.handicaps.qaa_legacy import calculate_qaa_legacy_marks
 from woodchopping.simulation import simulate_and_assess_handicaps
 from config import paths, rules, sim_config
 
@@ -57,8 +56,7 @@ def view_handicaps_menu(heat_assignment_df: pd.DataFrame, wood_selection: Dict) 
     while True:
         print("\n--- View Handicap Marks ---")
         print("1) View handicap marks for current heat")
-        print("2) View QAA legacy marks (QAA tables only)")
-        print("3) Back to Main Menu")
+        print("2) Back to Main Menu")
         s = input("Choose an option: ").strip()
 
         if s == "1":
@@ -67,13 +65,7 @@ def view_handicaps_menu(heat_assignment_df: pd.DataFrame, wood_selection: Dict) 
             view_handicaps(heat_assignment_df, wood_selection)
             input("\n(Press Enter to return to the View Handicap Marks menu) ")
 
-        elif s == "2":
-            if not validate_heat_data(heat_assignment_df, wood_selection):
-                continue
-            view_qaa_legacy_handicaps(heat_assignment_df, wood_selection)
-            input("\n(Press Enter to return to the View Handicap Marks menu) ")
-
-        elif s == "3" or s == "":
+        elif s == "2" or s == "":
             break
 
         else:
@@ -234,58 +226,6 @@ def view_handicaps(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> No
 
     if choice == 'y':
         simulate_and_assess_handicaps(results, num_simulations=sim_config.NUM_SIMULATIONS)
-
-
-def view_qaa_legacy_handicaps(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> None:
-    """Display QAA legacy marks for the current heat."""
-    if heat_assignment_df.empty:
-        print("No competitors in heat assignment.")
-        return
-
-    event_code = wood_selection.get("event")
-    if event_code not in ("SB", "UH"):
-        print("QAA legacy marks are only available for SB/UH events.")
-        return
-
-    results_df = load_results_df()
-    if results_df.empty:
-        print("\nNo historical data available. Cannot generate QAA legacy marks.")
-        return
-
-    species = wood_selection.get("species", "Unknown")
-    diameter = wood_selection.get("size_mm", 300)
-    quality = wood_selection.get("quality", 5)
-
-    results = calculate_qaa_legacy_marks(
-        heat_assignment_df,
-        species,
-        diameter,
-        quality,
-        event_code,
-        results_df
-    )
-
-    if not results:
-        print("\nUnable to generate QAA legacy marks.")
-        return
-
-    results.sort(key=lambda x: x['mark'])
-
-    print("\n" + "="*70)
-    print("QAA LEGACY HANDICAP MARKS (TABLES ONLY)")
-    print("="*70)
-
-    for result in results:
-        print(
-            f"{result['name']:25s} Mark {result['mark']:3d}  "
-            f"(300mm book {result['book_mark_300']:.1f}s)  "
-            f"{result['explanation']}"
-        )
-
-    print("\n" + "="*70)
-    print(f"Selected Wood -> Species: {species}, Diameter: {diameter} mm, Quality: {quality}")
-    print(f"Event: {event_code}")
-    print("="*70)
 
 
 def _display_live_standings(times_collected: Dict[str, float],

@@ -26,7 +26,7 @@ def run_diameter_monotonicity_diagnostic(
     Args:
         results_df: Historical results (optional, loaded if None)
         wood_df: Wood properties (optional, loaded if None)
-        diameters: List of diameters to test (default: QAA standards)
+        diameters: List of diameters to test (default: STRATHEX standard diameters)
         event_filter: 'SB' or 'UH' to restrict, or None for both
         min_results: Minimum history rows per competitor+event to include
         tolerance_seconds: Allowed small non-monotonic wiggle

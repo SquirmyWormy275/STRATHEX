@@ -7,6 +7,11 @@ to improve maintainability and make it easier to adjust system behavior.
 
 from dataclasses import dataclass
 from typing import Final
+from pathlib import Path as _Path
+
+# Resolve the project root relative to this config file so that
+# woodchopping.xlsx is found correctly regardless of the working directory.
+_BASE_DIR = _Path(__file__).parent
 
 
 # =============================================================================
@@ -383,8 +388,8 @@ class LLMConfig:
 class Paths:
     """File paths and Excel sheet names"""
 
-    # Excel file
-    EXCEL_FILE: str = "woodchopping.xlsx"
+    # Excel file - resolved relative to config.py so it works from any working directory
+    EXCEL_FILE: str = str(_BASE_DIR / "woodchopping.xlsx")
     """Main Excel workbook filename"""
 
     # Sheet names

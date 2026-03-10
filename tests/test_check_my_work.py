@@ -25,7 +25,7 @@ mock_handicap_results = [
         'method_used': 'Baseline (scaled)',
         'confidence': 'MEDIUM',
         'predictions': {
-            'baseline': {'time': 30.0, 'scaled': True, 'scaling_warning': 'QAA scaling: 300mm to 275mm'},
+            'baseline': {'time': 30.0, 'scaled': True, 'scaling_warning': 'Scaling: 300mm to 275mm'},
             'ml': {'time': None},
             'llm': {'time': 31.0}
         }

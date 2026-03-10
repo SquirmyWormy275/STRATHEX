@@ -55,7 +55,7 @@ def check_ollama_connection(force: bool = False) -> bool:
         _ollama_status['last_check'] = current_time
         _ollama_status['error_shown'] = False  # Reset error flag on successful connection
         return _ollama_status['available']
-    except:
+    except Exception:
         _ollama_status['available'] = False
         _ollama_status['last_check'] = current_time
         return False
@@ -134,7 +134,11 @@ def call_ollama(prompt: str, model: str = None, num_predict: int = None) -> Opti
                 _ollama_status['available'] = True
                 _ollama_status['last_check'] = time.time()
                 _ollama_status['error_shown'] = False
-                return response.json()['response'].strip()
+                data = response.json()
+                if not isinstance(data, dict) or 'response' not in data:
+                    print(f"\n[WARN] Unexpected Ollama response structure: {data}")
+                    return None
+                return data['response'].strip()
             else:
                 # Non-200 response - might be recoverable, retry
                 if attempt < max_retries:

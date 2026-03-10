@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Multi-event tournament management UI functions.
 
 This module handles multi-event tournament operations including:

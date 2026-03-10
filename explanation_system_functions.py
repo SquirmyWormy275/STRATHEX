@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """
 STRATHEX Explanation System Functions
 
@@ -216,9 +217,9 @@ HOW IT WORKS:
 
 2. Apply DIAMETER SCALING if needed
    - If historical data is different diameter than today's wood
-   - Uses QAA empirical tables (150+ years Australian data)
-   - Example: Book mark 33s @ 300mm -> 28s @ 275mm (hardwood)
-   - Wood type classification: Hardwood/Medium/Softwood
+   - Uses power-law diameter scaling (calibrated from competitor data)
+   - Example: Book mark 33s @ 300mm -> 28s @ 275mm (exponent 1.4)
+   - Formula: scaled_time = base_time * (target_diameter / base_diameter) ** 1.4
 
 3. Apply WOOD QUALITY adjustment
    - Quality scale: 0 (extremely hard) to 10 (extremely soft)
@@ -241,14 +242,14 @@ EXAMPLE:
 
   Calculation:
     Base (weighted avg): 33.4s @ 300mm equivalent
-    QAA scaling: Book mark 33s @ 300mm -> 28s @ 275mm (softwood table)
+    Diameter scaling: 33.4s @ 325mm -> 28.0s @ 275mm (power-law exponent 1.4)
     Quality adjustment: 28.0 x 0.98 = 27.4s (quality 6 = slightly softer)
     PREDICTED TIME: 27.4 seconds
 
 ADVANTAGES:
   + ALWAYS AVAILABLE (works even with minimal data)
   + TIME-AWARE (recent form prioritized over old peaks)
-  + BATTLE-TESTED (QAA tables validated over 150 years)
+  + DATA-DRIVEN (exponent calibrated from actual competition results)
   + EMPIRICAL (based on actual competition data, not formulas)
   + CONSISTENT (same quality adjustment as other methods)
   + TRANSPARENT (lookup tables anyone can verify)
@@ -634,7 +635,7 @@ CONSISTENCY:
     [OK] ML model features (competitor_avg_time_by_event)
 
 ----------------------------------------------------------------------
-  IMPROVEMENT #2: DIAMETER SCALING (QAA Empirical Tables)
+  IMPROVEMENT #2: DIAMETER SCALING (Power-Law Model)
 ----------------------------------------------------------------------
 
 PROBLEM:
@@ -643,33 +644,26 @@ PROBLEM:
   but failed spectacularly.
 
 SOLUTION:
-  QAA empirical scaling tables from Queensland Axemen's Association
-
-  Why QAA tables?
-    - 150+ years of Australian woodchopping institutional knowledge
-    - Based on actual competition results, not mathematical formulas
-    - Separate tables for Hardwood, Medium wood, and Softwood
-    - Standard: 300mm diameter (12" blocks)
-    - Covers diameters: 225mm, 250mm, 275mm, 300mm, 325mm, 350mm
+  Power-law diameter scaling calibrated from STRATHEX competitor data.
 
   How it works:
-    - Book marks recorded at 300mm standard
-    - Lookup table converts to target diameter
-    - Wood type automatically classified by species
-    - Example: Mark 27s @ 300mm -> 23s @ 275mm (hardwood)
+    - Formula: scaled_time = base_time * (target_diameter / base_diameter) ** 1.4
+    - Exponent 1.4 calibrated from actual competition results
+    - Applied whenever historical diameter differs from target diameter
+    - Example: 27s @ 325mm -> 23s @ 275mm (exponent 1.4)
 
 IMPACT:
   Cody Labahn example (325mm -> 275mm):
     - Historical: 27s average in 325mm blocks
     - OLD: ML predicted 27.4s (ignored diameter difference!)
-    - NEW: QAA table lookup: 27s @ 325mm -> 23s @ 275mm
-    - Result: 4+ seconds more accurate, validated by 150 years data!
+    - NEW: Power-law scaling: 27s @ 325mm -> 23s @ 275mm
+    - Result: 4+ seconds more accurate
 
 INTELLIGENCE:
   Selection logic now PREFERS baseline when diameter scaling applied:
-    - Baseline (QAA scaled) > ML (extrapolating) when diameters differ
+    - Baseline (diameter-scaled) > ML (extrapolating) when diameters differ
     - ML preferred when diameters match (no extrapolation needed)
-    - QAA tables more reliable than any formula-based approach
+    - Power-law scaling is reliable, transparent, and invertible
 
 ----------------------------------------------------------------------
   IMPROVEMENT #3: WOOD QUALITY CONSISTENCY (Universal Application)

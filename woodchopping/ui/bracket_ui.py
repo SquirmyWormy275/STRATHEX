@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Head-to-head bracket tournament UI functions.
 
 This module handles single-elimination bracket tournaments where:

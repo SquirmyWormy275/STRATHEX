@@ -48,16 +48,24 @@ def simulate_single_race(competitors_with_marks: List[Dict[str, Any]]) -> List[D
     This local implementation preserves the STRATHEX return type for callers
     that need the full per-competitor race result breakdown.
     """
+    if not competitors_with_marks:
+        return []
+
     finish_results = []
     heat_delta = np.random.normal(0.0, sim_config.HEAT_VARIANCE_SECONDS)
 
     for comp in competitors_with_marks:
+        pt = comp.get('predicted_time')
+        if pt is None or (isinstance(pt, float) and np.isnan(pt)):
+            raise ValueError(
+                f"Invalid predicted_time for competitor '{comp.get('name', 'unknown')}': {pt!r}"
+            )
         variance_seconds = _get_competitor_variance_seconds(comp)
         actual_time = np.random.normal(
-            comp['predicted_time'] + heat_delta,
+            pt + heat_delta,
             variance_seconds,
         )
-        actual_time = max(actual_time, comp['predicted_time'] * 0.5)
+        actual_time = max(actual_time, pt * 0.5)
         start_delay = comp['mark'] - rules.MIN_MARK_SECONDS
         finish_time = start_delay + actual_time
 

@@ -37,7 +37,6 @@ from woodchopping.predictions.diameter_scaling import (
     get_diameter_info_from_historical_data,
     adjust_confidence_for_scaling
 )
-# QAA empirical scaling tables (replaces power-law formula)
 
 
 def get_all_predictions(

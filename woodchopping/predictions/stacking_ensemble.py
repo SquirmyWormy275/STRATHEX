@@ -130,7 +130,7 @@ class StackingEnsemble:
                 'std_dev': baseline_meta.get('std_dev', 3.0) if baseline_meta else 3.0,
                 'confidence': baseline_conf
             }
-        except:
+        except Exception:
             predictions['baseline_v2'] = {'time': None, 'std_dev': 3.0, 'confidence': 'N/A'}
 
         # 2. XGBoost
@@ -138,7 +138,7 @@ class StackingEnsemble:
             # Use ml_model predict function (TODO: needs to be updated for 19 features)
             # For now, placeholder
             predictions['xgboost'] = {'time': None, 'std_dev': 3.0, 'confidence': 'N/A'}
-        except:
+        except Exception:
             predictions['xgboost'] = {'time': None, 'std_dev': 3.0, 'confidence': 'N/A'}
 
         # 3. LightGBM
@@ -151,7 +151,7 @@ class StackingEnsemble:
                 'std_dev': 3.0,  # LightGBM doesn't provide std directly
                 'confidence': lgb_conf
             }
-        except:
+        except Exception:
             predictions['lightgbm'] = {'time': None, 'std_dev': 3.0, 'confidence': 'N/A'}
 
         # 4. RandomForest
@@ -164,7 +164,7 @@ class StackingEnsemble:
                 'std_dev': rf_std if rf_std else 3.0,
                 'confidence': rf_conf
             }
-        except:
+        except Exception:
             predictions['randomforest'] = {'time': None, 'std_dev': 3.0, 'confidence': 'N/A'}
 
         # 5. Ridge
@@ -177,7 +177,7 @@ class StackingEnsemble:
                 'std_dev': 3.0,  # Ridge provides CI, not std directly
                 'confidence': ridge_conf
             }
-        except:
+        except Exception:
             predictions['ridge'] = {'time': None, 'std_dev': 3.0, 'confidence': 'N/A'}
 
         # 6. LLM (optional)
@@ -190,7 +190,7 @@ class StackingEnsemble:
                 'std_dev': 3.0,  # LLM uncertainty not quantified
                 'confidence': llm_conf
             }
-        except:
+        except Exception:
             predictions['llm'] = {'time': None, 'std_dev': 3.0, 'confidence': 'N/A'}
 
         return predictions

@@ -180,7 +180,7 @@ class VarianceScaler:
             )
 
             return float(final_std)
-        except:
+        except Exception:
             return baseline_std
 
 

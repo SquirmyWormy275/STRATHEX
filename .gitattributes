@@ -1,0 +1,39 @@
+# STRATHEX .gitattributes
+# Forces consistent LF line endings across all platforms.
+# This prevents CRLF/LF conversion from corrupting Unicode box-drawing
+# characters (╔ ╗ ║ ═ etc.) used in ASCII art banners.
+
+# Default: normalize all text files to LF
+* text=auto eol=lf
+
+# Explicitly enforce LF + UTF-8 for Python source files
+*.py    text eol=lf encoding=UTF-8
+
+# Documentation and config
+*.md    text eol=lf
+*.txt   text eol=lf
+*.yml   text eol=lf
+*.yaml  text eol=lf
+*.json  text eol=lf
+*.cfg   text eol=lf
+*.ini   text eol=lf
+*.toml  text eol=lf
+
+# Batch / shell scripts keep their native endings
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.sh    text eol=lf
+
+# Binary files — no conversion at all
+*.xlsx  binary
+*.xls   binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.pkl   binary
+*.joblib binary
