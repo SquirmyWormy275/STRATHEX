@@ -32,6 +32,10 @@ dev = [
     "ruff",
 ]
 
+[tool.hatch.metadata]
+# Required so the strathmark git+https direct reference in dependencies is allowed.
+allow-direct-references = true
+
 [tool.hatch.build.targets.wheel]
 packages = ["woodchopping"]
 
