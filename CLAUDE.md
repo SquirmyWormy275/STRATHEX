@@ -4,24 +4,45 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-STRATHEX (Woodchopping Handicap Calculator) is a data-driven system that calculates fair handicap marks for woodchopping competitions. It combines historical performance analysis, AI-enhanced prediction modeling (via Ollama), and Monte Carlo simulation validation to create handicaps that give all competitors equal probability of winning, regardless of skill level. The system also includes comprehensive prize money/payout tracking for professional tournaments.
+STRATHEX (Woodchopping Handicap Calculator) is a data-driven tournament management system for woodchopping competitions. It combines historical performance analysis, AI-enhanced prediction modeling (via Ollama), and Monte Carlo simulation validation to create handicaps that give all competitors equal probability of winning, regardless of skill level. The system also includes comprehensive prize money/payout tracking for professional tournaments.
+
+As of **V6.0**, all handicap calculation, Monte Carlo simulation, prediction
+aggregation, and AI fairness assessment is delegated to **STRATHMARK**
+(https://github.com/SquirmyWormy275/STRATHMARK), a separate pip-installable
+engine. STRATHEX retains the tournament management surface (UI, Excel I/O,
+multi-round/multi-event flows, payouts, championship simulator). The bridge
+between the two is [woodchopping/strathmark_adapter.py](woodchopping/strathmark_adapter.py).
 
 The system implements a critical innovation: absolute variance modeling (±3 seconds for all competitors) rather than proportional variance, ensuring true fairness as real-world factors affect competitors equally in absolute terms.
 
 ## Running the Program
 
 ```bash
+# Install STRATHEX (auto-pulls strathmark from GitHub) and dev tools
+pip install -e ".[dev]"
+
 # Run main program
 python MainProgramV5_2.py
 
 # Ensure Ollama is running locally for AI predictions
-# Model required: qwen2.5:32b (optimized for mathematical reasoning and enhanced precision)
+# Default model: qwen2.5:7b (configurable via llm_config.DEFAULT_MODEL)
+# Optional: qwen2.5:32b for higher-precision mathematical reasoning
 ```
 
 **Prerequisites:**
-- Python 3.13.3
-- Ollama running locally with qwen2.5:32b model
-- `woodchopping.xlsx` in the same directory as scripts
+- Python 3.13+
+- Ollama running locally with qwen2.5:7b (or qwen2.5:32b) model
+- `woodchopping.xlsx` in the project root
+- STRATHMARK installed (handled automatically by `pip install -e .`)
+
+## Dependency and Tooling Source of Truth
+
+All runtime/dev dependencies and tool config (pytest, ruff, coverage) live in
+[pyproject.toml](pyproject.toml). There is no `requirements.txt`. CI runs lint,
+tests, and a build verification on every push/PR to `main` — see
+[.github/workflows/ci.yml](.github/workflows/ci.yml) and the README "CI/CD"
+section. Tests that need a local Ollama instance must be marked
+`@pytest.mark.ollama` so CI can skip them with `-m "not ollama"`.
 
 **Main Menu Options:**
 1. Design an Event (Single Event Tournament)
