@@ -15,8 +15,10 @@ As of V6.0, all handicap calculation, Monte Carlo simulation, and fairness asses
 ### Running the Program
 
 ```bash
-# Install STRATHMARK engine (editable — live integration)
-pip install -e ./STRATHMARK
+# Install STRATHEX and all core dependencies (pulls strathmark from GitHub)
+pip install -e .              # Core + ML
+pip install -e ".[llm]"      # Include Ollama LLM predictor extras
+pip install -e ".[dev]"      # Testing and linting tools
 
 # Start the main tournament management program
 python MainProgramV5_2.py
@@ -25,65 +27,64 @@ python MainProgramV5_2.py
 ### Prerequisites
 
 - **Python**: 3.13+
-- **Ollama**: Running locally with `qwen2.5:7b` model (for AI predictions)
+- **Ollama**: Running locally with `qwen2.5:7b` model (for AI predictions, optional)
 - **Data File**: `woodchopping.xlsx` in project root
-- **STRATHMARK**: Installed from the `STRATHMARK/` subdirectory (see above)
+- **STRATHMARK**: Installed automatically as a dependency from
+  [github.com/SquirmyWormy275/STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK).
+  For local development against an editable checkout, clone the repo as a
+  sibling directory and run `pip install -e ../STRATHMARK` after `pip install -e .`.
 
-### Required Python Packages
+### Dependency Source of Truth
 
-```bash
-pip install pandas openpyxl xgboost scikit-learn requests numpy
-```
+All runtime and dev dependencies are defined in [pyproject.toml](pyproject.toml).
+There is no `requirements.txt`. To add or change a dependency, edit `pyproject.toml`
+and reinstall with `pip install -e ".[dev]"`.
 
 ---
 
 ## Project Structure
 
 ```
-woodchopping-handicap-system/
+STRATHEX/
 │
 ├── MainProgramV5_2.py              # Main tournament management interface
 ├── explanation_system_functions.py  # STRATHEX educational guide for judges
 ├── config.py                        # STRATHEX configuration settings
-├── woodchopping.xlsx                # Historical results database
-├── tournament_state.json            # Saved tournament state
-│
-├── STRATHMARK/                      # Pip-installable handicap engine (V6.0)
-│   └── strathmark/
-│       ├── calculator.py            # HandicapCalculator — mark assignment
-│       ├── predictor.py             # Baseline, ML, LLM predictions
-│       ├── variance.py              # Monte Carlo simulation
-│       ├── fairness.py              # AI fairness assessment
-│       ├── store.py                 # SQLite persistence (ResultStore)
-│       ├── llm.py                   # Ollama integration
-│       ├── visualization.py         # Simulation charts
-│       ├── analytics.py             # Backtesting and profiling
-│       ├── wood.py                  # QAA scaling tables
-│       ├── decay.py                 # Time-decay weighting
-│       ├── fallback.py              # Cascading prediction fallback
-│       ├── config.py                # Engine configuration
-│       └── api.py                   # FastAPI HTTP REST API
+├── pyproject.toml                   # Packaging, deps, tooling configuration
+├── woodchopping.xlsx                # Historical results database (gitignored)
+├── CLAUDE.md                        # Project-level Claude Code guidance
 │
 ├── woodchopping/                    # STRATHEX modular package
+│   ├── strathmark_adapter.py        # DataFrame ↔ STRATHMARK typed objects
 │   ├── data/
 │   │   ├── store_registry.py        # Module-level ResultStore singleton
 │   │   └── excel_io.py              # Excel I/O + dual-write to ResultStore
 │   ├── handicaps/
-│   │   └── calculator.py            # Thin wrapper → HandicapCalculator
-│   ├── strathmark_adapter.py        # DataFrame ↔ STRATHMARK typed objects
+│   │   └── calculator.py            # Thin wrapper → strathmark.HandicapCalculator
 │   ├── predictions/                 # Prediction methods (Baseline, ML, LLM)
 │   ├── simulation/
 │   │   ├── monte_carlo.py           # Proxy → strathmark.variance
 │   │   └── fairness.py              # Proxy → strathmark.fairness
+│   ├── analytics/                   # Performance history, profiling
 │   └── ui/                          # User interface modules
 │
 ├── docs/                            # Documentation
 │   ├── SYSTEM_STATUS.md             # Current system status report
 │   ├── ML_AUDIT_REPORT.md           # ML model audit and validation
+│   ├── PROMPT_ENGINEERING_GUIDELINES.md
 │   └── ... (other documentation)
 │
-└── tests/                           # Test scripts
+├── tests/                           # Test scripts
+│   └── validation/                  # Backtesting and model comparison suites
+│
+└── .github/workflows/ci.yml         # Lint, test (Linux+Windows), build verification
 ```
+
+> **Note:** STRATHMARK is **not** vendored as a subdirectory of this repo.
+> It lives in its own GitHub repo at
+> [github.com/SquirmyWormy275/STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK)
+> and is pulled in as a dependency by `pyproject.toml`. Earlier drafts of
+> this README incorrectly described it as a `./STRATHMARK/` subdirectory.
 
 ---
 
@@ -104,9 +105,19 @@ STRATHMARK (./STRATHMARK/)
   — FastAPI HTTP server (for future web/mobile consumers)
 ```
 
-STRATHMARK is installed with `pip install -e ./STRATHMARK` (editable mode).
-Python reads STRATHMARK source files directly — no rebuild required after changes.
-**Any improvement to STRATHMARK takes effect immediately on next STRATHEX run.**
+STRATHMARK is installed automatically when you `pip install -e .` in STRATHEX —
+the dependency is pinned to the `main` branch of the STRATHMARK GitHub repo.
+
+For active development on the engine, clone STRATHMARK as a sibling directory
+and reinstall it editable:
+
+```bash
+git clone https://github.com/SquirmyWormy275/STRATHMARK.git ../STRATHMARK
+pip install -e ../STRATHMARK
+```
+
+Once installed editable, Python reads STRATHMARK source files directly —
+**any improvement to STRATHMARK takes effect immediately on next STRATHEX run.**
 
 ### SQLite Persistence
 
@@ -203,16 +214,21 @@ dependency cannot be installed. The prediction methodology is identical.
 ## Testing
 
 ```bash
-# Run STRATHMARK engine tests (28 tests)
-python -m pytest STRATHMARK/tests/ -v
+# Install dev tools (pytest, pytest-cov, ruff)
+pip install -e ".[dev]"
+
+# Run the full STRATHEX test suite
+pytest tests/ -v --cov=woodchopping --cov-report=term-missing
+
+# Skip Ollama-dependent tests (the same flag CI uses)
+pytest tests/ -v -m "not ollama"
 
 # Verify STRATHEX → STRATHMARK integration
 python -c "from woodchopping.handicaps.calculator import calculate_ai_enhanced_handicaps; print('OK')"
-
-# Run legacy STRATHEX tests
-python tests/test_both_events.py
-python tests/test_uh_predictions.py
 ```
+
+Tests marked `@pytest.mark.ollama` require a local Ollama instance running
+`qwen2.5:7b` and are skipped in CI.
 
 **Test Results**:
 - STRATHMARK: 28/28 passing
@@ -284,6 +300,49 @@ Same wood across all rounds = most accurate predictor possible.
 - Any AAA-sanctioned woodchopping events
 
 **Current Status**: Production Ready
+
+---
+
+## CI/CD
+
+GitHub Actions runs on every push and pull request to `main`:
+
+| Job   | Runs on                          | What it checks |
+|-------|----------------------------------|----------------|
+| lint  | ubuntu-latest                    | `ruff check .` and `ruff format --check .` |
+| test  | ubuntu-latest, windows-latest    | `pytest tests/ -m "not ollama"` with coverage on `woodchopping` |
+| build | ubuntu-latest (after lint+test)  | `python -m build` and verify the wheel imports cleanly |
+
+To run the same checks locally:
+
+```bash
+pip install -e ".[dev]"
+ruff check .
+ruff format --check .
+pytest tests/ -v -m "not ollama" --cov=woodchopping
+python -m build
+```
+
+Tests marked `@pytest.mark.ollama` need a local Ollama instance and are skipped
+in CI by the `-m "not ollama"` filter.
+
+---
+
+## Ecosystem
+
+STRATHEX is one of two projects in the woodchopping handicap ecosystem:
+
+- **STRATHEX** (this repo) — full tournament management application: UI,
+  Excel I/O, multi-event/multi-round flows, payouts, championship simulator.
+- **[STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK)** — the
+  pip-installable handicap calculation engine. Other tournament management
+  systems can depend on it directly without pulling in STRATHEX's UI layer.
+
+As of V6.0, STRATHEX delegates **all** handicap calculation, prediction
+aggregation, Monte Carlo variance modeling, and AI fairness assessment to
+STRATHMARK via [woodchopping/strathmark_adapter.py](woodchopping/strathmark_adapter.py).
+STRATHEX retains the tournament management surface (rounds, brackets, payouts,
+Excel persistence, judge-facing CLI).
 
 ---
 
