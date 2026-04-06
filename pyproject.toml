@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "strathex"
+version = "6.0.0"
+description = "AI-Powered Woodchopping Handicap Calculator and Tournament Management System"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "Proprietary" }
+authors = [{ name = "Alex Kaper" }]
+dependencies = [
+    "pandas",
+    "numpy",
+    "openpyxl",
+    "scikit-learn",
+    "xgboost",
+    "lightgbm",
+    "matplotlib",
+    "requests",
+    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@main",
+]
+
+[project.optional-dependencies]
+llm = [
+    "requests",
+]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["woodchopping"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+markers = [
+    "ollama: tests that require a local Ollama instance (skipped in CI)",
+    "strathmark: tests that exercise the strathmark engine directly",
+]
+
+[tool.coverage.run]
+source = ["woodchopping"]
+omit = ["tests/*"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
