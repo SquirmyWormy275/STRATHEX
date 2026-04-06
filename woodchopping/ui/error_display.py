@@ -14,7 +14,7 @@ def display_actionable_error(
     message: str,
     issues: List[str] = None,
     quick_action: Optional[str] = None,
-    quick_action_key: Optional[str] = None
+    quick_action_key: Optional[str] = None,
 ) -> Optional[str]:
     """Display an error message with actionable steps.
 
@@ -115,7 +115,7 @@ def display_warning(title: str, message: str, confirmation: bool = False) -> boo
         print("╚" + "═" * box_width + "╝")
 
         choice = input("\n[y/n]: ").strip().lower()
-        return choice == 'y'
+        return choice == "y"
     else:
         print("╚" + "═" * box_width + "╝")
         input("\nPress Enter to continue...")
@@ -158,7 +158,7 @@ def display_progress_box(title: str, current: int, total: int, item_name: str = 
     percent = int((current / total) * 100) if total > 0 else 0
     bar_length = 40
     filled = int((bar_length * current) / total) if total > 0 else 0
-    bar = '█' * filled + '░' * (bar_length - filled)
+    bar = "█" * filled + "░" * (bar_length - filled)
 
     print("\n╔" + "═" * box_width + "╗")
     print("║" + title.center(box_width) + "║")
@@ -173,7 +173,7 @@ def display_progress_box(title: str, current: int, total: int, item_name: str = 
 def prompt_with_options(
     question: str,
     options: List[tuple],  # List of (key, description) tuples
-    allow_cancel: bool = True
+    allow_cancel: bool = True,
 ) -> Optional[str]:
     """Display a menu of options and get user choice.
 

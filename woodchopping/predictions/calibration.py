@@ -12,16 +12,18 @@ Functions:
     apply_convergence_calibration - Minimize spread while preserving order
 """
 
-from typing import Optional, Tuple, List, Dict
-import pandas as pd
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
+import pandas as pd
 
 from config import simulation_config
 
 try:
+    import xgboost as xgb
     from sklearn.isotonic import IsotonicRegression
     from sklearn.metrics import mean_absolute_error
-    import xgboost as xgb
+
     CALIBRATION_AVAILABLE = True
 except ImportError:
     CALIBRATION_AVAILABLE = False
@@ -53,15 +55,15 @@ class IsotonicCalibrator:
             return
 
         # Fit SB calibrator
-        sb_mask = events == 'SB'
+        sb_mask = events == "SB"
         if sb_mask.sum() > 10:  # Need minimum samples
-            self.calibrator_sb = IsotonicRegression(out_of_bounds='clip')
+            self.calibrator_sb = IsotonicRegression(out_of_bounds="clip")
             self.calibrator_sb.fit(predictions[sb_mask], actuals[sb_mask])
 
         # Fit UH calibrator
-        uh_mask = events == 'UH'
+        uh_mask = events == "UH"
         if uh_mask.sum() > 10:
-            self.calibrator_uh = IsotonicRegression(out_of_bounds='clip')
+            self.calibrator_uh = IsotonicRegression(out_of_bounds="clip")
             self.calibrator_uh.fit(predictions[uh_mask], actuals[uh_mask])
 
         self.is_fitted = True
@@ -71,9 +73,9 @@ class IsotonicCalibrator:
         if not self.is_fitted:
             return prediction
 
-        if event_code == 'SB' and self.calibrator_sb is not None:
+        if event_code == "SB" and self.calibrator_sb is not None:
             return float(self.calibrator_sb.predict([prediction])[0])
-        elif event_code == 'UH' and self.calibrator_uh is not None:
+        elif event_code == "UH" and self.calibrator_uh is not None:
             return float(self.calibrator_uh.predict([prediction])[0])
         else:
             return prediction
@@ -97,7 +99,7 @@ class VarianceScaler:
         predictions: np.ndarray,
         actuals: np.ndarray,
         events: np.ndarray,
-        competitor_features: pd.DataFrame
+        competitor_features: pd.DataFrame,
     ):
         """
         Fit variance scalers for SB and UH events.
@@ -116,7 +118,7 @@ class VarianceScaler:
         residuals = np.abs(predictions - actuals)
 
         # For each event, train XGBoost to predict residual magnitude
-        for event in ['SB', 'UH']:
+        for event in ["SB", "UH"]:
             mask = events == event
             if mask.sum() < 30:  # Need minimum samples
                 continue
@@ -125,15 +127,10 @@ class VarianceScaler:
             y = residuals[mask]
 
             # XGBoost for variance prediction
-            model = xgb.XGBRegressor(
-                n_estimators=50,
-                max_depth=3,
-                learning_rate=0.1,
-                random_state=42
-            )
+            model = xgb.XGBRegressor(n_estimators=50, max_depth=3, learning_rate=0.1, random_state=42)
             model.fit(X, y)
 
-            if event == 'SB':
+            if event == "SB":
                 self.scaler_sb = model
             else:
                 self.scaler_uh = model
@@ -141,10 +138,7 @@ class VarianceScaler:
         self.is_fitted = True
 
     def predict_std_dev(
-        self,
-        competitor_features: Dict[str, float],
-        event_code: str,
-        baseline_std: float = 3.0
+        self, competitor_features: Dict[str, float], event_code: str, baseline_std: float = 3.0
     ) -> float:
         """
         Predict competitor-specific std_dev.
@@ -161,7 +155,7 @@ class VarianceScaler:
             return baseline_std
 
         # Get appropriate model
-        model = self.scaler_sb if event_code == 'SB' else self.scaler_uh
+        model = self.scaler_sb if event_code == "SB" else self.scaler_uh
         if model is None:
             return baseline_std
 
@@ -176,7 +170,7 @@ class VarianceScaler:
             # Clamp to reasonable range
             final_std = max(
                 simulation_config.MIN_COMPETITOR_STD_SECONDS,
-                min(final_std, simulation_config.MAX_COMPETITOR_STD_SECONDS)
+                min(final_std, simulation_config.MAX_COMPETITOR_STD_SECONDS),
             )
 
             return float(final_std)
@@ -185,9 +179,7 @@ class VarianceScaler:
 
 
 def apply_convergence_calibration(
-    predictions: List[Tuple[str, float]],
-    target_spread: float = 2.0,
-    preserve_order: bool = True
+    predictions: List[Tuple[str, float]], target_spread: float = 2.0, preserve_order: bool = True
 ) -> List[Tuple[str, float]]:
     """
     Apply convergence calibration to minimize finish-time spread for handicapping.
@@ -250,7 +242,7 @@ def calibrate_ensemble_prediction(
     event_code: str,
     competitor_features: Dict[str, float],
     isotonic_calibrator: Optional[IsotonicCalibrator] = None,
-    variance_scaler: Optional[VarianceScaler] = None
+    variance_scaler: Optional[VarianceScaler] = None,
 ) -> Tuple[float, float]:
     """
     Apply full calibration pipeline to ensemble prediction.

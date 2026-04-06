@@ -7,17 +7,24 @@ This module handles competitor selection operations including:
 - Removing competitors from heats
 """
 
-from typing import List, Tuple, Optional
+from typing import List, Optional, Tuple
+
 import pandas as pd
+
 from woodchopping.data import load_competitors_df, load_results_df
-from woodchopping.ui.history_entry import filter_competitors_with_history, prompt_add_competitor_times
+from woodchopping.ui.history_entry import (
+    filter_competitors_with_history,
+    prompt_add_competitor_times,
+)
 
 
-def select_all_event_competitors(comp_df: pd.DataFrame,
-                                 max_competitors: Optional[int] = None,
-                                 results_df: Optional[pd.DataFrame] = None,
-                                 event_code: Optional[str] = None,
-                                 wood_info: Optional[dict] = None) -> pd.DataFrame:
+def select_all_event_competitors(
+    comp_df: pd.DataFrame,
+    max_competitors: Optional[int] = None,
+    results_df: Optional[pd.DataFrame] = None,
+    event_code: Optional[str] = None,
+    wood_info: Optional[dict] = None,
+) -> pd.DataFrame:
     """Select ALL competitors for a tournament event (not just one heat).
 
     This replaces the old select_competitors_for_heat() function for tournament mode.
@@ -49,18 +56,18 @@ def select_all_event_competitors(comp_df: pd.DataFrame,
 
         # Display blocked competitors (N < 3 results - ABSOLUTE MINIMUM)
         if blocked:
-            print(f"\n{'='*70}")
-            print(f"  BLOCKED COMPETITORS (Cannot be selected)")
-            print(f"{'='*70}")
+            print(f"\n{'=' * 70}")
+            print("  BLOCKED COMPETITORS (Cannot be selected)")
+            print(f"{'=' * 70}")
             print(f"{len(blocked)} competitors do not meet ABSOLUTE MINIMUM (3 results):")
             print()
             for name in sorted(blocked):
                 print(f"  X {name} - Insufficient {event_code} history")
-            print(f"\n{'='*70}")
+            print(f"\n{'=' * 70}")
 
             if wood_info:
                 add_now = input("\nAdd historical times now to make them eligible? (y/n): ").strip().lower()
-                if add_now == 'y':
+                if add_now == "y":
                     for name in blocked:
                         print(f"\nAdd times for {name} ({event_code})")
                         added = prompt_add_competitor_times(name, event_code, wood_info)
@@ -77,28 +84,28 @@ def select_all_event_competitors(comp_df: pd.DataFrame,
         # Display warnings for competitors with low confidence (3 <= N < 10)
         warned_competitors = []
         for idx, row in eligible_df.iterrows():
-            if '_warning' in row and row['_warning']:
-                warned_competitors.append((row['competitor_name'], row['_result_count'], row['_warning']))
+            if "_warning" in row and row["_warning"]:
+                warned_competitors.append((row["competitor_name"], row["_result_count"], row["_warning"]))
 
         if warned_competitors:
-            print(f"\n{'='*70}")
-            print(f"  WARNING: Low Confidence Predictions")
-            print(f"{'='*70}")
+            print(f"\n{'=' * 70}")
+            print("  WARNING: Low Confidence Predictions")
+            print(f"{'=' * 70}")
             print(f"{len(warned_competitors)} competitors have LESS than recommended minimum (10 results):")
             print()
             for name, count, message in warned_competitors:
                 print(f"  ! {name} - Only {count} {event_code} results")
-            print(f"\n  These competitors CAN be selected, but predictions will be")
-            print(f"  less reliable (expect 5-10s error vs typical 2-4s error).")
-            print(f"{'='*70}")
+            print("\n  These competitors CAN be selected, but predictions will be")
+            print("  less reliable (expect 5-10s error vs typical 2-4s error).")
+            print(f"{'=' * 70}")
             input("\nPress Enter to continue...")
 
         comp_df = eligible_df
 
     # Display roster with index numbers
-    print(f"\n{'='*70}")
-    print(f"  SELECT COMPETITORS FOR EVENT")
-    print(f"{'='*70}")
+    print(f"\n{'=' * 70}")
+    print("  SELECT COMPETITORS FOR EVENT")
+    print(f"{'=' * 70}")
 
     if max_competitors:
         print(f"Maximum competitors for this format: {max_competitors}\n")
@@ -112,8 +119,8 @@ def select_all_event_competitors(comp_df: pd.DataFrame,
 
         # Show warning indicator for low confidence competitors
         warning_indicator = ""
-        if '_warning' in row and row['_warning']:
-            result_count = row.get('_result_count', '?')
+        if "_warning" in row and row["_warning"]:
+            result_count = row.get("_result_count", "?")
             warning_indicator = f" [WARNING: N={result_count}]"
 
         print(f"  {idx + 1:3d}) {name:35s} ({country}){warning_indicator}")
@@ -143,18 +150,18 @@ def select_all_event_competitors(comp_df: pd.DataFrame,
 
         # Parse input (supports ranges and comma-separated)
         try:
-            for part in selection.split(','):
+            for part in selection.split(","):
                 part = part.strip()
-                if '-' in part:
+                if "-" in part:
                     # Range: e.g., "5-10"
-                    start, end = part.split('-')
+                    start, end = part.split("-")
                     start_idx = int(start) - 1
                     end_idx = int(end) - 1
                     for i in range(start_idx, end_idx + 1):
                         if 0 <= i < len(comp_df):
                             selected_indices.add(i)
                         else:
-                            print(f"  [WARN] Skipping invalid number: {i+1}")
+                            print(f"  [WARN] Skipping invalid number: {i + 1}")
                 else:
                     # Single number
                     idx = int(part) - 1
@@ -169,8 +176,8 @@ def select_all_event_competitors(comp_df: pd.DataFrame,
             # Check max limit
             if max_competitors and len(selected_indices) > max_competitors:
                 print(f"  [WARN] WARNING: {len(selected_indices)} exceeds maximum of {max_competitors}")
-                over = input(f"    Continue anyway? (y/n): ").strip().lower()
-                if over != 'y':
+                over = input("    Continue anyway? (y/n): ").strip().lower()
+                if over != "y":
                     print("  Resetting selection...")
                     selected_indices = set()
 
@@ -185,27 +192,27 @@ def select_all_event_competitors(comp_df: pd.DataFrame,
     selected_df = comp_df.iloc[sorted(selected_indices)].copy()
 
     # Display final selection
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"  FINAL SELECTION ({len(selected_df)} competitors)")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     for idx, row in enumerate(selected_df.iterrows(), 1):
         _, data = row
         name = data.get("competitor_name", "Unknown")
         country = data.get("competitor_country", "Unknown")
         print(f"  {idx:3d}) {name:35s} ({country})")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     confirm = input("\nConfirm this selection? (y/n): ").strip().lower()
-    if confirm != 'y':
+    if confirm != "y":
         print("Selection cancelled. Returning to menu.")
         return pd.DataFrame()
 
     return selected_df
 
 
-def competitor_menu(comp_df: pd.DataFrame,
-                   heat_assignment_df: pd.DataFrame,
-                   heat_assignment_names: List[str]) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
+def competitor_menu(
+    comp_df: pd.DataFrame, heat_assignment_df: pd.DataFrame, heat_assignment_names: List[str]
+) -> Tuple[pd.DataFrame, pd.DataFrame, List[str]]:
     """Competitor selection menu (legacy single-heat mode).
 
     Menu options:
@@ -244,6 +251,7 @@ def competitor_menu(comp_df: pd.DataFrame,
         elif s == "2":
             # Add new competitor to roster with historical times
             from woodchopping.ui.personnel_ui import add_competitor_with_times
+
             comp_df = add_competitor_with_times()
             # Stay in competitor menu after adding
 

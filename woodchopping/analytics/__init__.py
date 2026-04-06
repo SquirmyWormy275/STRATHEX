@@ -11,18 +11,16 @@ Modules:
 """
 
 # Import analytics functions
-from .performance_history import analyze_performance_history
 from .competitor_profiling import profile_competitor_strengths
+from .performance_history import analyze_performance_history
 from .prediction_accuracy import analyze_prediction_accuracy, format_prediction_accuracy_report
 
 __all__ = [
     # Performance history analysis (B2)
-    'analyze_performance_history',
-
+    "analyze_performance_history",
     # Competitor profiling (B4)
-    'profile_competitor_strengths',
-
+    "profile_competitor_strengths",
     # Prediction accuracy tracking (B1)
-    'analyze_prediction_accuracy',
-    'format_prediction_accuracy_report',
+    "analyze_prediction_accuracy",
+    "format_prediction_accuracy_report",
 ]

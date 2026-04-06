@@ -10,20 +10,21 @@ Functions:
     get_event_baseline_flexible() - Calculate event baseline with cascading fallback
 """
 
-import statistics
-from typing import List, Tuple, Optional, Dict
-from datetime import datetime, timedelta
-import pandas as pd
-import numpy as np
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
 
-from config import data_req, baseline_v2_config, rules
-from woodchopping.data import standardize_results_data, load_wood_data
-from woodchopping.predictions.diameter_scaling import scale_time, get_event_scaling_exponent
+import numpy as np
+import pandas as pd
+
+from config import baseline_v2_config, data_req, rules
+from woodchopping.data import load_wood_data, standardize_results_data
+from woodchopping.predictions.diameter_scaling import get_event_scaling_exponent, scale_time
+
 
 def calculate_performance_weight(
     result_date: Optional[datetime],
     reference_date: Optional[datetime] = None,
-    half_life_days: int = 730
+    half_life_days: int = 730,
 ) -> float:
     """
     Calculate exponential time-decay weight for a historical performance result.
@@ -104,7 +105,7 @@ def calculate_performance_weight(
 
 
 def compute_robust_weighted_mean(
-    historical_data: List[Tuple[float, Optional[datetime], float]]
+    historical_data: List[Tuple[float, Optional[datetime], float]],
 ) -> Tuple[Optional[float], float, float]:
     """
     Compute a robust weighted mean from (time, date, weight) tuples.
@@ -154,7 +155,7 @@ def apply_shrinkage(
     competitor_baseline: float,
     effective_n: float,
     event_baseline: Optional[float],
-    shrinkage_k: float = 5.0
+    shrinkage_k: float = 5.0,
 ) -> float:
     """
     Apply simple empirical-Bayes shrinkage toward event baseline.
@@ -179,14 +180,14 @@ def _build_wood_hardness_index(wood_df: pd.DataFrame) -> Dict[str, float]:
     if wood_df is None or wood_df.empty:
         return {}
 
-    numeric_cols = ['janka_hard', 'spec_gravity', 'crush_strength', 'shear', 'MOR', 'MOE']
+    numeric_cols = ["janka_hard", "spec_gravity", "crush_strength", "shear", "MOR", "MOE"]
     available = [c for c in numeric_cols if c in wood_df.columns]
     if not available:
         return {}
 
     df = wood_df.copy()
     for col in available:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # Z-score normalize each column to combine scales
     zcols = []
@@ -208,9 +209,9 @@ def _build_wood_hardness_index(wood_df: pd.DataFrame) -> Dict[str, float]:
     factor = (1.0 + (composite * 0.05)).clip(lower=0.85, upper=1.15)
 
     hardness_map: Dict[str, float] = {}
-    if 'speciesID' in df.columns:
+    if "speciesID" in df.columns:
         for idx, row in df.iterrows():
-            code = str(row['speciesID']).strip()
+            code = str(row["speciesID"]).strip()
             if code:
                 hardness_map[code] = float(factor.loc[idx])
 
@@ -233,7 +234,7 @@ def calibrate_species_exponent(
     results_df: pd.DataFrame,
     wood_df: Optional[pd.DataFrame],
     event_code: str,
-    min_species_samples: int = 5
+    min_species_samples: int = 5,
 ) -> float:
     """
     Calibrate exponent for species hardness normalization from historical data.
@@ -246,8 +247,8 @@ def calibrate_species_exponent(
         _species_exponent_cache[cache_key] = 0.4
         return 0.4
 
-    df = results_df[results_df['event'] == event_code].copy()
-    if df.empty or 'species' not in df.columns or 'size_mm' not in df.columns:
+    df = results_df[results_df["event"] == event_code].copy()
+    if df.empty or "species" not in df.columns or "size_mm" not in df.columns:
         _species_exponent_cache[cache_key] = 0.4
         return 0.4
 
@@ -255,37 +256,30 @@ def calibrate_species_exponent(
 
     # Normalize all times to 300mm to isolate species effect
     def _scale_to_standard(row):
-        time_val = row.get('raw_time')
-        size_val = row.get('size_mm')
-        species_val = row.get('species')
+        time_val = row.get("raw_time")
+        size_val = row.get("size_mm")
+        row.get("species")
         if pd.isna(time_val) or pd.isna(size_val):
             return np.nan
         exponent = get_event_scaling_exponent(results_df, event_code)
-        scaled, _ = scale_time(
-            float(time_val),
-            float(size_val),
-            300.0,
-            exponent=exponent
-        )
+        scaled, _ = scale_time(float(time_val), float(size_val), 300.0, exponent=exponent)
         return scaled
 
-    df['scaled_time'] = df.apply(_scale_to_standard, axis=1)
+    df["scaled_time"] = df.apply(_scale_to_standard, axis=1)
 
     # Aggregate by species
-    grouped = df.groupby('species')['scaled_time'].agg(['median', 'count']).reset_index()
-    grouped = grouped[grouped['count'] >= min_species_samples].copy()
+    grouped = df.groupby("species")["scaled_time"].agg(["median", "count"]).reset_index()
+    grouped = grouped[grouped["count"] >= min_species_samples].copy()
     if grouped.empty:
         _species_exponent_cache[cache_key] = 0.4
         return 0.4
 
-    grouped['hardness_factor'] = grouped['species'].apply(
-        lambda s: get_species_hardness_factor(s, wood_df)
-    )
+    grouped["hardness_factor"] = grouped["species"].apply(lambda s: get_species_hardness_factor(s, wood_df))
 
     # Fit exponent by minimizing MAE in log space
-    hardness = grouped['hardness_factor'].values.astype(float)
-    times = grouped['median'].values.astype(float)
-    counts = grouped['count'].values.astype(float)
+    hardness = grouped["hardness_factor"].values.astype(float)
+    times = grouped["median"].values.astype(float)
+    counts = grouped["count"].values.astype(float)
 
     if np.any(hardness <= 0) or np.any(times <= 0):
         _species_exponent_cache[cache_key] = 0.4
@@ -301,7 +295,7 @@ def calibrate_species_exponent(
     weights = counts / counts.sum() if counts.sum() > 0 else None
 
     best_exp = 0.4
-    best_err = float('inf')
+    best_err = float("inf")
     candidates = np.arange(0.1, 2.51, 0.05)
 
     for exp in candidates:
@@ -333,7 +327,7 @@ def normalize_time_to_target(
     event_code: str,
     wood_df: Optional[pd.DataFrame],
     results_df: Optional[pd.DataFrame] = None,
-    quality: Optional[float] = None
+    quality: Optional[float] = None,
 ) -> Tuple[float, str]:
     """
     Normalize a historical time to target species and diameter.
@@ -358,10 +352,7 @@ def normalize_time_to_target(
     if hist_diameter and target_diameter and hist_diameter != target_diameter:
         exponent = get_event_scaling_exponent(results_df, event_code)
         scaled_time, metadata = scale_time(
-            float(time_val),
-            float(hist_diameter),
-            float(target_diameter),
-            exponent=exponent
+            float(time_val), float(hist_diameter), float(target_diameter), exponent=exponent
         )
         normalized = scaled_time
         if metadata.warning_message:
@@ -375,11 +366,7 @@ def normalize_time_to_target(
         target_factor = get_species_hardness_factor(target_species_clean, wood_df)
 
         if hist_factor > 0 and target_factor > 0 and hist_factor != target_factor:
-            exponent = calibrate_species_exponent(
-                results_df=results_df,
-                wood_df=wood_df,
-                event_code=event_code
-            )
+            exponent = calibrate_species_exponent(results_df=results_df, wood_df=wood_df, event_code=event_code)
             normalized = normalized * ((target_factor / hist_factor) ** exponent)
             notes.append(f"Species normalization: {hist_factor:.3f} -> {target_factor:.3f} (exp {exponent:.2f})")
 
@@ -394,18 +381,24 @@ def get_competitor_historical_times_normalized(
     results_df: pd.DataFrame,
     return_weights: bool = False,
     reference_date: Optional[datetime] = None,
-    wood_df: Optional[pd.DataFrame] = None
+    wood_df: Optional[pd.DataFrame] = None,
 ) -> Tuple[List, str, Dict[str, float]]:
     """
     Get competitor historical times normalized to target species/diameter.
     """
     if results_df is None or results_df.empty:
-        return [], "no data available", {'scaled': False, 'max_diameter_diff': 0.0, 'species_normalized': False}
+        return (
+            [],
+            "no data available",
+            {"scaled": False, "max_diameter_diff": 0.0, "species_normalized": False},
+        )
 
     results_df, _ = standardize_results_data(results_df)
     wood_df = wood_df if wood_df is not None else load_wood_data()
 
-    name_match = results_df["competitor_name"].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    name_match = (
+        results_df["competitor_name"].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    )
     event_match = results_df["event"].astype(str).str.strip().str.upper() == event_code
 
     # Try exact species match first
@@ -425,16 +418,16 @@ def get_competitor_historical_times_normalized(
             data_source = "mixed species (normalized)"
 
     data = []
-    meta = {'scaled': False, 'max_diameter_diff': 0.0, 'species_normalized': False}
+    meta = {"scaled": False, "max_diameter_diff": 0.0, "species_normalized": False}
 
     for _, row in matches.iterrows():
-        time_val = row.get('raw_time')
+        time_val = row.get("raw_time")
         if time_val is None or time_val <= 0:
             continue
 
-        hist_species = row.get('species')
-        hist_diameter = row.get('size_mm')
-        hist_quality = row.get('quality', 5)
+        hist_species = row.get("species")
+        hist_diameter = row.get("size_mm")
+        hist_quality = row.get("quality", 5)
 
         normalized, _ = normalize_time_to_target(
             float(time_val),
@@ -445,23 +438,25 @@ def get_competitor_historical_times_normalized(
             event_code,
             wood_df,
             results_df=results_df,
-            quality=hist_quality
+            quality=hist_quality,
         )
 
         if hist_diameter is not None and diameter is not None:
             diff = abs(float(hist_diameter) - float(diameter))
             if diff > 0:
-                meta['scaled'] = True
-                meta['max_diameter_diff'] = max(meta['max_diameter_diff'], diff)
+                meta["scaled"] = True
+                meta["max_diameter_diff"] = max(meta["max_diameter_diff"], diff)
 
         if (
-            hist_species is not None and not pd.isna(hist_species)
-            and species and str(hist_species).strip().lower() != str(species).strip().lower()
+            hist_species is not None
+            and not pd.isna(hist_species)
+            and species
+            and str(hist_species).strip().lower() != str(species).strip().lower()
         ):
-            meta['species_normalized'] = True
+            meta["species_normalized"] = True
 
         if return_weights:
-            date = row.get('date')
+            date = row.get("date")
             weight = calculate_performance_weight(date, reference_date)
             data.append((normalized, date, weight))
         else:
@@ -480,7 +475,7 @@ def predict_baseline_time(
     quality: Optional[float],
     event_code: str,
     results_df: pd.DataFrame,
-    wood_df: Optional[pd.DataFrame] = None
+    wood_df: Optional[pd.DataFrame] = None,
 ) -> Tuple[Optional[float], str, str]:
     """
     Predict time using baseline-only logic with normalization.
@@ -501,29 +496,39 @@ def predict_baseline_time(
         event_code,
         results_df,
         return_weights=True,
-        wood_df=wood_df
+        wood_df=wood_df,
     )
 
     if len(historical_data) >= 3:
         baseline, avg_weight, effective_n = compute_robust_weighted_mean(historical_data)
-        event_baseline, event_source = get_event_baseline_flexible(species, diameter, event_code, results_df, wood_df=wood_df)
+        event_baseline, event_source = get_event_baseline_flexible(
+            species, diameter, event_code, results_df, wood_df=wood_df
+        )
         if event_baseline is not None and baseline is not None:
             baseline = apply_shrinkage(baseline, effective_n, event_baseline)
-            explanation = f"Robust history ({data_source}, {len(historical_data)} results) + shrinkage to {event_source}"
+            explanation = (
+                f"Robust history ({data_source}, {len(historical_data)} results) + shrinkage to {event_source}"
+            )
         else:
             explanation = f"Robust history ({data_source}, {len(historical_data)} results)"
         confidence = "HIGH"
     elif len(historical_data) > 0:
         baseline, avg_weight, effective_n = compute_robust_weighted_mean(historical_data)
-        event_baseline, event_source = get_event_baseline_flexible(species, diameter, event_code, results_df, wood_df=wood_df)
+        event_baseline, event_source = get_event_baseline_flexible(
+            species, diameter, event_code, results_df, wood_df=wood_df
+        )
         if event_baseline is not None and baseline is not None:
             baseline = apply_shrinkage(baseline, effective_n, event_baseline)
-            explanation = f"Limited history ({data_source}, {len(historical_data)} results) + shrinkage to {event_source}"
+            explanation = (
+                f"Limited history ({data_source}, {len(historical_data)} results) + shrinkage to {event_source}"
+            )
         else:
             explanation = f"Limited history ({data_source}, {len(historical_data)} results)"
         confidence = "MEDIUM"
     else:
-        baseline, baseline_source = get_event_baseline_flexible(species, diameter, event_code, results_df, wood_df=wood_df)
+        baseline, baseline_source = get_event_baseline_flexible(
+            species, diameter, event_code, results_df, wood_df=wood_df
+        )
         if baseline is not None:
             explanation = f"Event baseline ({baseline_source})"
             confidence = "LOW"
@@ -547,7 +552,7 @@ def predict_baseline_time(
         else:
             explanation += f" [Quality {quality_val}/10: harder, {adjustment_pct:+.0f}%]"
 
-    if normalization_meta.get('max_diameter_diff', 0.0) > 25 or normalization_meta.get('species_normalized', False):
+    if normalization_meta.get("max_diameter_diff", 0.0) > 25 or normalization_meta.get("species_normalized", False):
         if confidence == "HIGH":
             confidence = "MEDIUM"
         elif confidence == "MEDIUM":
@@ -561,21 +566,21 @@ def backtest_baseline_predictions(
     results_df: pd.DataFrame,
     wood_df: Optional[pd.DataFrame] = None,
     event_code: Optional[str] = None,
-    limit: Optional[int] = None
+    limit: Optional[int] = None,
 ) -> Dict[str, float]:
     """
     Backtest baseline predictions using leave-one-out evaluation.
     """
     if results_df is None or results_df.empty:
-        return {'count': 0}
+        return {"count": 0}
 
     results_df, _ = standardize_results_data(results_df)
     wood_df = wood_df if wood_df is not None else load_wood_data()
     if event_code:
-        results_df = results_df[results_df['event'] == event_code].copy()
+        results_df = results_df[results_df["event"] == event_code].copy()
 
     if results_df.empty:
-        return {'count': 0}
+        return {"count": 0}
 
     if limit and limit < len(results_df):
         results_df = results_df.sample(n=limit, random_state=42)
@@ -588,42 +593,36 @@ def backtest_baseline_predictions(
     for idx, row in results_df.iterrows():
         train_df = results_df.drop(index=idx)
         pred, _, _ = predict_baseline_time(
-            row.get('competitor_name'),
-            row.get('species'),
-            row.get('size_mm'),
-            row.get('quality'),
-            row.get('event'),
+            row.get("competitor_name"),
+            row.get("species"),
+            row.get("size_mm"),
+            row.get("quality"),
+            row.get("event"),
             train_df,
-            wood_df=wood_df
+            wood_df=wood_df,
         )
 
-        actual = row.get('raw_time')
+        actual = row.get("raw_time")
         if pred is None or actual is None or actual <= 0:
             continue
 
         err = pred - actual
         errors.append(err)
         abs_errors.append(abs(err))
-        sq_errors.append(err ** 2)
+        sq_errors.append(err**2)
         if actual > 0:
             pct_errors.append(abs(err) / actual)
 
     count = len(errors)
     if count == 0:
-        return {'count': 0}
+        return {"count": 0}
 
     mae = float(np.mean(abs_errors))
     rmse = float(np.sqrt(np.mean(sq_errors)))
     mape = float(np.mean(pct_errors)) * 100 if pct_errors else 0.0
     bias = float(np.mean(errors))
 
-    return {
-        'count': count,
-        'mae': mae,
-        'rmse': rmse,
-        'mape': mape,
-        'bias': bias
-    }
+    return {"count": count, "mae": mae, "rmse": rmse, "mape": mape, "bias": bias}
 
 
 def get_competitor_historical_times_flexible(
@@ -632,7 +631,7 @@ def get_competitor_historical_times_flexible(
     event_code: str,
     results_df: pd.DataFrame,
     return_weights: bool = False,
-    reference_date: Optional[datetime] = None
+    reference_date: Optional[datetime] = None,
 ) -> Tuple[List, str]:
     """
     Get competitor's historical times with flexible fallback logic.
@@ -681,7 +680,9 @@ def get_competitor_historical_times_flexible(
     results_df, _ = standardize_results_data(results_df)
 
     # Match competitor and event (required)
-    name_match = results_df["competitor_name"].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    name_match = (
+        results_df["competitor_name"].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    )
     event_match = results_df["event"].astype(str).str.strip().str.upper() == event_code
 
     # Try exact species match first
@@ -691,10 +692,10 @@ def get_competitor_historical_times_flexible(
 
         data = []
         for _, row in exact_matches.iterrows():
-            time = row.get('raw_time')
+            time = row.get("raw_time")
             if time is not None and time > 0:
                 if return_weights:
-                    date = row.get('date')
+                    date = row.get("date")
                     weight = calculate_performance_weight(date, reference_date)
                     data.append((time, date, weight))
                 else:
@@ -707,10 +708,10 @@ def get_competitor_historical_times_flexible(
     any_species_matches = results_df[name_match & event_match]
     data = []
     for _, row in any_species_matches.iterrows():
-        time = row.get('raw_time')
+        time = row.get("raw_time")
         if time is not None and time > 0:
             if return_weights:
-                date = row.get('date')
+                date = row.get("date")
                 weight = calculate_performance_weight(date, reference_date)
                 data.append((time, date, weight))
             else:
@@ -727,7 +728,7 @@ def get_event_baseline_flexible(
     diameter: float,
     event_code: str,
     results_df: pd.DataFrame,
-    wood_df: Optional[pd.DataFrame] = None
+    wood_df: Optional[pd.DataFrame] = None,
 ) -> Tuple[Optional[float], str]:
     """
     Calculate baseline with cascading fallback.
@@ -770,18 +771,18 @@ def get_event_baseline_flexible(
         exact_matches = results_df[species_match & diameter_match & event_match]
         times = []
         for _, row in exact_matches.iterrows():
-            time_val = row.get('raw_time')
+            time_val = row.get("raw_time")
             if time_val is not None and time_val > 0:
                 normalized, _ = normalize_time_to_target(
                     float(time_val),
-                    str(row.get('species')).strip(),
-                    float(row.get('size_mm')) if row.get('size_mm') is not None else None,
+                    str(row.get("species")).strip(),
+                    float(row.get("size_mm")) if row.get("size_mm") is not None else None,
                     str(species).strip(),
                     float(diameter),
                     event_code,
                     wood_df,
                     results_df=results_df,
-                    quality=row.get('quality', 5)
+                    quality=row.get("quality", 5),
                 )
                 times.append(normalized)
 
@@ -796,18 +797,18 @@ def get_event_baseline_flexible(
 
         times = []
         for _, row in size_matches.iterrows():
-            time_val = row.get('raw_time')
+            time_val = row.get("raw_time")
             if time_val is not None and time_val > 0:
                 normalized, _ = normalize_time_to_target(
                     float(time_val),
-                    str(row.get('species')).strip(),
-                    float(row.get('size_mm')) if row.get('size_mm') is not None else None,
+                    str(row.get("species")).strip(),
+                    float(row.get("size_mm")) if row.get("size_mm") is not None else None,
                     str(species).strip(),
                     float(diameter),
                     event_code,
                     wood_df,
                     results_df=results_df,
-                    quality=row.get('quality', 5)
+                    quality=row.get("quality", 5),
                 )
                 times.append(normalized)
 
@@ -819,18 +820,18 @@ def get_event_baseline_flexible(
     event_only = results_df[event_match]
     times = []
     for _, row in event_only.iterrows():
-        time_val = row.get('raw_time')
+        time_val = row.get("raw_time")
         if time_val is not None and time_val > 0:
             normalized, _ = normalize_time_to_target(
                 float(time_val),
-                str(row.get('species')).strip(),
-                float(row.get('size_mm')) if row.get('size_mm') is not None else None,
+                str(row.get("species")).strip(),
+                float(row.get("size_mm")) if row.get("size_mm") is not None else None,
                 str(species).strip(),
                 float(diameter),
                 event_code,
                 wood_df,
                 results_df=results_df,
-                quality=row.get('quality', 5)
+                quality=row.get("quality", 5),
             )
             times.append(normalized)
 
@@ -845,11 +846,8 @@ def get_event_baseline_flexible(
 # PHASE 2: HYBRID BASELINE V2 - HIERARCHICAL MODEL FITTING
 # ============================================================================
 
-def get_competitor_median_diameter(
-    competitor_name: str,
-    event_code: str,
-    results_df: pd.DataFrame
-) -> float:
+
+def get_competitor_median_diameter(competitor_name: str, event_code: str, results_df: pd.DataFrame) -> float:
     """
     Calculate competitor's median diameter choice as skill proxy (selection bias feature).
 
@@ -872,19 +870,21 @@ def get_competitor_median_diameter(
         return 300.0  # Default to standard competition diameter
 
     # Standardize if needed
-    if 'size_mm' not in results_df.columns:
+    if "size_mm" not in results_df.columns:
         results_df, _ = standardize_results_data(results_df)
 
     # Filter to competitor + event
-    comp_match = results_df['competitor_name'].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
-    event_match = results_df['event'].astype(str).str.strip().str.upper() == event_code.upper()
+    comp_match = (
+        results_df["competitor_name"].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    )
+    event_match = results_df["event"].astype(str).str.strip().str.upper() == event_code.upper()
 
     competitor_data = results_df[comp_match & event_match]
 
-    if competitor_data.empty or 'size_mm' not in competitor_data.columns:
+    if competitor_data.empty or "size_mm" not in competitor_data.columns:
         return 300.0  # Default
 
-    diameters = competitor_data['size_mm'].dropna()
+    diameters = competitor_data["size_mm"].dropna()
 
     if len(diameters) == 0:
         return 300.0
@@ -896,7 +896,7 @@ def estimate_diameter_curve(
     results_df: pd.DataFrame,
     event_code: str,
     wood_df: Optional[pd.DataFrame] = None,
-    anchor_to_data: bool = True
+    anchor_to_data: bool = True,
 ) -> Dict[str, any]:
     """
     Estimate smooth diameter curve from historical data.
@@ -921,69 +921,69 @@ def estimate_diameter_curve(
     if results_df is None or results_df.empty:
         # Return default linear scaling if no data
         return {
-            'coefficients': [3.0, 0.002, 0.0],  # Approximate log-linear
-            'r_squared': 0.0,
-            'sample_count': 0,
-            'diameter_range': (225, 350),
-            'anchored': False
+            "coefficients": [3.0, 0.002, 0.0],  # Approximate log-linear
+            "r_squared": 0.0,
+            "sample_count": 0,
+            "diameter_range": (225, 350),
+            "anchored": False,
         }
 
     # Standardize if needed
-    if 'raw_time' not in results_df.columns or 'size_mm' not in results_df.columns:
+    if "raw_time" not in results_df.columns or "size_mm" not in results_df.columns:
         results_df, _ = standardize_results_data(results_df)
 
     # Filter to event
-    event_data = results_df[results_df['event'].str.upper() == event_code.upper()].copy()
+    event_data = results_df[results_df["event"].str.upper() == event_code.upper()].copy()
 
     if event_data.empty or len(event_data) < 10:
         return {
-            'coefficients': [3.0, 0.002, 0.0],
-            'r_squared': 0.0,
-            'sample_count': 0,
-            'diameter_range': (225, 350),
-            'anchored': False
+            "coefficients": [3.0, 0.002, 0.0],
+            "r_squared": 0.0,
+            "sample_count": 0,
+            "diameter_range": (225, 350),
+            "anchored": False,
         }
 
     # Remove outliers (use configured thresholds)
     event_data = event_data[
-        (event_data['raw_time'] >= data_req.MIN_VALID_TIME_SECONDS) &
-        (event_data['raw_time'] <= data_req.MAX_VALID_TIME_SECONDS) &
-        (event_data['size_mm'] >= data_req.MIN_DIAMETER_MM) &
-        (event_data['size_mm'] <= data_req.MAX_DIAMETER_MM)
+        (event_data["raw_time"] >= data_req.MIN_VALID_TIME_SECONDS)
+        & (event_data["raw_time"] <= data_req.MAX_VALID_TIME_SECONDS)
+        & (event_data["size_mm"] >= data_req.MIN_DIAMETER_MM)
+        & (event_data["size_mm"] <= data_req.MAX_DIAMETER_MM)
     ].copy()
 
     if len(event_data) < 10:
         return {
-            'coefficients': [3.0, 0.002, 0.0],
-            'r_squared': 0.0,
-            'sample_count': 0,
-            'diameter_range': (225, 350),
-            'anchored': False
+            "coefficients": [3.0, 0.002, 0.0],
+            "r_squared": 0.0,
+            "sample_count": 0,
+            "diameter_range": (225, 350),
+            "anchored": False,
         }
 
     # Transform to log-space
-    event_data['log_time'] = np.log(event_data['raw_time'])
+    event_data["log_time"] = np.log(event_data["raw_time"])
 
     # Normalize diameter to [0, 1] for numerical stability
-    diameter_min = event_data['size_mm'].min()
-    diameter_max = event_data['size_mm'].max()
+    diameter_min = event_data["size_mm"].min()
+    diameter_max = event_data["size_mm"].max()
     diameter_range_val = diameter_max - diameter_min
 
     if diameter_range_val < 25:  # Too narrow, use defaults
         return {
-            'coefficients': [3.0, 0.002, 0.0],
-            'r_squared': 0.0,
-            'sample_count': len(event_data),
-            'diameter_range': (float(diameter_min), float(diameter_max)),
-            'anchored': False
+            "coefficients": [3.0, 0.002, 0.0],
+            "r_squared": 0.0,
+            "sample_count": len(event_data),
+            "diameter_range": (float(diameter_min), float(diameter_max)),
+            "anchored": False,
         }
 
-    event_data['diameter_norm'] = (event_data['size_mm'] - diameter_min) / diameter_range_val
+    event_data["diameter_norm"] = (event_data["size_mm"] - diameter_min) / diameter_range_val
 
     # Fit quadratic polynomial in log-space: log(time) ~ c0 + c1*d + c2*d^2
-    X = event_data[['diameter_norm']].values
+    X = event_data[["diameter_norm"]].values
     X_poly = np.column_stack([np.ones(len(X)), X, X**2])  # [1, d, d^2]
-    y = event_data['log_time'].values
+    y = event_data["log_time"].values
 
     try:
         # Weighted least squares (equal weights for now, can add time-decay later)
@@ -1000,37 +1000,38 @@ def estimate_diameter_curve(
         # where d_norm = (d - d_min) / d_range
         # Expanding: log(time) = c0' + c1'*(d-d_min)/d_range + c2'*((d-d_min)/d_range)^2
         # Rearranging to log(time) = c0 + c1*d + c2*d^2:
-        c0_orig = coeffs_norm[0] - (coeffs_norm[1] * diameter_min / diameter_range_val) + (coeffs_norm[2] * (diameter_min / diameter_range_val)**2)
+        c0_orig = (
+            coeffs_norm[0]
+            - (coeffs_norm[1] * diameter_min / diameter_range_val)
+            + (coeffs_norm[2] * (diameter_min / diameter_range_val) ** 2)
+        )
         c1_orig = (coeffs_norm[1] / diameter_range_val) - (2 * coeffs_norm[2] * diameter_min / (diameter_range_val**2))
         c2_orig = coeffs_norm[2] / (diameter_range_val**2)
 
         return {
-            'coefficients': [float(c0_orig), float(c1_orig), float(c2_orig)],
-            'r_squared': float(r_squared),
-            'sample_count': len(event_data),
-            'diameter_range': (float(diameter_min), float(diameter_max)),
-            'anchored': False
+            "coefficients": [float(c0_orig), float(c1_orig), float(c2_orig)],
+            "r_squared": float(r_squared),
+            "sample_count": len(event_data),
+            "diameter_range": (float(diameter_min), float(diameter_max)),
+            "anchored": False,
         }
 
     except np.linalg.LinAlgError:
         # Fallback to simple linear if polynomial fails
         return {
-            'coefficients': [3.0, 0.002, 0.0],
-            'r_squared': 0.0,
-            'sample_count': len(event_data),
-            'diameter_range': (float(diameter_min), float(diameter_max)),
-            'anchored': False
+            "coefficients": [3.0, 0.002, 0.0],
+            "r_squared": 0.0,
+            "sample_count": len(event_data),
+            "diameter_range": (float(diameter_min), float(diameter_max)),
+            "anchored": False,
         }
 
 
-def _pooled_std_dev_by_event(
-    competitor_data: pd.DataFrame,
-    min_samples: int
-) -> Optional[float]:
+def _pooled_std_dev_by_event(competitor_data: pd.DataFrame, min_samples: int) -> Optional[float]:
     if competitor_data.empty:
         return None
 
-    times = competitor_data.get('raw_time')
+    times = competitor_data.get("raw_time")
     if times is None:
         return None
 
@@ -1038,14 +1039,14 @@ def _pooled_std_dev_by_event(
     if total_samples < min_samples:
         return None
 
-    if 'event' not in competitor_data.columns:
+    if "event" not in competitor_data.columns:
         std_dev = float(times.std(ddof=1)) if total_samples >= 2 else None
         return std_dev
 
     total_df = 0.0
     var_sum = 0.0
-    for _, group in competitor_data.groupby('event'):
-        group_times = group['raw_time'].dropna().astype(float)
+    for _, group in competitor_data.groupby("event"):
+        group_times = group["raw_time"].dropna().astype(float)
         if len(group_times) < 2:
             continue
         var = float(group_times.var(ddof=1))
@@ -1059,18 +1060,15 @@ def _pooled_std_dev_by_event(
     return float(np.sqrt(var_sum / total_df))
 
 
-def _global_fallback_std_dev(
-    results_df: pd.DataFrame,
-    min_samples: int
-) -> Optional[float]:
+def _global_fallback_std_dev(results_df: pd.DataFrame, min_samples: int) -> Optional[float]:
     if results_df is None or results_df.empty:
         return None
 
-    if 'raw_time' not in results_df.columns:
+    if "raw_time" not in results_df.columns:
         results_df, _ = standardize_results_data(results_df)
 
     pooled_values = []
-    for _, group in results_df.groupby('competitor_name'):
+    for _, group in results_df.groupby("competitor_name"):
         pooled = _pooled_std_dev_by_event(group, min_samples)
         if pooled is not None:
             pooled_values.append(pooled)
@@ -1086,7 +1084,7 @@ def estimate_competitor_std_dev(
     event_code: str,
     results_df: pd.DataFrame,
     min_std_dev: float = 1.5,
-    max_std_dev: float = 6.0
+    max_std_dev: float = 6.0,
 ) -> Tuple[float, str]:
     """
     Estimate competitor-specific standard deviation using all available history.
@@ -1098,10 +1096,12 @@ def estimate_competitor_std_dev(
         return 3.0, "MODERATE"
 
     # Standardize if needed
-    if 'raw_time' not in results_df.columns:
+    if "raw_time" not in results_df.columns:
         results_df, _ = standardize_results_data(results_df)
 
-    comp_match = results_df['competitor_name'].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    comp_match = (
+        results_df["competitor_name"].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    )
     competitor_data = results_df[comp_match]
 
     pooled_std = _pooled_std_dev_by_event(competitor_data, baseline_v2_config.MIN_SAMPLES_FOR_STD_DEV)
@@ -1130,7 +1130,7 @@ def fit_hierarchical_regression(
     wood_df: pd.DataFrame,
     hardness_index: Dict[str, float],
     adaptive_half_lives: Dict[str, int],
-    event_code: Optional[str] = None
+    event_code: Optional[str] = None,
 ) -> Dict[str, any]:
     """
     Fit hierarchical regression model in log-space with time-decay weighting.
@@ -1170,83 +1170,86 @@ def fit_hierarchical_regression(
         return _get_default_hierarchical_model()
 
     # Standardize if needed
-    if 'raw_time' not in results_df.columns:
+    if "raw_time" not in results_df.columns:
         from woodchopping.data import load_and_clean_results
+
         results_df = load_and_clean_results(results_df)
 
     # Filter to event if specified
     if event_code:
-        results_df = results_df[results_df['event'].str.upper() == event_code.upper()].copy()
+        results_df = results_df[results_df["event"].str.upper() == event_code.upper()].copy()
 
     if len(results_df) < baseline_v2_config.MIN_DATA_FOR_HIERARCHICAL_MODEL:
         return _get_default_hierarchical_model()
 
     # Remove outliers using configured thresholds
     results_df = results_df[
-        (results_df['raw_time'] >= data_req.MIN_VALID_TIME_SECONDS) &
-        (results_df['raw_time'] <= data_req.MAX_VALID_TIME_SECONDS) &
-        (results_df['size_mm'] >= data_req.MIN_DIAMETER_MM) &
-        (results_df['size_mm'] <= data_req.MAX_DIAMETER_MM)
+        (results_df["raw_time"] >= data_req.MIN_VALID_TIME_SECONDS)
+        & (results_df["raw_time"] <= data_req.MAX_VALID_TIME_SECONDS)
+        & (results_df["size_mm"] >= data_req.MIN_DIAMETER_MM)
+        & (results_df["size_mm"] <= data_req.MAX_DIAMETER_MM)
     ].copy()
 
     if len(results_df) < baseline_v2_config.MIN_DATA_FOR_HIERARCHICAL_MODEL:
         return _get_default_hierarchical_model()
 
     # Transform to log-space
-    results_df['log_time'] = np.log(results_df['raw_time'])
+    results_df["log_time"] = np.log(results_df["raw_time"])
 
     # Calculate time-decay weights
-    reference_date = results_df['date'].max() if 'date' in results_df.columns else datetime.now()
+    reference_date = results_df["date"].max() if "date" in results_df.columns else datetime.now()
 
     def calc_weight(row):
-        competitor = row.get('competitor_name', '')
+        competitor = row.get("competitor_name", "")
         half_life = adaptive_half_lives.get(competitor, 730)
-        return calculate_performance_weight(row.get('date'), reference_date, half_life)
+        return calculate_performance_weight(row.get("date"), reference_date, half_life)
 
-    results_df['weight'] = results_df.apply(calc_weight, axis=1)
+    results_df["weight"] = results_df.apply(calc_weight, axis=1)
 
     # Add features
-    results_df['hardness_idx'] = results_df['species'].map(hardness_index).fillna(1.0)
-    results_df['median_diameter'] = results_df.apply(
-        lambda row: get_competitor_median_diameter(row['competitor_name'], row['event'], results_df),
-        axis=1
+    results_df["hardness_idx"] = results_df["species"].map(hardness_index).fillna(1.0)
+    results_df["median_diameter"] = results_df.apply(
+        lambda row: get_competitor_median_diameter(row["competitor_name"], row["event"], results_df),
+        axis=1,
     )
 
     # Fit diameter curves per event (for diagnostics + metadata)
-    events = results_df['event'].unique()
+    events = results_df["event"].unique()
     diameter_curves = {}
     for event in events:
         diameter_curves[event] = estimate_diameter_curve(results_df, event, wood_df)
 
     # Build weighted least squares design matrix
-    event_is_uh = (results_df['event'].str.upper() == 'UH').astype(float).values
-    diameter = results_df['size_mm'].astype(float).values
+    event_is_uh = (results_df["event"].str.upper() == "UH").astype(float).values
+    diameter = results_df["size_mm"].astype(float).values
     diameter_center = float(np.mean(diameter))
     diameter_centered = diameter - diameter_center
-    diameter_centered_sq = diameter_centered ** 2
+    diameter_centered_sq = diameter_centered**2
 
-    hardness_vals = results_df['hardness_idx'].astype(float).values
+    hardness_vals = results_df["hardness_idx"].astype(float).values
     hardness_center = float(np.mean(hardness_vals)) if len(hardness_vals) else 1.0
     hardness_centered = hardness_vals - hardness_center
 
-    selection_vals = results_df['median_diameter'].astype(float).values
+    selection_vals = results_df["median_diameter"].astype(float).values
     selection_center = float(baseline_v2_config.SELECTION_BIAS_DEFAULT_DIAMETER)
     selection_centered = selection_vals - selection_center
 
     # Columns: intercept, event_is_uh, d, d^2, event*d, event*d^2, hardness, selection
-    X = np.column_stack([
-        np.ones(len(results_df)),
-        event_is_uh,
-        diameter_centered,
-        diameter_centered_sq,
-        event_is_uh * diameter_centered,
-        event_is_uh * diameter_centered_sq,
-        hardness_centered,
-        selection_centered
-    ])
+    X = np.column_stack(
+        [
+            np.ones(len(results_df)),
+            event_is_uh,
+            diameter_centered,
+            diameter_centered_sq,
+            event_is_uh * diameter_centered,
+            event_is_uh * diameter_centered_sq,
+            hardness_centered,
+            selection_centered,
+        ]
+    )
 
-    y = results_df['log_time'].astype(float).values
-    w = results_df['weight'].astype(float).values
+    y = results_df["log_time"].astype(float).values
+    w = results_df["weight"].astype(float).values
     w = np.where(w > 0, w, 1.0)
 
     try:
@@ -1262,7 +1265,7 @@ def fit_hierarchical_regression(
 
     # Weighted R^2
     y_mean = np.average(y, weights=w)
-    ss_res = np.sum(w * (residuals ** 2))
+    ss_res = np.sum(w * (residuals**2))
     ss_tot = np.sum(w * ((y - y_mean) ** 2))
     r_squared = 1.0 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
 
@@ -1270,9 +1273,9 @@ def fit_hierarchical_regression(
     competitor_effects = {}
     competitor_std_devs = {}
     shrinkage_k = 5.0
-    for competitor, group in results_df.assign(residual=residuals).groupby('competitor_name'):
-        weights = group['weight'].astype(float).values
-        res = group['residual'].astype(float).values
+    for competitor, group in results_df.assign(residual=residuals).groupby("competitor_name"):
+        weights = group["weight"].astype(float).values
+        res = group["residual"].astype(float).values
         effective_n = float(weights.sum())
         if effective_n <= 0:
             continue
@@ -1284,76 +1287,73 @@ def fit_hierarchical_regression(
             resid_var = float(np.average((res - resid_mean) ** 2, weights=weights))
             competitor_std_devs[str(competitor).strip().lower()] = float(np.sqrt(resid_var))
 
-    global_std_dev = float(np.sqrt(np.average(residuals ** 2, weights=w)))
+    global_std_dev = float(np.sqrt(np.average(residuals**2, weights=w)))
 
     # Derive event intercepts for reporting
     intercept = float(coeffs[0])
     event_intercept_uh = float(coeffs[1])
-    event_intercepts = {
-        'SB': intercept,
-        'UH': intercept + event_intercept_uh
-    }
+    event_intercepts = {"SB": intercept, "UH": intercept + event_intercept_uh}
 
     # Translate centered diameter coefficients into raw polynomial coefficients
     b1 = float(coeffs[2])
     b2 = float(coeffs[3])
     b1_uh = float(coeffs[4])
     b2_uh = float(coeffs[5])
-    c0_sb = intercept - (b1 * diameter_center) + (b2 * (diameter_center ** 2))
+    c0_sb = intercept - (b1 * diameter_center) + (b2 * (diameter_center**2))
     c1_sb = b1 - (2.0 * b2 * diameter_center)
     c2_sb = b2
-    c0_uh = (intercept + event_intercept_uh) - ((b1 + b1_uh) * diameter_center) + ((b2 + b2_uh) * (diameter_center ** 2))
+    c0_uh = (intercept + event_intercept_uh) - ((b1 + b1_uh) * diameter_center) + ((b2 + b2_uh) * (diameter_center**2))
     c1_uh = (b1 + b1_uh) - (2.0 * (b2 + b2_uh) * diameter_center)
-    c2_uh = (b2 + b2_uh)
+    c2_uh = b2 + b2_uh
 
     diameter_curves = {
-        'SB': {
-            'coefficients': [c0_sb, c1_sb, c2_sb],
-            'r_squared': float(r_squared),
-            'sample_count': len(results_df[results_df['event'].str.upper() == 'SB']),
-            'diameter_range': (
-                float(results_df['size_mm'].min()),
-                float(results_df['size_mm'].max())
+        "SB": {
+            "coefficients": [c0_sb, c1_sb, c2_sb],
+            "r_squared": float(r_squared),
+            "sample_count": len(results_df[results_df["event"].str.upper() == "SB"]),
+            "diameter_range": (
+                float(results_df["size_mm"].min()),
+                float(results_df["size_mm"].max()),
             ),
-            'anchored': False
+            "anchored": False,
         },
-        'UH': {
-            'coefficients': [c0_uh, c1_uh, c2_uh],
-            'r_squared': float(r_squared),
-            'sample_count': len(results_df[results_df['event'].str.upper() == 'UH']),
-            'diameter_range': (
-                float(results_df['size_mm'].min()),
-                float(results_df['size_mm'].max())
+        "UH": {
+            "coefficients": [c0_uh, c1_uh, c2_uh],
+            "r_squared": float(r_squared),
+            "sample_count": len(results_df[results_df["event"].str.upper() == "UH"]),
+            "diameter_range": (
+                float(results_df["size_mm"].min()),
+                float(results_df["size_mm"].max()),
             ),
-            'anchored': False
-        }
+            "anchored": False,
+        },
     }
 
     model = {
-        'event_intercepts': event_intercepts,
-        'diameter_curves': diameter_curves,
-        'hardness_coefficient': float(coeffs[6]),
-        'selection_coefficient': float(coeffs[7]),
-        'competitor_effects': competitor_effects,
-        'competitor_std_devs': competitor_std_devs,
-        'global_std_dev': global_std_dev,
-        'sample_count': len(results_df),
-        'r_squared': float(r_squared),
-        'fitted_date': datetime.now(),
-        'events': list(events),
-        'coefficients': {
-            'intercept': intercept,
-            'event_intercept_uh': event_intercept_uh,
-            'diameter_linear': b1,
-            'diameter_quadratic': b2,
-            'diameter_linear_uh': b1_uh,
-            'diameter_quadratic_uh': b2_uh
+        "event_intercepts": event_intercepts,
+        "diameter_curves": diameter_curves,
+        "hardness_coefficient": float(coeffs[6]),
+        "selection_coefficient": float(coeffs[7]),
+        "competitor_effects": competitor_effects,
+        "competitor_std_devs": competitor_std_devs,
+        "global_std_dev": global_std_dev,
+        "sample_count": len(results_df),
+        "r_squared": float(r_squared),
+        "fitted_date": datetime.now(),
+        "events": list(events),
+        "coefficients": {
+            "intercept": intercept,
+            "event_intercept_uh": event_intercept_uh,
+            "diameter_linear": b1,
+            "diameter_quadratic": b2,
+            "diameter_linear_uh": b1_uh,
+            "diameter_quadratic_uh": b2_uh,
         },
-        'centering': {
-            'diameter_center': diameter_center,
-            'hardness_center': hardness_center,
-            'selection_center': selection_center
-        }
+        "centering": {
+            "diameter_center": diameter_center,
+            "hardness_center": hardness_center,
+            "selection_center": selection_center,
+        },
     }
 
     return model
@@ -1362,33 +1362,45 @@ def fit_hierarchical_regression(
 def _get_default_hierarchical_model() -> Dict[str, any]:
     """Return default model structure when insufficient data."""
     return {
-        'event_intercepts': {'SB': 3.0, 'UH': 3.2},
-        'diameter_curves': {
-            'SB': {'coefficients': [3.0, 0.002, 0.0], 'r_squared': 0.0, 'sample_count': 0, 'diameter_range': (225, 350), 'anchored': False},
-            'UH': {'coefficients': [3.2, 0.002, 0.0], 'r_squared': 0.0, 'sample_count': 0, 'diameter_range': (225, 350), 'anchored': False}
+        "event_intercepts": {"SB": 3.0, "UH": 3.2},
+        "diameter_curves": {
+            "SB": {
+                "coefficients": [3.0, 0.002, 0.0],
+                "r_squared": 0.0,
+                "sample_count": 0,
+                "diameter_range": (225, 350),
+                "anchored": False,
+            },
+            "UH": {
+                "coefficients": [3.2, 0.002, 0.0],
+                "r_squared": 0.0,
+                "sample_count": 0,
+                "diameter_range": (225, 350),
+                "anchored": False,
+            },
         },
-        'hardness_coefficient': 0.3,
-        'selection_coefficient': -0.002,
-        'competitor_effects': {},
-        'competitor_std_devs': {},
-        'global_std_dev': 3.0,
-        'sample_count': 0,
-        'r_squared': 0.0,
-        'fitted_date': datetime.now(),
-        'events': ['SB', 'UH'],
-        'coefficients': {
-            'intercept': 3.0,
-            'event_intercept_uh': 0.2,
-            'diameter_linear': 0.002,
-            'diameter_quadratic': 0.0,
-            'diameter_linear_uh': 0.0,
-            'diameter_quadratic_uh': 0.0
+        "hardness_coefficient": 0.3,
+        "selection_coefficient": -0.002,
+        "competitor_effects": {},
+        "competitor_std_devs": {},
+        "global_std_dev": 3.0,
+        "sample_count": 0,
+        "r_squared": 0.0,
+        "fitted_date": datetime.now(),
+        "events": ["SB", "UH"],
+        "coefficients": {
+            "intercept": 3.0,
+            "event_intercept_uh": 0.2,
+            "diameter_linear": 0.002,
+            "diameter_quadratic": 0.0,
+            "diameter_linear_uh": 0.0,
+            "diameter_quadratic_uh": 0.0,
         },
-        'centering': {
-            'diameter_center': 300.0,
-            'hardness_center': 1.0,
-            'selection_center': baseline_v2_config.SELECTION_BIAS_DEFAULT_DIAMETER
-        }
+        "centering": {
+            "diameter_center": 300.0,
+            "hardness_center": 1.0,
+            "selection_center": baseline_v2_config.SELECTION_BIAS_DEFAULT_DIAMETER,
+        },
     }
 
 
@@ -1396,11 +1408,9 @@ def _get_default_hierarchical_model() -> Dict[str, any]:
 # PHASE 3: HYBRID BASELINE V2 - CONVERGENCE CALIBRATION LAYER
 # ============================================================================
 
+
 def group_wise_bias_correction(
-    predictions_dict: Dict[str, float],
-    diameter: float,
-    event_code: str,
-    results_df: pd.DataFrame
+    predictions_dict: Dict[str, float], diameter: float, event_code: str, results_df: pd.DataFrame
 ) -> Dict[str, float]:
     """
     Apply group-wise bias correction by event/diameter bin.
@@ -1421,7 +1431,7 @@ def group_wise_bias_correction(
         return predictions_dict
 
     # Standardize if needed
-    if 'raw_time' not in results_df.columns:
+    if "raw_time" not in results_df.columns:
         results_df, _ = standardize_results_data(results_df)
 
     # Determine diameter bin (±25mm)
@@ -1429,8 +1439,8 @@ def group_wise_bias_correction(
     diameter_max = diameter + 25
 
     # Get historical data for this diameter bin and event
-    event_match = results_df['event'].str.upper() == event_code.upper()
-    diameter_match = (results_df['size_mm'] >= diameter_min) & (results_df['size_mm'] <= diameter_max)
+    event_match = results_df["event"].str.upper() == event_code.upper()
+    diameter_match = (results_df["size_mm"] >= diameter_min) & (results_df["size_mm"] <= diameter_max)
 
     bin_data = results_df[event_match & diameter_match]
 
@@ -1439,7 +1449,7 @@ def group_wise_bias_correction(
         return predictions_dict
 
     # Calculate historical mean for this bin
-    historical_mean = float(bin_data['raw_time'].mean())
+    historical_mean = float(bin_data["raw_time"].mean())
 
     # Calculate current prediction mean
     predicted_mean = float(np.mean(list(predictions_dict.values())))
@@ -1452,10 +1462,7 @@ def group_wise_bias_correction(
         return predictions_dict
 
     # Apply correction: subtract bias from all predictions
-    corrected = {
-        comp: max(data_req.MIN_VALID_TIME_SECONDS, pred - bias)
-        for comp, pred in predictions_dict.items()
-    }
+    corrected = {comp: max(data_req.MIN_VALID_TIME_SECONDS, pred - bias) for comp, pred in predictions_dict.items()}
 
     return corrected
 
@@ -1464,7 +1471,7 @@ def apply_soft_constraints(
     predictions_dict: Dict[str, float],
     results_df: pd.DataFrame,
     event_code: str,
-    min_quantile: float = baseline_v2_config.SOFT_CONSTRAINT_QUANTILE
+    min_quantile: float = baseline_v2_config.SOFT_CONSTRAINT_QUANTILE,
 ) -> Dict[str, float]:
     """
     Apply soft constraints to prevent under-prediction of slowest competitors.
@@ -1485,17 +1492,17 @@ def apply_soft_constraints(
         return predictions_dict
 
     # Standardize if needed
-    if 'raw_time' not in results_df.columns:
+    if "raw_time" not in results_df.columns:
         results_df, _ = standardize_results_data(results_df)
 
     # Get historical data for this event
-    event_data = results_df[results_df['event'].str.upper() == event_code.upper()]
+    event_data = results_df[results_df["event"].str.upper() == event_code.upper()]
 
     if len(event_data) < 10:
         return predictions_dict
 
     # Calculate floor: 90th percentile of historical times (slowest 10%)
-    historical_floor = float(event_data['raw_time'].quantile(min_quantile))
+    historical_floor = float(event_data["raw_time"].quantile(min_quantile))
 
     # Find slowest predicted time
     slowest_predicted = max(predictions_dict.values())
@@ -1527,7 +1534,7 @@ def apply_convergence_adjustment(
     diameter: float,
     event_code: str,
     target_spread: float = baseline_v2_config.TARGET_FINISH_TIME_SPREAD_SECONDS,
-    preserve_ranking: bool = baseline_v2_config.CONVERGENCE_PRESERVE_RANKING
+    preserve_ranking: bool = baseline_v2_config.CONVERGENCE_PRESERVE_RANKING,
 ) -> Dict[str, float]:
     """
     Post-process predictions to minimize finish-time spread for handicapping.
@@ -1601,7 +1608,7 @@ def calibrate_predictions_for_handicapping(
     target_spread: float = baseline_v2_config.TARGET_FINISH_TIME_SPREAD_SECONDS,
     apply_bias_correction: bool = True,
     apply_constraints: bool = True,
-    apply_convergence: bool = True
+    apply_convergence: bool = True,
 ) -> Tuple[Dict[str, float], Dict[str, any]]:
     """
     Full calibration pipeline for handicap optimization.
@@ -1633,7 +1640,7 @@ def calibrate_predictions_for_handicapping(
         - compression_ratio: Final spread / original spread
     """
     if not predictions_dict:
-        return predictions_dict, {'error': 'empty predictions'}
+        return predictions_dict, {"error": "empty predictions"}
 
     # Record original state
     original_times = list(predictions_dict.values())
@@ -1644,9 +1651,7 @@ def calibrate_predictions_for_handicapping(
     # Step 1: Group-wise bias correction
     bias_correction_applied = False
     if apply_bias_correction and results_df is not None:
-        calibrated_after_bias = group_wise_bias_correction(
-            calibrated, diameter, event_code, results_df
-        )
+        calibrated_after_bias = group_wise_bias_correction(calibrated, diameter, event_code, results_df)
         if calibrated_after_bias != calibrated:
             calibrated = calibrated_after_bias
             bias_correction_applied = True
@@ -1654,9 +1659,7 @@ def calibrate_predictions_for_handicapping(
     # Step 2: Soft constraints
     constraints_applied = False
     if apply_constraints and results_df is not None:
-        calibrated_after_constraints = apply_soft_constraints(
-            calibrated, results_df, event_code
-        )
+        calibrated_after_constraints = apply_soft_constraints(calibrated, results_df, event_code)
         if calibrated_after_constraints != calibrated:
             calibrated = calibrated_after_constraints
             constraints_applied = True
@@ -1664,9 +1667,7 @@ def calibrate_predictions_for_handicapping(
     # Step 3: Convergence adjustment
     convergence_applied = False
     if apply_convergence:
-        calibrated_after_convergence = apply_convergence_adjustment(
-            calibrated, diameter, event_code, target_spread
-        )
+        calibrated_after_convergence = apply_convergence_adjustment(calibrated, diameter, event_code, target_spread)
         if calibrated_after_convergence != calibrated:
             calibrated = calibrated_after_convergence
             convergence_applied = True
@@ -1677,13 +1678,13 @@ def calibrate_predictions_for_handicapping(
     compression_ratio = calibrated_spread / original_spread if original_spread > 0 else 1.0
 
     metadata = {
-        'original_spread': round(original_spread, 2),
-        'calibrated_spread': round(calibrated_spread, 2),
-        'bias_correction_applied': bias_correction_applied,
-        'constraints_applied': constraints_applied,
-        'convergence_applied': convergence_applied,
-        'compression_ratio': round(compression_ratio, 3),
-        'target_spread': target_spread
+        "original_spread": round(original_spread, 2),
+        "calibrated_spread": round(calibrated_spread, 2),
+        "bias_correction_applied": bias_correction_applied,
+        "constraints_applied": constraints_applied,
+        "convergence_applied": convergence_applied,
+        "compression_ratio": round(compression_ratio, 3),
+        "target_spread": target_spread,
     }
 
     return calibrated, metadata
@@ -1699,9 +1700,7 @@ _cache_last_updated: Optional[datetime] = None
 
 
 def fit_and_cache_baseline_v2_model(
-    results_df: pd.DataFrame,
-    wood_df: pd.DataFrame,
-    force_refit: bool = False
+    results_df: pd.DataFrame, wood_df: pd.DataFrame, force_refit: bool = False
 ) -> Dict[str, any]:
     """
     Fit and cache the complete Baseline V2 hybrid model.
@@ -1729,7 +1728,11 @@ def fit_and_cache_baseline_v2_model(
     global _baseline_v2_cache, _cache_last_updated
 
     from config import baseline_v2_config
-    from woodchopping.data import load_and_clean_results, fit_wood_hardness_index, calculate_adaptive_half_lives
+    from woodchopping.data import (
+        calculate_adaptive_half_lives,
+        fit_wood_hardness_index,
+        load_and_clean_results,
+    )
 
     # Check if cache is valid
     if not force_refit and _baseline_v2_cache is not None and baseline_v2_config.ENABLE_MODEL_CACHE:
@@ -1751,18 +1754,18 @@ def fit_and_cache_baseline_v2_model(
         wood_df,
         hardness_index,
         adaptive_half_lives,
-        event_code=None  # Fit for all events
+        event_code=None,  # Fit for all events
     )
 
     # Build cache
     cache = {
-        'hardness_index': hardness_index,
-        'adaptive_half_lives': adaptive_half_lives,
-        'hierarchical_model': hierarchical_model,
-        'fitted_date': datetime.now(),
-        'cache_version': 'v2.0',
-        'sample_count': len(cleaned_results),
-        'results_df': cleaned_results  # Store cleaned data for calibration
+        "hardness_index": hardness_index,
+        "adaptive_half_lives": adaptive_half_lives,
+        "hierarchical_model": hierarchical_model,
+        "fitted_date": datetime.now(),
+        "cache_version": "v2.0",
+        "sample_count": len(cleaned_results),
+        "results_df": cleaned_results,  # Store cleaned data for calibration
     }
 
     # Update global cache
@@ -1791,7 +1794,7 @@ def predict_baseline_v2_hybrid(
     results_df: pd.DataFrame,
     wood_df: Optional[pd.DataFrame] = None,
     tournament_results: Optional[Dict[str, float]] = None,
-    enable_calibration: bool = True
+    enable_calibration: bool = True,
 ) -> Tuple[Optional[float], str, str, Optional[Dict[str, any]]]:
     """
     Main prediction interface for Baseline V2 Hybrid model.
@@ -1841,10 +1844,10 @@ def predict_baseline_v2_hybrid(
     # Build or retrieve cached model
     cache = fit_and_cache_baseline_v2_model(results_df, wood_df)
 
-    hardness_index = cache['hardness_index']
-    adaptive_half_lives = cache['adaptive_half_lives']
-    hierarchical_model = cache['hierarchical_model']
-    cleaned_results = cache['results_df']
+    hardness_index = cache["hardness_index"]
+    adaptive_half_lives = cache["adaptive_half_lives"]
+    hierarchical_model = cache["hierarchical_model"]
+    cleaned_results = cache["results_df"]
 
     # Tournament result weighting (97/3) - same as V1
     if tournament_results and competitor_name in tournament_results:
@@ -1852,8 +1855,15 @@ def predict_baseline_v2_hybrid(
 
         # Get fallback prediction for 3% weighting
         fallback_pred, _, _, _ = predict_baseline_v2_hybrid(
-            competitor_name, species, diameter, quality, event_code,
-            results_df, wood_df, tournament_results=None, enable_calibration=False
+            competitor_name,
+            species,
+            diameter,
+            quality,
+            event_code,
+            results_df,
+            wood_df,
+            tournament_results=None,
+            enable_calibration=False,
         )
 
         if fallback_pred is not None:
@@ -1864,19 +1874,21 @@ def predict_baseline_v2_hybrid(
 
             # Get metadata
             std_dev, consistency = estimate_competitor_std_dev(
-                competitor_name, event_code, cleaned_results,
+                competitor_name,
+                event_code,
+                cleaned_results,
                 min_std_dev=baseline_v2_config.MIN_STD_DEV_SECONDS,
-                max_std_dev=baseline_v2_config.MAX_STD_DEV_SECONDS
+                max_std_dev=baseline_v2_config.MAX_STD_DEV_SECONDS,
             )
 
             metadata = {
-                'std_dev': std_dev,
-                'consistency_rating': consistency,
-                'tournament_weighted': True,
-                'prediction_interval': (
+                "std_dev": std_dev,
+                "consistency_rating": consistency,
+                "tournament_weighted": True,
+                "prediction_interval": (
                     max(data_req.MIN_VALID_TIME_SECONDS, predicted_time - 1.96 * std_dev),
-                    predicted_time + 1.96 * std_dev
-                )
+                    predicted_time + 1.96 * std_dev,
+                ),
             }
 
             return predicted_time, confidence, explanation, metadata
@@ -1889,54 +1901,61 @@ def predict_baseline_v2_hybrid(
     half_life = adaptive_half_lives.get(competitor_name, baseline_v2_config.HALF_LIFE_MODERATE_DAYS)
 
     std_dev, consistency = estimate_competitor_std_dev(
-        competitor_name, event_code, cleaned_results,
+        competitor_name,
+        event_code,
+        cleaned_results,
         min_std_dev=baseline_v2_config.MIN_STD_DEV_SECONDS,
-        max_std_dev=baseline_v2_config.MAX_STD_DEV_SECONDS
+        max_std_dev=baseline_v2_config.MAX_STD_DEV_SECONDS,
     )
 
     # Get competitor historical data with adaptive weighting
     historical_data, data_source, norm_meta = get_competitor_historical_times_normalized(
-        competitor_name, species, diameter, event_code, cleaned_results,
-        return_weights=True, wood_df=wood_df
+        competitor_name,
+        species,
+        diameter,
+        event_code,
+        cleaned_results,
+        return_weights=True,
+        wood_df=wood_df,
     )
 
-    model_ready = hierarchical_model.get('sample_count', 0) >= baseline_v2_config.MIN_DATA_FOR_HIERARCHICAL_MODEL
+    model_ready = hierarchical_model.get("sample_count", 0) >= baseline_v2_config.MIN_DATA_FOR_HIERARCHICAL_MODEL
     if model_ready:
-        coeffs = hierarchical_model.get('coefficients', {})
-        centering = hierarchical_model.get('centering', {})
+        coeffs = hierarchical_model.get("coefficients", {})
+        centering = hierarchical_model.get("centering", {})
 
-        intercept = float(coeffs.get('intercept', 3.0))
-        event_intercept_uh = float(coeffs.get('event_intercept_uh', 0.0))
-        diam_lin = float(coeffs.get('diameter_linear', 0.0))
-        diam_quad = float(coeffs.get('diameter_quadratic', 0.0))
-        diam_lin_uh = float(coeffs.get('diameter_linear_uh', 0.0))
-        diam_quad_uh = float(coeffs.get('diameter_quadratic_uh', 0.0))
+        intercept = float(coeffs.get("intercept", 3.0))
+        event_intercept_uh = float(coeffs.get("event_intercept_uh", 0.0))
+        diam_lin = float(coeffs.get("diameter_linear", 0.0))
+        diam_quad = float(coeffs.get("diameter_quadratic", 0.0))
+        diam_lin_uh = float(coeffs.get("diameter_linear_uh", 0.0))
+        diam_quad_uh = float(coeffs.get("diameter_quadratic_uh", 0.0))
 
-        diameter_center = float(centering.get('diameter_center', 300.0))
-        hardness_center = float(centering.get('hardness_center', 1.0))
-        selection_center = float(centering.get('selection_center', baseline_v2_config.SELECTION_BIAS_DEFAULT_DIAMETER))
+        diameter_center = float(centering.get("diameter_center", 300.0))
+        hardness_center = float(centering.get("hardness_center", 1.0))
+        selection_center = float(centering.get("selection_center", baseline_v2_config.SELECTION_BIAS_DEFAULT_DIAMETER))
 
-        event_is_uh = 1.0 if event_code.upper() == 'UH' else 0.0
+        event_is_uh = 1.0 if event_code.upper() == "UH" else 0.0
         diameter_for_model = float(median_diam) if median_diam is not None else float(diameter)
         d = diameter_for_model - diameter_center
-        d2 = d ** 2
+        d2 = d**2
 
         hardness_centered = hardness_idx - hardness_center
         selection_centered = median_diam - selection_center
 
         log_pred = (
-            intercept +
-            (event_intercept_uh * event_is_uh) +
-            (diam_lin * d) +
-            (diam_quad * d2) +
-            (diam_lin_uh * event_is_uh * d) +
-            (diam_quad_uh * event_is_uh * d2) +
-            (hierarchical_model.get('hardness_coefficient', 0.0) * hardness_centered) +
-            (hierarchical_model.get('selection_coefficient', 0.0) * selection_centered)
+            intercept
+            + (event_intercept_uh * event_is_uh)
+            + (diam_lin * d)
+            + (diam_quad * d2)
+            + (diam_lin_uh * event_is_uh * d)
+            + (diam_quad_uh * event_is_uh * d2)
+            + (hierarchical_model.get("hardness_coefficient", 0.0) * hardness_centered)
+            + (hierarchical_model.get("selection_coefficient", 0.0) * selection_centered)
         )
 
         comp_key = str(competitor_name).strip().lower()
-        comp_effect = hierarchical_model.get('competitor_effects', {}).get(comp_key, 0.0)
+        comp_effect = hierarchical_model.get("competitor_effects", {}).get(comp_key, 0.0)
         log_pred += float(comp_effect)
 
         baseline = float(np.exp(log_pred))
@@ -1945,12 +1964,7 @@ def predict_baseline_v2_hybrid(
         # Enforce realistic diameter scaling using calibrated power-law (selection bias can invert diameter trend)
         if diameter is not None and median_diam is not None and float(diameter) != float(median_diam):
             exponent = get_event_scaling_exponent(cleaned_results, event_code)
-            scaled, metadata = scale_time(
-                baseline,
-                float(median_diam),
-                float(diameter),
-                exponent=exponent
-            )
+            scaled, metadata = scale_time(baseline, float(median_diam), float(diameter), exponent=exponent)
             baseline = float(scaled)
             if metadata.warning_message:
                 explanation += f" + {metadata.warning_message} (exp {exponent:.2f})"
@@ -1964,9 +1978,15 @@ def predict_baseline_v2_hybrid(
         _, _, effective_n = compute_robust_weighted_mean(historical_data)
 
     # Determine confidence based on weighted samples and std_dev
-    if effective_n >= baseline_v2_config.CONFIDENCE_VERY_HIGH_MIN_WEIGHTED_SAMPLES and std_dev <= baseline_v2_config.CONFIDENCE_VERY_HIGH_MAX_STD_DEV:
+    if (
+        effective_n >= baseline_v2_config.CONFIDENCE_VERY_HIGH_MIN_WEIGHTED_SAMPLES
+        and std_dev <= baseline_v2_config.CONFIDENCE_VERY_HIGH_MAX_STD_DEV
+    ):
         confidence = "VERY HIGH"
-    elif effective_n >= baseline_v2_config.CONFIDENCE_HIGH_MIN_WEIGHTED_SAMPLES and std_dev <= baseline_v2_config.CONFIDENCE_HIGH_MAX_STD_DEV:
+    elif (
+        effective_n >= baseline_v2_config.CONFIDENCE_HIGH_MIN_WEIGHTED_SAMPLES
+        and std_dev <= baseline_v2_config.CONFIDENCE_HIGH_MAX_STD_DEV
+    ):
         confidence = "HIGH"
     elif effective_n >= baseline_v2_config.CONFIDENCE_MEDIUM_MIN_WEIGHTED_SAMPLES:
         confidence = "MEDIUM"
@@ -2023,7 +2043,7 @@ def predict_baseline_v2_hybrid(
             explanation += f" [Quality {quality_val}/10: harder, {adjustment_pct:+.0f}%]"
 
     # Downgrade confidence if heavy normalization was needed
-    if norm_meta.get('max_diameter_diff', 0.0) > 25 or norm_meta.get('species_normalized', False):
+    if norm_meta.get("max_diameter_diff", 0.0) > 25 or norm_meta.get("species_normalized", False):
         if confidence == "VERY HIGH":
             confidence = "HIGH"
         elif confidence == "HIGH":
@@ -2034,17 +2054,17 @@ def predict_baseline_v2_hybrid(
 
     # Build metadata
     metadata = {
-        'std_dev': std_dev,
-        'consistency_rating': consistency,
-        'median_diameter': median_diam,
-        'hardness_index': hardness_idx,
-        'adaptive_half_life': half_life,
-        'effective_samples': effective_n if 'effective_n' in locals() else 0,
-        'tournament_weighted': False,
-        'prediction_interval': (
+        "std_dev": std_dev,
+        "consistency_rating": consistency,
+        "median_diameter": median_diam,
+        "hardness_index": hardness_idx,
+        "adaptive_half_life": half_life,
+        "effective_samples": effective_n if "effective_n" in locals() else 0,
+        "tournament_weighted": False,
+        "prediction_interval": (
             max(data_req.MIN_VALID_TIME_SECONDS, baseline - 1.96 * std_dev),
-            baseline + 1.96 * std_dev
-        )
+            baseline + 1.96 * std_dev,
+        ),
     }
 
     predicted_time = baseline
@@ -2054,6 +2074,6 @@ def predict_baseline_v2_hybrid(
         # Note: Calibration requires all competitor predictions
         # This is typically done at the batch level in prediction_aggregator
         # Individual predictions skip calibration
-        metadata['calibration_note'] = "Calibration skipped (requires batch predictions)"
+        metadata["calibration_note"] = "Calibration skipped (requires batch predictions)"
 
     return predicted_time, confidence, explanation, metadata

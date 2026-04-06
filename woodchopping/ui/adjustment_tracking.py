@@ -6,15 +6,17 @@ Helps judges understand why adjustments were made and builds institutional knowl
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 
-def log_handicap_adjustment(tournament_state: Dict,
-                            competitor_name: str,
-                            original_mark: int,
-                            adjusted_mark: int,
-                            reason: str = "",
-                            adjustment_type: str = "manual") -> None:
+def log_handicap_adjustment(
+    tournament_state: Dict,
+    competitor_name: str,
+    original_mark: int,
+    adjusted_mark: int,
+    reason: str = "",
+    adjustment_type: str = "manual",
+) -> None:
     """
     Log a handicap adjustment to the tournament state.
 
@@ -27,22 +29,22 @@ def log_handicap_adjustment(tournament_state: Dict,
         adjustment_type: Type of adjustment ("manual" or "automatic")
     """
     # Initialize adjustment_log if it doesn't exist
-    if 'adjustment_log' not in tournament_state:
-        tournament_state['adjustment_log'] = []
+    if "adjustment_log" not in tournament_state:
+        tournament_state["adjustment_log"] = []
 
     # Create adjustment record
     adjustment_record = {
-        'competitor': competitor_name,
-        'event': tournament_state.get('event_name', 'Unknown Event'),
-        'original_mark': original_mark,
-        'adjusted_mark': adjusted_mark,
-        'change': adjusted_mark - original_mark,
-        'reason': reason if reason else "No reason provided",
-        'adjustment_type': adjustment_type,
-        'timestamp': datetime.now().isoformat(timespec='seconds')
+        "competitor": competitor_name,
+        "event": tournament_state.get("event_name", "Unknown Event"),
+        "original_mark": original_mark,
+        "adjusted_mark": adjusted_mark,
+        "change": adjusted_mark - original_mark,
+        "reason": reason if reason else "No reason provided",
+        "adjustment_type": adjustment_type,
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
     }
 
-    tournament_state['adjustment_log'].append(adjustment_record)
+    tournament_state["adjustment_log"].append(adjustment_record)
 
 
 def prompt_adjustment_reason() -> str:
@@ -83,7 +85,7 @@ def view_adjustment_history(tournament_state: Dict) -> None:
     print("║" + "HANDICAP ADJUSTMENT HISTORY".center(68) + "║")
     print("╚" + "═" * 68 + "╝\n")
 
-    adjustment_log = tournament_state.get('adjustment_log', [])
+    adjustment_log = tournament_state.get("adjustment_log", [])
 
     if not adjustment_log:
         print("No manual adjustments have been made.")
@@ -93,10 +95,10 @@ def view_adjustment_history(tournament_state: Dict) -> None:
 
     # Display summary statistics
     total_adjustments = len(adjustment_log)
-    manual_adjustments = [a for a in adjustment_log if a.get('adjustment_type') == 'manual']
-    auto_adjustments = [a for a in adjustment_log if a.get('adjustment_type') == 'automatic']
+    manual_adjustments = [a for a in adjustment_log if a.get("adjustment_type") == "manual"]
+    auto_adjustments = [a for a in adjustment_log if a.get("adjustment_type") == "automatic"]
 
-    changes = [abs(a['change']) for a in adjustment_log]
+    changes = [abs(a["change"]) for a in adjustment_log]
     avg_change = sum(changes) / len(changes) if changes else 0
 
     print(f"Total Adjustments: {total_adjustments}")
@@ -112,17 +114,17 @@ def view_adjustment_history(tournament_state: Dict) -> None:
     print("+" + "-" * 20 + "+" + "-" * 10 + "+" + "-" * 10 + "+" + "-" * 9 + "+" + "-" * 14 + "+")
 
     for adj in adjustment_log:
-        name = adj['competitor'][:18].ljust(18)
-        original = str(adj['original_mark']).center(8)
-        adjusted = str(adj['adjusted_mark']).center(8)
-        change_val = adj['change']
+        name = adj["competitor"][:18].ljust(18)
+        original = str(adj["original_mark"]).center(8)
+        adjusted = str(adj["adjusted_mark"]).center(8)
+        change_val = adj["change"]
         change_str = f"{change_val:+d}".center(7)
-        adj_type = adj.get('adjustment_type', 'manual')[:12].ljust(12)
+        adj_type = adj.get("adjustment_type", "manual")[:12].ljust(12)
 
         print(f"| {name} | {original} | {adjusted} | {change_str} | {adj_type} |")
 
         # Show reason on next line
-        reason = adj.get('reason', 'No reason provided')
+        reason = adj.get("reason", "No reason provided")
         # Word wrap reason to fit in 66 characters
         reason_lines = _word_wrap(reason, 66)
         for line in reason_lines:
@@ -146,16 +148,16 @@ def get_adjustment_summary(tournament_state: Dict) -> str:
     Returns:
         Formatted summary string
     """
-    adjustment_log = tournament_state.get('adjustment_log', [])
+    adjustment_log = tournament_state.get("adjustment_log", [])
 
     if not adjustment_log:
         return "No manual handicap adjustments were made."
 
     total = len(adjustment_log)
-    manual = len([a for a in adjustment_log if a.get('adjustment_type') == 'manual'])
-    auto = len([a for a in adjustment_log if a.get('adjustment_type') == 'automatic'])
+    manual = len([a for a in adjustment_log if a.get("adjustment_type") == "manual"])
+    auto = len([a for a in adjustment_log if a.get("adjustment_type") == "automatic"])
 
-    changes = [abs(a['change']) for a in adjustment_log]
+    changes = [abs(a["change"]) for a in adjustment_log]
     avg_change = sum(changes) / len(changes) if changes else 0
 
     summary = f"Handicap Adjustments: {total} total ({manual} manual, {auto} automatic)\n"

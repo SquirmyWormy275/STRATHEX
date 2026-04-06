@@ -11,31 +11,30 @@ Functions:
     display_dual_predictions() - Display all predictions side-by-side
 """
 
-import statistics
 import textwrap
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
+
 import pandas as pd
 
 # Import local modules
 from woodchopping.data import load_results_df, standardize_results_data
+from woodchopping.predictions.ai_predictor import predict_competitor_time_with_ai
 from woodchopping.predictions.baseline import (
+    apply_shrinkage,
+    compute_robust_weighted_mean,
     get_competitor_historical_times_normalized,
     get_event_baseline_flexible,
-    compute_robust_weighted_mean,
-    apply_shrinkage,
     predict_baseline_v2_hybrid,
-    fit_and_cache_baseline_v2_model,
 )
+from woodchopping.predictions.diameter_scaling import (
+    adjust_confidence_for_scaling,
+    get_diameter_info_from_historical_data,
+)
+from woodchopping.predictions.llm import call_ollama
 from woodchopping.predictions.ml_model import (
-    predict_time_ml,
     _model_training_data_size,
     get_model_cv_metrics,
-)
-from woodchopping.predictions.ai_predictor import predict_competitor_time_with_ai
-from woodchopping.predictions.llm import call_ollama
-from woodchopping.predictions.diameter_scaling import (
-    get_diameter_info_from_historical_data,
-    adjust_confidence_for_scaling
+    predict_time_ml,
 )
 
 
@@ -46,7 +45,7 @@ def get_all_predictions(
     quality: int,
     event_code: str,
     results_df: Optional[pd.DataFrame] = None,
-    tournament_results: Optional[Dict[str, float]] = None
+    tournament_results: Optional[Dict[str, float]] = None,
 ) -> Dict[str, Dict[str, Optional[str]]]:
     """
     Get predictions from all three methods: Baseline, ML, and LLM.
@@ -82,21 +81,38 @@ def get_all_predictions(
         ...     print(f"LLM: {preds['llm']['time']:.1f}s")
     """
     predictions = {
-        'baseline': {
-            'time': None, 'confidence': None, 'explanation': None, 'error': None,
-            'scaled': False, 'original_diameter': None, 'scaling_warning': None,
-            'tournament_weighted': False, 'std_dev': None, 'metadata': None
+        "baseline": {
+            "time": None,
+            "confidence": None,
+            "explanation": None,
+            "error": None,
+            "scaled": False,
+            "original_diameter": None,
+            "scaling_warning": None,
+            "tournament_weighted": False,
+            "std_dev": None,
+            "metadata": None,
         },
-        'ml': {
-            'time': None, 'confidence': None, 'explanation': None, 'error': None,
-            'scaled': False, 'original_diameter': None, 'scaling_warning': None,
-            'tournament_weighted': False
+        "ml": {
+            "time": None,
+            "confidence": None,
+            "explanation": None,
+            "error": None,
+            "scaled": False,
+            "original_diameter": None,
+            "scaling_warning": None,
+            "tournament_weighted": False,
         },
-        'llm': {
-            'time': None, 'confidence': None, 'explanation': None, 'error': None,
-            'scaled': False, 'original_diameter': None, 'scaling_warning': None,
-            'tournament_weighted': False
-        }
+        "llm": {
+            "time": None,
+            "confidence": None,
+            "explanation": None,
+            "error": None,
+            "scaled": False,
+            "original_diameter": None,
+            "scaling_warning": None,
+            "tournament_weighted": False,
+        },
     }
 
     # Load results once
@@ -107,9 +123,7 @@ def get_all_predictions(
     results_df, _ = standardize_results_data(results_df)
 
     # Get historical diameter info (used for ML/LLM warnings)
-    hist_diameter = get_diameter_info_from_historical_data(
-        results_df, competitor_name, event_code
-    )
+    hist_diameter = get_diameter_info_from_historical_data(results_df, competitor_name, event_code)
 
     # CRITICAL: Check if same-tournament result exists (heats/semis on SAME wood)
     tournament_time = None
@@ -119,6 +133,7 @@ def get_all_predictions(
     # 1. Get baseline prediction using Baseline V2 Hybrid Model
     # Try V2 first, fall back to V1 if unavailable
     from woodchopping.data import load_wood_data
+
     try:
         wood_df = load_wood_data()
 
@@ -132,22 +147,22 @@ def get_all_predictions(
             results_df=results_df,
             wood_df=wood_df,
             tournament_results={competitor_name: tournament_time} if tournament_time else None,
-            enable_calibration=True
+            enable_calibration=True,
         )
 
         # Extract metadata for Monte Carlo simulation
         if metadata:
-            predictions['baseline']['std_dev'] = metadata.get('std_dev')
-            predictions['baseline']['metadata'] = metadata
-            if metadata.get('tournament_weighted', False):
-                predictions['baseline']['tournament_weighted'] = True
+            predictions["baseline"]["std_dev"] = metadata.get("std_dev")
+            predictions["baseline"]["metadata"] = metadata
+            if metadata.get("tournament_weighted", False):
+                predictions["baseline"]["tournament_weighted"] = True
 
         # Baseline V2 succeeded
-        predictions['baseline']['time'] = baseline
-        predictions['baseline']['confidence'] = confidence
-        predictions['baseline']['explanation'] = explanation
+        predictions["baseline"]["time"] = baseline
+        predictions["baseline"]["confidence"] = confidence
+        predictions["baseline"]["explanation"] = explanation
 
-    except Exception as e:
+    except Exception:
         # Fall back to V1 baseline (old implementation)
         # Get historical data WITH weights (based on age of result)
         historical_data, data_source, normalization_meta = get_competitor_historical_times_normalized(
@@ -166,7 +181,7 @@ def get_all_predictions(
                 baseline = (tournament_time * 0.97) + (historical_baseline * 0.03)
                 confidence = "VERY HIGH"
                 explanation = f"Tournament result ({tournament_time:.2f}s @ 97%) + robust history ({data_source}, {len(historical_data)} results @ 3%)"
-                predictions['baseline']['tournament_weighted'] = True
+                predictions["baseline"]["tournament_weighted"] = True
             else:
                 baseline = historical_baseline
                 confidence = "HIGH"
@@ -184,7 +199,7 @@ def get_all_predictions(
                 baseline = (tournament_time * 0.97) + (historical_baseline * 0.03)
                 confidence = "HIGH"
                 explanation = f"Tournament result ({tournament_time:.2f}s @ 97%) + limited robust history ({data_source}, {len(historical_data)} results @ 3%)"
-                predictions['baseline']['tournament_weighted'] = True
+                predictions["baseline"]["tournament_weighted"] = True
             else:
                 baseline = historical_baseline
                 confidence = "MEDIUM"
@@ -195,7 +210,7 @@ def get_all_predictions(
                 baseline = tournament_time
                 confidence = "HIGH"
                 explanation = f"Tournament result ({tournament_time:.2f}s, no historical data)"
-                predictions['baseline']['tournament_weighted'] = True
+                predictions["baseline"]["tournament_weighted"] = True
             else:
                 baseline, baseline_source = get_event_baseline_flexible(species, diameter, event_code, results_df)
                 if baseline:
@@ -219,7 +234,7 @@ def get_all_predictions(
         quality_val = max(1, min(10, quality_val))
 
         # Adjust confidence if normalization required large jumps
-        if normalization_meta.get('max_diameter_diff', 0.0) > 25 or normalization_meta.get('species_normalized', False):
+        if normalization_meta.get("max_diameter_diff", 0.0) > 25 or normalization_meta.get("species_normalized", False):
             if confidence == "VERY HIGH":
                 confidence = "HIGH"
             elif confidence == "HIGH":
@@ -228,13 +243,13 @@ def get_all_predictions(
                 confidence = "LOW"
 
             explanation = f"{explanation} [Normalized across sizes/species]"
-            predictions['baseline']['scaled'] = True
-            predictions['baseline']['original_diameter'] = hist_diameter
-            max_diff = normalization_meta.get('max_diameter_diff', 0.0)
+            predictions["baseline"]["scaled"] = True
+            predictions["baseline"]["original_diameter"] = hist_diameter
+            max_diff = normalization_meta.get("max_diameter_diff", 0.0)
             if max_diff:
-                predictions['baseline']['scaling_warning'] = f"Normalized by size/species (max diff {max_diff:.0f}mm)"
+                predictions["baseline"]["scaling_warning"] = f"Normalized by size/species (max diff {max_diff:.0f}mm)"
             else:
-                predictions['baseline']['scaling_warning'] = "Normalized by size/species"
+                predictions["baseline"]["scaling_warning"] = "Normalized by size/species"
 
         # Apply WOOD QUALITY ADJUSTMENT to baseline (V1 only - V2 does this internally)
         if quality_val != 5:
@@ -248,63 +263,82 @@ def get_all_predictions(
             else:
                 explanation += f" [Quality {quality_val}/10: harder, {adjustment_pct:+.0f}%]"
 
-        predictions['baseline']['time'] = baseline
-        predictions['baseline']['confidence'] = confidence
-        predictions['baseline']['explanation'] = explanation
+        predictions["baseline"]["time"] = baseline
+        predictions["baseline"]["confidence"] = confidence
+        predictions["baseline"]["explanation"] = explanation
 
     # 2. Get ML prediction
-    ml_time, ml_conf, ml_expl = predict_time_ml(
-        competitor_name, species, diameter, quality, event_code, results_df
-    )
+    ml_time, ml_conf, ml_expl = predict_time_ml(competitor_name, species, diameter, quality, event_code, results_df)
 
     if ml_time is not None:
         # ML model learns scaling patterns, but flag if historical diameter differs
         if hist_diameter and hist_diameter != diameter:
-            ml_conf = adjust_confidence_for_scaling(ml_conf,
-                type('obj', (object,), {'confidence_adjustment': 'downgrade' if abs(hist_diameter - diameter) > 25 else ''})())
+            ml_conf = adjust_confidence_for_scaling(
+                ml_conf,
+                type(
+                    "obj",
+                    (object,),
+                    {"confidence_adjustment": "downgrade" if abs(hist_diameter - diameter) > 25 else ""},
+                )(),
+            )
             ml_expl = f"{ml_expl} [Hist data from {hist_diameter:.0f}mm]"
-            predictions['ml']['scaled'] = True
-            predictions['ml']['original_diameter'] = hist_diameter
-            predictions['ml']['scaling_warning'] = f"Historical data primarily from {hist_diameter:.0f}mm, predicting for {diameter:.0f}mm"
+            predictions["ml"]["scaled"] = True
+            predictions["ml"]["original_diameter"] = hist_diameter
+            predictions["ml"]["scaling_warning"] = (
+                f"Historical data primarily from {hist_diameter:.0f}mm, predicting for {diameter:.0f}mm"
+            )
 
-        predictions['ml']['time'] = ml_time
-        predictions['ml']['confidence'] = ml_conf
-        predictions['ml']['explanation'] = ml_expl
-        predictions['ml']['event_code'] = event_code
+        predictions["ml"]["time"] = ml_time
+        predictions["ml"]["confidence"] = ml_conf
+        predictions["ml"]["explanation"] = ml_expl
+        predictions["ml"]["event_code"] = event_code
     else:
-        predictions['ml']['error'] = ml_expl if ml_expl else "ML prediction unavailable"
+        predictions["ml"]["error"] = ml_expl if ml_expl else "ML prediction unavailable"
 
     # 3. Get LLM prediction (with tournament weighting if available)
     llm_time, llm_conf, llm_expl = predict_competitor_time_with_ai(
-        competitor_name, species, diameter, quality, event_code, results_df,
-        tournament_results={competitor_name: tournament_time} if tournament_time else None
+        competitor_name,
+        species,
+        diameter,
+        quality,
+        event_code,
+        results_df,
+        tournament_results={competitor_name: tournament_time} if tournament_time else None,
     )
 
     if llm_time is not None:
         # Mark if tournament weighted
         if tournament_time is not None:
-            predictions['llm']['tournament_weighted'] = True
+            predictions["llm"]["tournament_weighted"] = True
 
         # LLM uses baseline + quality adjustment, flag diameter mismatch
         if hist_diameter and hist_diameter != diameter:
-            llm_conf = adjust_confidence_for_scaling(llm_conf,
-                type('obj', (object,), {'confidence_adjustment': 'downgrade' if abs(hist_diameter - diameter) > 25 else ''})())
+            llm_conf = adjust_confidence_for_scaling(
+                llm_conf,
+                type(
+                    "obj",
+                    (object,),
+                    {"confidence_adjustment": "downgrade" if abs(hist_diameter - diameter) > 25 else ""},
+                )(),
+            )
             llm_expl = f"{llm_expl} [Hist data from {hist_diameter:.0f}mm]"
-            predictions['llm']['scaled'] = True
-            predictions['llm']['original_diameter'] = hist_diameter
-            predictions['llm']['scaling_warning'] = f"Historical data primarily from {hist_diameter:.0f}mm, predicting for {diameter:.0f}mm"
+            predictions["llm"]["scaled"] = True
+            predictions["llm"]["original_diameter"] = hist_diameter
+            predictions["llm"]["scaling_warning"] = (
+                f"Historical data primarily from {hist_diameter:.0f}mm, predicting for {diameter:.0f}mm"
+            )
 
-        predictions['llm']['time'] = llm_time
-        predictions['llm']['confidence'] = llm_conf
-        predictions['llm']['explanation'] = llm_expl
+        predictions["llm"]["time"] = llm_time
+        predictions["llm"]["confidence"] = llm_conf
+        predictions["llm"]["explanation"] = llm_expl
     else:
-        predictions['llm']['error'] = "LLM prediction failed"
+        predictions["llm"]["error"] = "LLM prediction failed"
 
     return predictions
 
 
 def select_best_prediction(
-    all_predictions: Dict[str, Dict[str, Optional[str]]]
+    all_predictions: Dict[str, Dict[str, Optional[str]]],
 ) -> Tuple[float, str, str, str]:
     """
     Select the best prediction from available methods.
@@ -326,74 +360,86 @@ def select_best_prediction(
         >>> time, method, conf, exp = select_best_prediction(preds)
         >>> print(f"Using {method}: {time:.1f}s ({conf})")
     """
-    baseline_pred = all_predictions.get('baseline', {})
-    ml_pred = all_predictions.get('ml', {})
-    llm_pred = all_predictions.get('llm', {})
+    baseline_pred = all_predictions.get("baseline", {})
+    ml_pred = all_predictions.get("ml", {})
+    llm_pred = all_predictions.get("llm", {})
 
     def _expected_error(confidence: Optional[str], method: str, pred: dict) -> float:
-        base_map = {
-            'VERY HIGH': 2.0,
-            'HIGH': 3.0,
-            'MEDIUM': 5.0,
-            'LOW': 7.0,
-            'VERY LOW': 9.0
-        }
-        base = base_map.get(confidence or 'LOW', 7.0)
+        base_map = {"VERY HIGH": 2.0, "HIGH": 3.0, "MEDIUM": 5.0, "LOW": 7.0, "VERY LOW": 9.0}
+        base = base_map.get(confidence or "LOW", 7.0)
 
-        if method == 'ML':
+        if method == "ML":
             # Prefer using CV MAE if available
-            event_code = pred.get('event_code')
+            event_code = pred.get("event_code")
             cv_metrics = get_model_cv_metrics(event_code) if event_code else None
-            if cv_metrics and 'mae_mean' in cv_metrics:
-                base = max(base, float(cv_metrics['mae_mean']))
+            if cv_metrics and "mae_mean" in cv_metrics:
+                base = max(base, float(cv_metrics["mae_mean"]))
 
-        if method == 'LLM':
+        if method == "LLM":
             base += 0.5  # Slight penalty for variance
 
-        if pred.get('scaled'):
+        if pred.get("scaled"):
             base += 1.5
 
-        if pred.get('tournament_weighted'):
+        if pred.get("tournament_weighted"):
             base = max(0.5, base - 1.0)
 
         return base
 
     def _confidence_from_error(err: float) -> str:
         if err <= 2.5:
-            return 'VERY HIGH'
+            return "VERY HIGH"
         if err <= 3.5:
-            return 'HIGH'
+            return "HIGH"
         if err <= 5.5:
-            return 'MEDIUM'
+            return "MEDIUM"
         if err <= 7.5:
-            return 'LOW'
-        return 'VERY LOW'
+            return "LOW"
+        return "VERY LOW"
 
     def _downgrade_confidence(conf: str, steps: int) -> str:
-        order = ['VERY HIGH', 'HIGH', 'MEDIUM', 'LOW', 'VERY LOW']
+        order = ["VERY HIGH", "HIGH", "MEDIUM", "LOW", "VERY LOW"]
         if conf not in order:
             return conf
         idx = min(len(order) - 1, order.index(conf) + steps)
         return order[idx]
 
     candidates = []
-    if ml_pred.get('time') is not None:
+    if ml_pred.get("time") is not None:
         ml_pred = dict(ml_pred)
-        ml_pred['event_code'] = ml_pred.get('event_code')
-        candidates.append((
-            ml_pred['time'], 'ML', ml_pred.get('confidence'), ml_pred.get('explanation'), _expected_error(ml_pred.get('confidence'), 'ML', ml_pred)
-        ))
-    if llm_pred.get('time') is not None:
-        candidates.append((
-            llm_pred['time'], 'LLM', llm_pred.get('confidence'), llm_pred.get('explanation'), _expected_error(llm_pred.get('confidence'), 'LLM', llm_pred)
-        ))
-    if baseline_pred.get('time') is not None:
-        candidates.append((
-            baseline_pred['time'], 'Baseline', baseline_pred.get('confidence'), baseline_pred.get('explanation'), _expected_error(baseline_pred.get('confidence'), 'Baseline', baseline_pred)
-        ))
+        ml_pred["event_code"] = ml_pred.get("event_code")
+        candidates.append(
+            (
+                ml_pred["time"],
+                "ML",
+                ml_pred.get("confidence"),
+                ml_pred.get("explanation"),
+                _expected_error(ml_pred.get("confidence"), "ML", ml_pred),
+            )
+        )
+    if llm_pred.get("time") is not None:
+        candidates.append(
+            (
+                llm_pred["time"],
+                "LLM",
+                llm_pred.get("confidence"),
+                llm_pred.get("explanation"),
+                _expected_error(llm_pred.get("confidence"), "LLM", llm_pred),
+            )
+        )
+    if baseline_pred.get("time") is not None:
+        candidates.append(
+            (
+                baseline_pred["time"],
+                "Baseline",
+                baseline_pred.get("confidence"),
+                baseline_pred.get("explanation"),
+                _expected_error(baseline_pred.get("confidence"), "Baseline", baseline_pred),
+            )
+        )
 
     if not candidates:
-        return (0.0, 'Baseline', 'LOW', 'Default baseline')
+        return (0.0, "Baseline", "LOW", "Default baseline")
 
     # Choose method with lowest expected error
     best = min(candidates, key=lambda x: x[4])
@@ -423,10 +469,7 @@ def select_best_prediction(
     return best[0], best[1], selection_conf, explanation
 
 
-def _generate_statistical_prediction_analysis(
-    all_competitors_predictions: List[Dict],
-    wood_selection: Dict
-) -> str:
+def _generate_statistical_prediction_analysis(all_competitors_predictions: List[Dict], wood_selection: Dict) -> str:
     """
     Generate statistical prediction analysis when LLM is unavailable.
 
@@ -451,10 +494,10 @@ def _generate_statistical_prediction_analysis(
     strong_agreement_competitors = []
 
     for comp_pred in all_competitors_predictions:
-        name = comp_pred['name']
-        baseline = comp_pred['predictions']['baseline']['time']
-        ml = comp_pred['predictions']['ml']['time']
-        llm = comp_pred['predictions']['llm']['time']
+        name = comp_pred["name"]
+        baseline = comp_pred["predictions"]["baseline"]["time"]
+        ml = comp_pred["predictions"]["ml"]["time"]
+        llm = comp_pred["predictions"]["llm"]["time"]
 
         if ml and llm:
             ml_llm_diff = abs(ml - llm)
@@ -481,18 +524,18 @@ def _generate_statistical_prediction_analysis(
     avg_baseline_llm_diff = sum(baseline_llm_diffs) / len(baseline_llm_diffs) if baseline_llm_diffs else 0
 
     # Get species name
-    species_code = wood_selection.get('species', 'Unknown')
+    species_code = wood_selection.get("species", "Unknown")
     species_name = get_species_name_from_code(species_code)
-    quality = wood_selection.get('quality', 5)
+    quality = wood_selection.get("quality", 5)
 
     # Build report
     report = f"""PREDICTION METHOD ANALYSIS (Statistical Summary)
 
 WOOD CHARACTERISTICS:
 - Species: {species_name}
-- Diameter: {wood_selection.get('size_mm', 0)}mm
+- Diameter: {wood_selection.get("size_mm", 0)}mm
 - Quality: {quality}/10
-- Event: {wood_selection.get('event', 'Unknown')}
+- Event: {wood_selection.get("event", "Unknown")}
 
 OVERALL AGREEMENT:
 The prediction methods show {"strong" if avg_ml_llm_diff < 2 else "moderate" if avg_ml_llm_diff < 4 else "weak"} agreement across {total_competitors} competitors.
@@ -536,10 +579,7 @@ RECOMMENDATIONS:
     return report
 
 
-def generate_prediction_analysis_llm(
-    all_competitors_predictions: List[Dict],
-    wood_selection: Dict
-) -> str:
+def generate_prediction_analysis_llm(all_competitors_predictions: List[Dict], wood_selection: Dict) -> str:
     """
     Use LLM to analyze differences between ML and LLM predictions across all competitors.
 
@@ -576,14 +616,16 @@ def generate_prediction_analysis_llm(
     # Build concise summary for LLM
     summary_lines = []
     for comp_pred in all_competitors_predictions[:10]:  # Limit to 10 for prompt size
-        name = comp_pred['name'][:20]  # Truncate long names
-        baseline = comp_pred['predictions']['baseline']['time']
-        ml = comp_pred['predictions']['ml']['time']
-        llm = comp_pred['predictions']['llm']['time']
+        name = comp_pred["name"][:20]  # Truncate long names
+        baseline = comp_pred["predictions"]["baseline"]["time"]
+        ml = comp_pred["predictions"]["ml"]["time"]
+        llm = comp_pred["predictions"]["llm"]["time"]
 
         if ml and llm:
             ml_llm_diff = ml - llm
-            summary_lines.append(f"{name}: Baseline={baseline:.1f}s, ML={ml:.1f}s, LLM={llm:.1f}s (diff={ml_llm_diff:+.1f}s)")
+            summary_lines.append(
+                f"{name}: Baseline={baseline:.1f}s, ML={ml:.1f}s, LLM={llm:.1f}s (diff={ml_llm_diff:+.1f}s)"
+            )
         elif ml:
             summary_lines.append(f"{name}: Baseline={baseline:.1f}s, ML={ml:.1f}s, LLM=N/A")
         elif llm:
@@ -593,16 +635,17 @@ def generate_prediction_analysis_llm(
 
     # Get species name from code
     from woodchopping.data import get_species_name_from_code
-    species_code = wood_selection.get('species', 'Unknown')
+
+    species_code = wood_selection.get("species", "Unknown")
     species_name = get_species_name_from_code(species_code)
 
     prompt = f"""You are an expert woodchopping handicapping consultant analyzing prediction methods.
 
 WOOD CHARACTERISTICS:
 - Species: {species_name}
-- Diameter: {wood_selection.get('size_mm', 0)}mm
-- Quality: {wood_selection.get('quality', 5)}/10
-- Event: {wood_selection.get('event', 'Unknown')}
+- Diameter: {wood_selection.get("size_mm", 0)}mm
+- Quality: {wood_selection.get("quality", 5)}/10
+- Event: {wood_selection.get("event", "Unknown")}
 
 PREDICTION DATA (Baseline / ML / LLM):
 {summary_text}
@@ -638,6 +681,7 @@ ANALYSIS REQUIRED (provide detailed, technical assessment in 15-20 sentences):
 Provide specific data references and technical reasoning."""
 
     from config import llm_config
+
     response = call_ollama(prompt, model=llm_config.DEFAULT_MODEL, num_predict=llm_config.TOKENS_PREDICTION_ANALYSIS)
 
     if response:
@@ -674,44 +718,44 @@ def calculate_percentage_differences(handicap_results: List[Dict]) -> List[Dict]
     differences = []
 
     for result in handicap_results:
-        name = result['name']
-        mark = result['mark']
-        predictions = result['predictions']
+        name = result["name"]
+        mark = result["mark"]
+        predictions = result["predictions"]
 
-        baseline_time = predictions['baseline']['time']
-        ml_time = predictions['ml']['time']
-        llm_time = predictions['llm']['time']
+        baseline_time = predictions["baseline"]["time"]
+        ml_time = predictions["ml"]["time"]
+        llm_time = predictions["llm"]["time"]
 
         # Calculate percentage differences in both directions
         diff = {
-            'name': name,
-            'mark': mark,
-            'used_time': result['predicted_time'],
-            'baseline_time': baseline_time,
-            'ml_time': ml_time,
-            'llm_time': llm_time,
-            'baseline_vs_ml': None,
-            'baseline_vs_llm': None,
-            'ml_vs_baseline': None,
-            'ml_vs_llm': None,
-            'llm_vs_baseline': None,
-            'llm_vs_ml': None
+            "name": name,
+            "mark": mark,
+            "used_time": result["predicted_time"],
+            "baseline_time": baseline_time,
+            "ml_time": ml_time,
+            "llm_time": llm_time,
+            "baseline_vs_ml": None,
+            "baseline_vs_llm": None,
+            "ml_vs_baseline": None,
+            "ml_vs_llm": None,
+            "llm_vs_baseline": None,
+            "llm_vs_ml": None,
         }
 
         # Baseline vs ML
         if baseline_time and ml_time:
-            diff['baseline_vs_ml'] = ((baseline_time - ml_time) / ml_time) * 100
-            diff['ml_vs_baseline'] = ((ml_time - baseline_time) / baseline_time) * 100
+            diff["baseline_vs_ml"] = ((baseline_time - ml_time) / ml_time) * 100
+            diff["ml_vs_baseline"] = ((ml_time - baseline_time) / baseline_time) * 100
 
         # Baseline vs LLM
         if baseline_time and llm_time:
-            diff['baseline_vs_llm'] = ((baseline_time - llm_time) / llm_time) * 100
-            diff['llm_vs_baseline'] = ((llm_time - baseline_time) / baseline_time) * 100
+            diff["baseline_vs_llm"] = ((baseline_time - llm_time) / llm_time) * 100
+            diff["llm_vs_baseline"] = ((llm_time - baseline_time) / baseline_time) * 100
 
         # ML vs LLM
         if ml_time and llm_time:
-            diff['ml_vs_llm'] = ((ml_time - llm_time) / llm_time) * 100
-            diff['llm_vs_ml'] = ((llm_time - ml_time) / ml_time) * 100
+            diff["ml_vs_llm"] = ((ml_time - llm_time) / llm_time) * 100
+            diff["llm_vs_ml"] = ((llm_time - ml_time) / ml_time) * 100
 
         differences.append(diff)
 
@@ -725,42 +769,46 @@ def display_percentage_differences_table(differences: List[Dict]) -> None:
     Args:
         differences: List from calculate_percentage_differences()
     """
-    print("\n" + "="*110)
+    print("\n" + "=" * 110)
     print("PREDICTION DIFFERENCES BY COMPETITOR")
-    print("="*110)
+    print("=" * 110)
 
     # Header
     print(f"{'Competitor':<25} {'Mark':>4} {'Used':>6} | {'Baseline':<8} | {'ML Model':<8} | {'LLM Model':<8}")
-    print(f"{'':<25} {'':<4} {'Time':>6} | {'vs ML':>8} {'vs LLM':>8} | {'vs Base':>8} {'vs LLM':>8} | {'vs Base':>8} {'vs ML':>8}")
-    print("-"*110)
+    print(
+        f"{'':<25} {'':<4} {'Time':>6} | {'vs ML':>8} {'vs LLM':>8} | {'vs Base':>8} {'vs LLM':>8} | {'vs Base':>8} {'vs ML':>8}"
+    )
+    print("-" * 110)
 
     for diff in differences:
-        name = diff['name'][:24]  # Truncate if too long
-        mark = diff['mark']
-        used_time = diff['used_time']
+        name = diff["name"][:24]  # Truncate if too long
+        mark = diff["mark"]
+        used_time = diff["used_time"]
 
         # Format percentage differences, showing N/A if not available
-        base_ml = f"{diff['baseline_vs_ml']:+.1f}%" if diff['baseline_vs_ml'] is not None else "  N/A  "
-        base_llm = f"{diff['baseline_vs_llm']:+.1f}%" if diff['baseline_vs_llm'] is not None else "  N/A  "
-        ml_base = f"{diff['ml_vs_baseline']:+.1f}%" if diff['ml_vs_baseline'] is not None else "  N/A  "
-        ml_llm = f"{diff['ml_vs_llm']:+.1f}%" if diff['ml_vs_llm'] is not None else "  N/A  "
-        llm_base = f"{diff['llm_vs_baseline']:+.1f}%" if diff['llm_vs_baseline'] is not None else "  N/A  "
-        llm_ml = f"{diff['llm_vs_ml']:+.1f}%" if diff['llm_vs_ml'] is not None else "  N/A  "
+        base_ml = f"{diff['baseline_vs_ml']:+.1f}%" if diff["baseline_vs_ml"] is not None else "  N/A  "
+        base_llm = f"{diff['baseline_vs_llm']:+.1f}%" if diff["baseline_vs_llm"] is not None else "  N/A  "
+        ml_base = f"{diff['ml_vs_baseline']:+.1f}%" if diff["ml_vs_baseline"] is not None else "  N/A  "
+        ml_llm = f"{diff['ml_vs_llm']:+.1f}%" if diff["ml_vs_llm"] is not None else "  N/A  "
+        llm_base = f"{diff['llm_vs_baseline']:+.1f}%" if diff["llm_vs_baseline"] is not None else "  N/A  "
+        llm_ml = f"{diff['llm_vs_ml']:+.1f}%" if diff["llm_vs_ml"] is not None else "  N/A  "
 
         # Highlight large discrepancies (>20%)
         warnings = []
-        if diff['baseline_vs_ml'] and abs(diff['baseline_vs_ml']) > 20:
+        if diff["baseline_vs_ml"] and abs(diff["baseline_vs_ml"]) > 20:
             warnings.append("[WARN]")
-        if diff['baseline_vs_llm'] and abs(diff['baseline_vs_llm']) > 20:
+        if diff["baseline_vs_llm"] and abs(diff["baseline_vs_llm"]) > 20:
             warnings.append("[WARN]")
-        if diff['ml_vs_llm'] and abs(diff['ml_vs_llm']) > 20:
+        if diff["ml_vs_llm"] and abs(diff["ml_vs_llm"]) > 20:
             warnings.append("[WARN]")
 
         warning_str = "".join(warnings) if warnings else ""
 
-        print(f"{name:<25} {mark:>4} {used_time:>5.1f}s | {base_ml:>8} {base_llm:>8} | {ml_base:>8} {ml_llm:>8} | {llm_base:>8} {llm_ml:>8} {warning_str}")
+        print(
+            f"{name:<25} {mark:>4} {used_time:>5.1f}s | {base_ml:>8} {base_llm:>8} | {ml_base:>8} {ml_llm:>8} | {llm_base:>8} {llm_ml:>8} {warning_str}"
+        )
 
-    print("="*110)
+    print("=" * 110)
     print("[WARN] = Difference >20% (significant discrepancy - review recommended)")
     print()
 
@@ -773,9 +821,9 @@ def display_methods_explanation(ml_training_info: Dict = None) -> None:
         ml_training_info: Optional dict with ML model training stats
                          {'mae': float, 'r2': float, 'training_records': int}
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("PREDICTION METHODS EXPLAINED")
-    print("="*70)
+    print("=" * 70)
 
     print("\nBASELINE (Statistical):")
     print("  - Time-decay weighted historical average (730-day half-life)")
@@ -787,7 +835,9 @@ def display_methods_explanation(ml_training_info: Dict = None) -> None:
     print("\nML MODEL (XGBoost):")
     if ml_training_info:
         print(f"  - Trained on {ml_training_info.get('training_records', 'N/A')} historical performances")
-        print(f"  - Model Performance: MAE={ml_training_info.get('mae', 0):.1f}s, R²={ml_training_info.get('r2', 0):.3f}")
+        print(
+            f"  - Model Performance: MAE={ml_training_info.get('mae', 0):.1f}s, R²={ml_training_info.get('r2', 0):.3f}"
+        )
     else:
         print("  - Machine learning model trained on historical data")
     print("  - Features: competitor history, wood hardness, density, diameter, experience")
@@ -804,7 +854,7 @@ def display_methods_explanation(ml_training_info: Dict = None) -> None:
     print("  ?+' Uses confidence, scaling penalties, and CV MAE (ML) when available")
     print("  ?+' Methods can change per competitor based on data quality")
     print("  ?+' Baseline remains a safe fallback when data are sparse")
-    print("="*70)
+    print("=" * 70)
     print()
 
 
@@ -816,40 +866,46 @@ def display_selection_reasoning(handicap_results: List[Dict], differences: List[
         handicap_results: List of competitor results with predictions
         differences: List from calculate_percentage_differences()
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("METHOD SELECTION DETAILS")
-    print("="*70)
+    print("=" * 70)
     print()
 
     for result, diff in zip(handicap_results, differences):
-        name = result['name']
-        mark = result['mark']
-        method_used = result['method_used']
-        confidence = result['confidence']
-        predictions = result['predictions']
+        name = result["name"]
+        mark = result["mark"]
+        method_used = result["method_used"]
+        confidence = result["confidence"]
+        predictions = result["predictions"]
 
         print(f"{name} (Mark {mark}) - {method_used} Selected:")
 
         # Get prediction times
-        base_time = predictions['baseline']['time']
-        ml_time = predictions['ml']['time']
-        llm_time = predictions['llm']['time']
+        base_time = predictions["baseline"]["time"]
+        ml_time = predictions["ml"]["time"]
+        llm_time = predictions["llm"]["time"]
 
         # Check for large discrepancies
         has_large_discrepancy = False
         discrepancy_details = []
 
-        if diff['baseline_vs_ml'] and abs(diff['baseline_vs_ml']) > 20:
+        if diff["baseline_vs_ml"] and abs(diff["baseline_vs_ml"]) > 20:
             has_large_discrepancy = True
-            discrepancy_details.append(f"Baseline={base_time:.1f}s vs ML={ml_time:.1f}s ({diff['baseline_vs_ml']:+.1f}% difference)")
+            discrepancy_details.append(
+                f"Baseline={base_time:.1f}s vs ML={ml_time:.1f}s ({diff['baseline_vs_ml']:+.1f}% difference)"
+            )
 
-        if diff['baseline_vs_llm'] and abs(diff['baseline_vs_llm']) > 20:
+        if diff["baseline_vs_llm"] and abs(diff["baseline_vs_llm"]) > 20:
             has_large_discrepancy = True
-            discrepancy_details.append(f"Baseline={base_time:.1f}s vs LLM={llm_time:.1f}s ({diff['baseline_vs_llm']:+.1f}% difference)")
+            discrepancy_details.append(
+                f"Baseline={base_time:.1f}s vs LLM={llm_time:.1f}s ({diff['baseline_vs_llm']:+.1f}% difference)"
+            )
 
-        if diff['ml_vs_llm'] and abs(diff['ml_vs_llm']) > 20:
+        if diff["ml_vs_llm"] and abs(diff["ml_vs_llm"]) > 20:
             has_large_discrepancy = True
-            discrepancy_details.append(f"ML={ml_time:.1f}s vs LLM={llm_time:.1f}s ({diff['ml_vs_llm']:+.1f}% difference)")
+            discrepancy_details.append(
+                f"ML={ml_time:.1f}s vs LLM={llm_time:.1f}s ({diff['ml_vs_llm']:+.1f}% difference)"
+            )
 
         # Display reasoning based on method and situation
         if method_used == "ML":
@@ -857,45 +913,43 @@ def display_selection_reasoning(handicap_results: List[Dict], differences: List[
                 print(f"  [OK] ML available with {confidence} confidence")
                 print(f"  [OK] {predictions['ml']['explanation']}")
             if has_large_discrepancy:
-                print(f"  [WARN] Large discrepancy detected:")
+                print("  [WARN] Large discrepancy detected:")
                 for detail in discrepancy_details:
                     print(f"    - {detail}")
-                print(f"  -> ML chosen - judge should verify this prediction")
+                print("  -> ML chosen - judge should verify this prediction")
             else:
                 if base_time and abs((ml_time - base_time) / base_time * 100) < 15:
-                    print(f"  [OK] All methods agree within 15% (good data quality)")
-                print(f"  -> ML chosen (lowest expected error)")
+                    print("  [OK] All methods agree within 15% (good data quality)")
+                print("  -> ML chosen (lowest expected error)")
 
         elif method_used == "LLM":
             print(f"  [OK] LLM available with {confidence} confidence")
             print(f"  [OK] {predictions['llm']['explanation']}")
             if ml_time is None:
-                print(f"  ? ML not available")
+                print("  ? ML not available")
             if has_large_discrepancy:
-                print(f"  [WARN] Large discrepancy detected:")
+                print("  [WARN] Large discrepancy detected:")
                 for detail in discrepancy_details:
                     print(f"    - {detail}")
-            print(f"  -> LLM chosen (lowest expected error)")
+            print("  -> LLM chosen (lowest expected error)")
 
         elif method_used == "Baseline":
             print(f"  [OK] Baseline available with {confidence} confidence")
             print(f"  [OK] {predictions['baseline']['explanation']}")
             if ml_time is None and llm_time is None:
-                print(f"  ? ML and LLM not available")
+                print("  ? ML and LLM not available")
             if has_large_discrepancy:
-                print(f"  [WARN] Large discrepancy among predictions")
-            print(f"  -> Baseline chosen (lowest expected error)")
+                print("  [WARN] Large discrepancy among predictions")
+            print("  -> Baseline chosen (lowest expected error)")
 
         print()
 
-    print("="*70)
+    print("=" * 70)
     print()
 
 
 def display_comprehensive_prediction_analysis(
-    handicap_results: List[Dict],
-    wood_selection: Dict,
-    ml_training_info: Dict = None
+    handicap_results: List[Dict], wood_selection: Dict, ml_training_info: Dict = None
 ) -> None:
     """
     Display comprehensive analysis of all prediction methods.
@@ -923,9 +977,9 @@ def display_comprehensive_prediction_analysis(
     display_selection_reasoning(handicap_results, differences)
 
     # 4. Generate and display comprehensive AI analysis
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("AI ANALYSIS OF PREDICTIONS")
-    print("="*70)
+    print("=" * 70)
     print("\nAnalyzing prediction methods and discrepancies...")
 
     try:
@@ -933,6 +987,7 @@ def display_comprehensive_prediction_analysis(
 
         # Use format_ai_assessment for better formatting
         from woodchopping.simulation.fairness import format_ai_assessment
+
         print("")
         format_ai_assessment(analysis, width=100)
     except Exception as e:
@@ -940,14 +995,11 @@ def display_comprehensive_prediction_analysis(
         print("This is likely due to Ollama timeout or connection issues.")
         print("Try increasing the timeout in config.py or check if Ollama is running properly.")
 
-    print("="*70)
+    print("=" * 70)
     print()
 
 
-def display_basic_prediction_table(
-    handicap_results: List[Dict],
-    wood_selection: Dict
-) -> None:
+def display_basic_prediction_table(handicap_results: List[Dict], wood_selection: Dict) -> None:
     """
     Display basic prediction table for Phase 1 (initial display before Monte Carlo).
 
@@ -958,15 +1010,16 @@ def display_basic_prediction_table(
         wood_selection: Wood characteristics dict
     """
     # Show wood info
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print(f"  HANDICAP MARKS - {wood_selection.get('event', 'Unknown Event')}")
-    print("="*70)
-    species_code = wood_selection.get('species', 'Unknown')
-    size = wood_selection.get('size_mm', 0)
-    quality = wood_selection.get('quality', 5)
+    print("=" * 70)
+    species_code = wood_selection.get("species", "Unknown")
+    size = wood_selection.get("size_mm", 0)
+    quality = wood_selection.get("quality", 5)
 
     # Get species name from code
     from woodchopping.data import get_species_name_from_code
+
     species_name = get_species_name_from_code(species_code)
 
     print(f"Wood: {species_name} | Diameter: {size}mm | Quality: {quality}/10")
@@ -974,49 +1027,51 @@ def display_basic_prediction_table(
 
     # Show prediction table
     print(f"{'Competitor':<25} {'Mark':>4} | {'Baseline':>10} | {'ML':>10} | {'LLM':>10} | {'Used':>8} | {'Warnings'}")
-    print("-"*110)
+    print("-" * 110)
 
     warnings_to_show = []
 
     for result in handicap_results:
-        name = result['name'][:24]
-        mark = result['mark']
-        predictions = result['predictions']
+        name = result["name"][:24]
+        mark = result["mark"]
+        predictions = result["predictions"]
 
         # Get times or show N/A
-        baseline_time = predictions['baseline']['time']
-        ml_time = predictions['ml']['time']
-        llm_time = predictions['llm']['time']
+        baseline_time = predictions["baseline"]["time"]
+        ml_time = predictions["ml"]["time"]
+        llm_time = predictions["llm"]["time"]
 
         baseline_str = f"{baseline_time:.1f}s" if baseline_time else "N/A"
         ml_str = f"{ml_time:.1f}s" if ml_time else "N/A"
         llm_str = f"{llm_time:.1f}s" if llm_time else "N/A"
 
-        method_used = result['method_used']
+        method_used = result["method_used"]
 
         # Check for scaling warnings
         warning_flags = []
         method_pred = predictions.get(method_used.lower(), {})
 
-        if method_pred.get('scaled', False):
-            orig_diam = method_pred.get('original_diameter')
+        if method_pred.get("scaled", False):
+            orig_diam = method_pred.get("original_diameter")
             if orig_diam:
                 warning_flags.append(f"Scaled from {orig_diam:.0f}mm")
 
         # Check if no historical data (confidence is LOW and explanation mentions baseline)
-        if method_pred.get('confidence') == 'LOW' and 'baseline' in method_pred.get('explanation', '').lower():
-            if 'no history' in method_pred.get('explanation', '').lower():
+        if method_pred.get("confidence") == "LOW" and "baseline" in method_pred.get("explanation", "").lower():
+            if "no history" in method_pred.get("explanation", "").lower():
                 warning_flags.append("No UH data")
 
         warnings_str = ", ".join(warning_flags) if warning_flags else ""
 
-        print(f"{name:<25} {mark:>4} | {baseline_str:>10} | {ml_str:>10} | {llm_str:>10} | {method_used:>8} | {warnings_str}")
+        print(
+            f"{name:<25} {mark:>4} | {baseline_str:>10} | {ml_str:>10} | {llm_str:>10} | {method_used:>8} | {warnings_str}"
+        )
 
         # Collect detailed warnings for end display
-        if method_pred.get('scaling_warning'):
+        if method_pred.get("scaling_warning"):
             warnings_to_show.append(f"  - {name}: {method_pred['scaling_warning']}")
 
-    print("="*110)
+    print("=" * 110)
 
     # Show detailed warnings if any
     if warnings_to_show:
@@ -1033,9 +1088,9 @@ def display_handicap_calculation_explanation() -> None:
 
     This is shown in Phase 4 if requested by judge.
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("HOW HANDICAP MARKS ARE CALCULATED")
-    print("="*70)
+    print("=" * 70)
 
     print("\nMARK ASSIGNMENT RULES:")
     print("  1. Slowest predicted competitor receives Mark 3 (front marker)")
@@ -1059,14 +1114,11 @@ def display_handicap_calculation_explanation() -> None:
     print("  Confidence, scaling penalties, and CV MAE influence the choice")
     print("  Different competitors may use different methods")
 
-    print("="*70)
+    print("=" * 70)
     print()
 
 
-def display_dual_predictions(
-    handicap_results: List[Dict],
-    wood_selection: Dict
-) -> None:
+def display_dual_predictions(handicap_results: List[Dict], wood_selection: Dict) -> None:
     """
     Display handicap marks with all three prediction methods side-by-side.
 
@@ -1102,7 +1154,7 @@ def display_dual_predictions(
         return
 
     # Sort by mark (ascending)
-    sorted_results = sorted(handicap_results, key=lambda x: x['mark'])
+    sorted_results = sorted(handicap_results, key=lambda x: x["mark"])
 
     # Build header
     print("\n" + "=" * 110)
@@ -1117,17 +1169,17 @@ def display_dual_predictions(
     # Count methods available
     ml_available_count = 0
     llm_available_count = 0
-    method_counts = {'Baseline': 0, 'ML': 0, 'LLM': 0}
+    method_counts = {"Baseline": 0, "ML": 0, "LLM": 0}
 
     # Display each competitor
     for comp in sorted_results:
-        name = comp['name'][:35]
-        mark = comp['mark']
+        name = comp["name"][:35]
+        mark = comp["mark"]
 
         # Get predictions
-        baseline_time = comp['predictions']['baseline']['time']
-        ml_time = comp['predictions']['ml']['time']
-        llm_time = comp['predictions']['llm']['time']
+        baseline_time = comp["predictions"]["baseline"]["time"]
+        ml_time = comp["predictions"]["ml"]["time"]
+        llm_time = comp["predictions"]["llm"]["time"]
 
         # Format predictions (show "N/A" if None)
         baseline_str = f"{baseline_time:.1f}s" if baseline_time else "N/A"
@@ -1135,7 +1187,7 @@ def display_dual_predictions(
         llm_str = f"{llm_time:.1f}s" if llm_time else "N/A"
 
         # Track which method was used
-        method_used = comp.get('method_used', 'Unknown')
+        method_used = comp.get("method_used", "Unknown")
         method_counts[method_used] = method_counts.get(method_used, 0) + 1
 
         # Count availability
@@ -1150,18 +1202,24 @@ def display_dual_predictions(
 
     # Display prediction methods summary
     print("\nPrediction Methods Summary:")
-    print(f"  - Baseline: Statistical calculation (always available)")
+    print("  - Baseline: Statistical calculation (always available)")
 
     if ml_available_count > 0:
-        ml_status = "HIGH" if _model_training_data_size >= 80 else "MEDIUM" if _model_training_data_size >= 50 else "LOW"
-        print(f"  - ML Model: XGBoost trained on {_model_training_data_size} records [CONFIDENCE: {ml_status}] - Available for {ml_available_count}/{len(sorted_results)} competitors")
+        ml_status = (
+            "HIGH" if _model_training_data_size >= 80 else "MEDIUM" if _model_training_data_size >= 50 else "LOW"
+        )
+        print(
+            f"  - ML Model: XGBoost trained on {_model_training_data_size} records [CONFIDENCE: {ml_status}] - Available for {ml_available_count}/{len(sorted_results)} competitors"
+        )
     else:
-        print(f"  - ML Model: Not available (insufficient training data)")
+        print("  - ML Model: Not available (insufficient training data)")
 
     if llm_available_count > 0:
-        print(f"  - LLM Model: Ollama qwen2.5:7b AI prediction - Available for {llm_available_count}/{len(sorted_results)} competitors")
+        print(
+            f"  - LLM Model: Ollama qwen2.5:7b AI prediction - Available for {llm_available_count}/{len(sorted_results)} competitors"
+        )
     else:
-        print(f"  - LLM Model: Not available (Ollama not running or prediction failed)")
+        print("  - LLM Model: Not available (Ollama not running or prediction failed)")
 
     # Show which method was primarily used
     primary_method = max(method_counts, key=method_counts.get)
@@ -1172,7 +1230,7 @@ def display_dual_predictions(
     print("\n" + "=" * 110)
     analyze = input("\nPress Enter to see AI analysis of prediction differences (or 'n' to skip): ").strip().lower()
 
-    if analyze != 'n':
+    if analyze != "n":
         print("\n" + "=" * 110)
         print("AI ANALYSIS OF PREDICTIONS")
         print("=" * 110)

@@ -11,14 +11,15 @@ all STRATHEX UI callers.
 """
 
 from typing import Any, Callable, Dict, List, Optional
-import pandas as pd
 
+import pandas as pd
 from strathmark import HandicapCalculator, WoodProfile
+
+from woodchopping.data import standardize_results_data
 from woodchopping.strathmark_adapter import (
     build_competitor_records,
     mark_results_to_dicts,
 )
-from woodchopping.data import standardize_results_data
 
 
 def calculate_ai_enhanced_handicaps(
@@ -60,7 +61,7 @@ def calculate_ai_enhanced_handicaps(
     # Standardize results for consistent column names and outlier handling
     results_df, _ = standardize_results_data(results_df)
 
-    competitor_names = heat_assignment_df['competitor_name'].tolist()
+    competitor_names = heat_assignment_df["competitor_name"].tolist()
     if not competitor_names:
         return None
 

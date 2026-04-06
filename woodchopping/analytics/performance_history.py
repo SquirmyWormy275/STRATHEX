@@ -7,10 +7,11 @@ recent form tracking, and performance trend analysis.
 CRITICAL: Handles missing dates gracefully (only ~55% of results have dates)
 """
 
-import pandas as pd
+from datetime import datetime
+from typing import Dict, Optional
+
 import numpy as np
-from datetime import datetime, timedelta
-from typing import Dict, List, Optional
+import pandas as pd
 
 
 def analyze_performance_history(competitor_name: str, df_results: pd.DataFrame) -> Dict:
@@ -32,34 +33,34 @@ def analyze_performance_history(competitor_name: str, df_results: pd.DataFrame) 
     """
 
     # Filter results for this competitor
-    comp_results = df_results[df_results['Competitor'] == competitor_name].copy()
+    comp_results = df_results[df_results["Competitor"] == competitor_name].copy()
 
     if len(comp_results) == 0:
         return {
-            'total_comps': 0,
-            'event_breakdown': {},
-            'date_range': None,
-            'by_event': {},
-            'recent_form': [],
-            'trend': {'direction': 'NO DATA', 'slope': None}
+            "total_comps": 0,
+            "event_breakdown": {},
+            "date_range": None,
+            "by_event": {},
+            "recent_form": [],
+            "trend": {"direction": "NO DATA", "slope": None},
         }
 
     # Basic career summary
     total_comps = len(comp_results)
-    event_breakdown = comp_results['Event'].value_counts().to_dict()
+    event_breakdown = comp_results["Event"].value_counts().to_dict()
 
     # Date range analysis (handle missing dates)
-    dated_results = comp_results[comp_results['Date'].notna()].copy()
+    dated_results = comp_results[comp_results["Date"].notna()].copy()
     if len(dated_results) > 0:
         # Convert dates to datetime if they're strings
-        if not pd.api.types.is_datetime64_any_dtype(dated_results['Date']):
-            dated_results['Date'] = pd.to_datetime(dated_results['Date'], errors='coerce')
+        if not pd.api.types.is_datetime64_any_dtype(dated_results["Date"]):
+            dated_results["Date"] = pd.to_datetime(dated_results["Date"], errors="coerce")
 
-        dated_results = dated_results[dated_results['Date'].notna()]  # Remove any conversion failures
+        dated_results = dated_results[dated_results["Date"].notna()]  # Remove any conversion failures
 
         if len(dated_results) > 0:
-            first_date = dated_results['Date'].min()
-            last_date = dated_results['Date'].max()
+            first_date = dated_results["Date"].min()
+            last_date = dated_results["Date"].max()
 
             # Calculate human-readable time spans
             now = datetime.now()
@@ -74,12 +75,12 @@ def analyze_performance_history(competitor_name: str, df_results: pd.DataFrame) 
                 last_comp_ago = "Unknown"
 
             date_range = {
-                'first': first_date.strftime('%Y-%m-%d') if pd.notna(first_date) else None,
-                'last': last_date.strftime('%Y-%m-%d') if pd.notna(last_date) else None,
-                'available': len(dated_results),
-                'total': total_comps,
-                'first_ago': first_comp_ago,
-                'last_ago': last_comp_ago
+                "first": first_date.strftime("%Y-%m-%d") if pd.notna(first_date) else None,
+                "last": last_date.strftime("%Y-%m-%d") if pd.notna(last_date) else None,
+                "available": len(dated_results),
+                "total": total_comps,
+                "first_ago": first_comp_ago,
+                "last_ago": last_comp_ago,
             }
         else:
             date_range = None
@@ -88,85 +89,88 @@ def analyze_performance_history(competitor_name: str, df_results: pd.DataFrame) 
 
     # Per-event statistics
     by_event = {}
-    for event in comp_results['Event'].unique():
-        event_results = comp_results[comp_results['Event'] == event].copy()
+    for event in comp_results["Event"].unique():
+        event_results = comp_results[comp_results["Event"] == event].copy()
 
-        times = event_results['Time (seconds)'].values
-        best_idx = event_results['Time (seconds)'].idxmin()
+        times = event_results["Time (seconds)"].values
+        best_idx = event_results["Time (seconds)"].idxmin()
         best_row = event_results.loc[best_idx]
 
         # Build best time context string
         best_context_parts = []
-        if pd.notna(best_row.get('Size (mm)')):
+        if pd.notna(best_row.get("Size (mm)")):
             best_context_parts.append(f"{int(best_row['Size (mm)'])}mm")
-        if pd.notna(best_row.get('Species Code')):
-            best_context_parts.append(str(best_row['Species Code']))
-        if pd.notna(best_row.get('Date')):
-            date_val = pd.to_datetime(best_row['Date'], errors='coerce')
+        if pd.notna(best_row.get("Species Code")):
+            best_context_parts.append(str(best_row["Species Code"]))
+        if pd.notna(best_row.get("Date")):
+            date_val = pd.to_datetime(best_row["Date"], errors="coerce")
             if pd.notna(date_val):
-                best_context_parts.append(date_val.strftime('%Y-%m-%d'))
+                best_context_parts.append(date_val.strftime("%Y-%m-%d"))
 
-        best_context = ', '.join(best_context_parts) if best_context_parts else "No context"
+        best_context = ", ".join(best_context_parts) if best_context_parts else "No context"
 
         avg_time = np.mean(times)
         std_dev = np.std(times, ddof=1) if len(times) > 1 else 0.0
 
         by_event[event] = {
-            'best_time': float(best_row['Time (seconds)']),
-            'best_context': best_context,
-            'avg_time': float(avg_time),
-            'std_dev': float(std_dev),
-            'consistency_rating': _get_consistency_rating(std_dev),
-            'count': len(event_results)
+            "best_time": float(best_row["Time (seconds)"]),
+            "best_context": best_context,
+            "avg_time": float(avg_time),
+            "std_dev": float(std_dev),
+            "consistency_rating": _get_consistency_rating(std_dev),
+            "count": len(event_results),
         }
 
     # Recent form analysis (only if dates available)
     recent_form = []
     if date_range is not None and len(dated_results) > 0:
         # Sort by date descending and take last 5
-        recent = dated_results.sort_values('Date', ascending=False).head(5)
+        recent = dated_results.sort_values("Date", ascending=False).head(5)
 
         for _, row in recent.iterrows():
-            event = row['Event']
-            time_val = row['Time (seconds)']
+            event = row["Event"]
+            time_val = row["Time (seconds)"]
 
             # Calculate vs average for this event
             if event in by_event:
-                vs_average = time_val - by_event[event]['avg_time']
+                vs_average = time_val - by_event[event]["avg_time"]
             else:
                 vs_average = 0.0
 
             # Build context string
             context_parts = []
-            if pd.notna(row.get('Size (mm)')):
+            if pd.notna(row.get("Size (mm)")):
                 context_parts.append(f"{int(row['Size (mm)'])}mm")
             context_parts.append(event)
-            context = ' '.join(context_parts)
+            context = " ".join(context_parts)
 
             # Determine note
-            note = _get_performance_note(time_val, by_event.get(event, {}).get('best_time'), vs_average)
+            note = _get_performance_note(time_val, by_event.get(event, {}).get("best_time"), vs_average)
 
-            recent_form.append({
-                'date': pd.to_datetime(row['Date']).strftime('%Y-%m-%d'),
-                'time': float(time_val),
-                'context': context,
-                'vs_average': float(vs_average),
-                'note': note
-            })
+            recent_form.append(
+                {
+                    "date": pd.to_datetime(row["Date"]).strftime("%Y-%m-%d"),
+                    "time": float(time_val),
+                    "context": context,
+                    "vs_average": float(vs_average),
+                    "note": note,
+                }
+            )
 
     # Performance trend analysis (requires minimum 5 dated results)
-    trend = _calculate_trend(dated_results) if len(dated_results) >= 5 else {
-        'direction': 'INSUFFICIENT DATA (need dates)',
-        'slope': None
-    }
+    trend = (
+        _calculate_trend(dated_results)
+        if len(dated_results) >= 5
+        else {"direction": "INSUFFICIENT DATA (need dates)", "slope": None}
+    )
 
     return {
-        'total_comps': total_comps,
-        'event_breakdown': event_breakdown,
-        'date_range': date_range,
-        'by_event': by_event,
-        'recent_form': recent_form,
-        'trend': trend
+        "total_comps": total_comps,
+        "event_breakdown": event_breakdown,
+        "date_range": date_range,
+        "by_event": by_event,
+        "recent_form": recent_form,
+        "trend": trend,
     }
 
 
@@ -253,21 +257,21 @@ def _calculate_trend(dated_results: pd.DataFrame) -> Dict:
         - slope: Change in seconds per year (negative = improving)
     """
     if len(dated_results) < 5:
-        return {'direction': 'INSUFFICIENT DATA (need dates)', 'slope': None}
+        return {"direction": "INSUFFICIENT DATA (need dates)", "slope": None}
 
     # Convert dates to days since first result
-    sorted_results = dated_results.sort_values('Date').copy()
-    first_date = sorted_results['Date'].iloc[0]
+    sorted_results = dated_results.sort_values("Date").copy()
+    first_date = sorted_results["Date"].iloc[0]
 
-    sorted_results['days_since_start'] = (sorted_results['Date'] - first_date).dt.days
+    sorted_results["days_since_start"] = (sorted_results["Date"] - first_date).dt.days
 
     # Linear regression: time = slope * days + intercept
-    x = sorted_results['days_since_start'].values
-    y = sorted_results['Time (seconds)'].values
+    x = sorted_results["days_since_start"].values
+    y = sorted_results["Time (seconds)"].values
 
     # Check if we have variance in x (dates must span more than 1 day)
     if np.std(x) < 1e-6:
-        return {'direction': 'INSUFFICIENT DATE RANGE', 'slope': None}
+        return {"direction": "INSUFFICIENT DATE RANGE", "slope": None}
 
     # Fit linear regression
     coeffs = np.polyfit(x, y, 1)
@@ -284,7 +288,4 @@ def _calculate_trend(dated_results: pd.DataFrame) -> Dict:
     else:
         direction = "STABLE"
 
-    return {
-        'direction': direction,
-        'slope': float(slope_per_year)
-    }
+    return {"direction": direction, "slope": float(slope_per_year)}

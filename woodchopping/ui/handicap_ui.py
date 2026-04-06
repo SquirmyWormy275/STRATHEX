@@ -8,24 +8,20 @@ This module handles handicap viewing and results operations including:
 """
 
 from datetime import datetime
-from typing import Dict, Optional, List, Tuple
-import pandas as pd
-from openpyxl import load_workbook, Workbook
+from typing import Dict, List, Optional, Tuple
 
-from woodchopping.data import (
-    load_results_df,
-    get_competitor_id_name_mapping,
-    detect_results_sheet
-)
+import pandas as pd
+from openpyxl import Workbook, load_workbook
+
+from config import paths, rules, sim_config
+from woodchopping.data import detect_results_sheet, get_competitor_id_name_mapping, load_results_df
 from woodchopping.data.validation import (
-    is_high_variance_diameter,
+    check_diameter_sample_size,
     get_diameter_variance_warning,
-    check_diameter_sample_size
+    is_high_variance_diameter,
 )
 from woodchopping.handicaps import calculate_ai_enhanced_handicaps
 from woodchopping.simulation import simulate_and_assess_handicaps
-from config import paths, rules, sim_config
-
 
 # File/sheet names from config
 RESULTS_FILE = paths.EXCEL_FILE
@@ -144,14 +140,7 @@ def view_handicaps(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> No
         quality = 5
 
     # Calculate AI-enhanced handicaps
-    results = calculate_ai_enhanced_handicaps(
-        heat_assignment_df,
-        species,
-        diameter,
-        quality,
-        event_code,
-        results_df
-    )
+    results = calculate_ai_enhanced_handicaps(heat_assignment_df, species, diameter, quality, event_code, results_df)
 
     if not results:
         print("\nUnable to generate handicap marks. Please check historical data.")
@@ -174,31 +163,29 @@ def view_handicaps(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> No
     print("-" * 70)
 
     for result in results:
-        name = _truncate_text(result['name'], 28)
-        mark = result['mark']
-        predicted_time = result['predicted_time']
-        confidence = _truncate_text(str(result.get('confidence', 'N/A')), 8)
-        method_used = _truncate_text(str(result.get('method_used', 'N/A')), 10)
+        name = _truncate_text(result["name"], 28)
+        mark = result["mark"]
+        predicted_time = result["predicted_time"]
+        confidence = _truncate_text(str(result.get("confidence", "N/A")), 8)
+        method_used = _truncate_text(str(result.get("method_used", "N/A")), 10)
 
         print(f"{name:<28} {mark:>4d} {predicted_time:>6.1f}s {confidence:<8} {method_used:<10}")
 
-        explanation_text = result.get('explanation', '')
+        explanation_text = result.get("explanation", "")
         data_info = ""
-        if '(' in explanation_text:
-            data_info = explanation_text[explanation_text.find('(') + 1:]
-            if ')' in data_info:
-                data_info = data_info[:data_info.rfind(')')]
+        if "(" in explanation_text:
+            data_info = explanation_text[explanation_text.find("(") + 1 :]
+            if ")" in data_info:
+                data_info = data_info[: data_info.rfind(")")]
         if data_info:
             data_info = _truncate_text(data_info, 64)
             print(f"  Data: {data_info}")
 
     # Display wood selection
-    print("\n" + "="*70)
-    print(f"Selected Wood -> Species: {species}, "
-          f"Diameter: {diameter} mm, "
-          f"Quality: {quality}")
+    print("\n" + "=" * 70)
+    print(f"Selected Wood -> Species: {species}, Diameter: {diameter} mm, Quality: {quality}")
     print(f"Event: {event_code}")
-    print("="*70)
+    print("=" * 70)
 
     # Display warnings for high-variance diameters
     if is_high_variance_diameter(diameter):
@@ -210,13 +197,13 @@ def view_handicaps(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> No
     # Check sample size for this diameter
     sample_count, confidence = check_diameter_sample_size(results_df, diameter, event_code)
     if confidence in ["VERY LOW", "LOW"]:
-        print(f"\n{'='*70}")
-        print(f"  SPARSE DATA WARNING")
-        print(f"{'='*70}")
+        print(f"\n{'=' * 70}")
+        print("  SPARSE DATA WARNING")
+        print(f"{'=' * 70}")
         print(f"Historical data for {int(diameter)}mm {event_code}: {sample_count} results")
         print(f"Confidence level: {confidence}")
-        print(f"\nHandicaps based on LIMITED historical data - expect higher uncertainty.")
-        print(f"{'='*70}")
+        print("\nHandicaps based on LIMITED historical data - expect higher uncertainty.")
+        print(f"{'=' * 70}")
         input("\nPress Enter to continue...")
 
     # Offer Monte Carlo simulation
@@ -224,13 +211,15 @@ def view_handicaps(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> No
     print(f"This will simulate {sim_config.NUM_SIMULATIONS:,} races to assess fairness.")
     choice = input("Run simulation? (y/n): ").strip().lower()
 
-    if choice == 'y':
+    if choice == "y":
         simulate_and_assess_handicaps(results, num_simulations=sim_config.NUM_SIMULATIONS)
 
 
-def _display_live_standings(times_collected: Dict[str, float],
-                           all_competitors: List[str],
-                           num_to_advance: Optional[int] = None) -> None:
+def _display_live_standings(
+    times_collected: Dict[str, float],
+    all_competitors: List[str],
+    num_to_advance: Optional[int] = None,
+) -> None:
     """
     Display live standings as results are entered (A4 Feature).
 
@@ -298,10 +287,12 @@ def _display_live_standings(times_collected: Dict[str, float],
     print("-" * 70 + "\n")
 
 
-def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
-                           wood_selection: Optional[Dict] = None,
-                           round_object: Optional[Dict] = None,
-                           tournament_state: Optional[Dict] = None) -> None:
+def append_results_to_excel(
+    heat_assignment_df: Optional[pd.DataFrame] = None,
+    wood_selection: Optional[Dict] = None,
+    round_object: Optional[Dict] = None,
+    tournament_state: Optional[Dict] = None,
+) -> None:
     """Append heat results to Excel Results sheet.
 
     This function supports both:
@@ -322,14 +313,14 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
     # Determine if using new tournament system or legacy single-heat system
     if round_object is not None:
         # NEW TOURNAMENT SYSTEM
-        competitors_list = round_object['competitors']
-        round_name = round_object['round_name']
+        competitors_list = round_object["competitors"]
+        round_name = round_object["round_name"]
     else:
         # LEGACY SINGLE-HEAT SYSTEM
         if heat_assignment_df is None or heat_assignment_df.empty:
             print("No competitors in heat assignment.")
             return
-        competitors_list = heat_assignment_df['competitor_name'].tolist()
+        competitors_list = heat_assignment_df["competitor_name"].tolist()
         round_name = None
 
     event_code = wood_selection.get("event")
@@ -339,12 +330,12 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
 
     species = wood_selection.get("species")
     size_mm = wood_selection.get("size_mm")
-    quality = wood_selection.get("quality")
+    wood_selection.get("quality")
 
     # Generate HeatID
     if round_object and tournament_state:
         # NEW: Use round name and tournament context
-        event_name = tournament_state.get('event_name', 'Event')
+        event_name = tournament_state.get("event_name", "Event")
         heat_id = f"{event_code}-{event_name}-{round_name}".replace(" ", "-")
     else:
         # LEGACY: Prompt for Heat ID
@@ -359,11 +350,11 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
     times_collected = {}
 
     def _build_mark_map() -> Dict[str, int]:
-        if round_object and round_object.get('handicap_results'):
-            return {r.get('name'): r.get('mark') for r in round_object['handicap_results']}
+        if round_object and round_object.get("handicap_results"):
+            return {r.get("name"): r.get("mark") for r in round_object["handicap_results"]}
         if heat_assignment_df is not None and not heat_assignment_df.empty:
-            if 'competitor_name' in heat_assignment_df.columns and 'mark' in heat_assignment_df.columns:
-                return dict(zip(heat_assignment_df['competitor_name'], heat_assignment_df['mark']))
+            if "competitor_name" in heat_assignment_df.columns and "mark" in heat_assignment_df.columns:
+                return dict(zip(heat_assignment_df["competitor_name"], heat_assignment_df["mark"]))
         return {}
 
     def _collect_finish_order() -> Dict[str, int]:
@@ -401,7 +392,7 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
         # Determine advancement threshold if this is not a final
         num_to_advance = None
         if round_object:
-            num_to_advance = round_object.get('num_to_advance', 0)
+            num_to_advance = round_object.get("num_to_advance", 0)
 
         times_local = {}
         for idx, name in enumerate(competitors_list, 1):
@@ -430,9 +421,7 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
                 continue
         return times_local
 
-    def _edit_times(times_local: Dict[str, float],
-                    all_competitors: List[str],
-                    num_to_advance: Optional[int]) -> None:
+    def _edit_times(times_local: Dict[str, float], all_competitors: List[str], num_to_advance: Optional[int]) -> None:
         print("\nEdit a time (press Enter to stop).")
         while True:
             name = input("  Competitor name to edit: ").strip()
@@ -478,9 +467,9 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
     if choice == "1":
         finish_order = _collect_finish_order()
         if round_object is not None:
-            if 'finish_order' not in round_object:
-                round_object['finish_order'] = {}
-            round_object['finish_order'].update(finish_order)
+            if "finish_order" not in round_object:
+                round_object["finish_order"] = {}
+            round_object["finish_order"].update(finish_order)
         print("\nPlacings recorded. No times saved to Excel.")
         return
 
@@ -488,24 +477,24 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
         times_collected = _collect_times(require_all=True)
         finish_order = _compute_finish_order_from_times(times_collected)
         if round_object is not None:
-            if 'finish_order' not in round_object:
-                round_object['finish_order'] = {}
-            round_object['finish_order'].update(finish_order)
+            if "finish_order" not in round_object:
+                round_object["finish_order"] = {}
+            round_object["finish_order"].update(finish_order)
         if round_object is not None:
-            if 'actual_results' not in round_object:
-                round_object['actual_results'] = {}
-            round_object['actual_results'].update(times_collected)
+            if "actual_results" not in round_object:
+                round_object["actual_results"] = {}
+            round_object["actual_results"].update(times_collected)
     else:
         finish_order = _collect_finish_order()
         if round_object is not None:
-            if 'finish_order' not in round_object:
-                round_object['finish_order'] = {}
-            round_object['finish_order'].update(finish_order)
+            if "finish_order" not in round_object:
+                round_object["finish_order"] = {}
+            round_object["finish_order"].update(finish_order)
         times_collected = _collect_times(require_all=False)
         if round_object is not None and times_collected:
-            if 'actual_results' not in round_object:
-                round_object['actual_results'] = {}
-            round_object['actual_results'].update(times_collected)
+            if "actual_results" not in round_object:
+                round_object["actual_results"] = {}
+            round_object["actual_results"].update(times_collected)
 
     if not times_collected:
         print("\nNo cutting times recorded. Finish order saved; nothing written to Excel.")
@@ -518,16 +507,27 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
         competitor_id = name_to_id.get(str(name).strip().lower(), name)
 
         # Include Round and HeatID columns
-        rows_to_write.append([competitor_id, event_code, time_val, size_mm, species, timestamp, round_name or "", heat_id])
+        rows_to_write.append(
+            [
+                competitor_id,
+                event_code,
+                time_val,
+                size_mm,
+                species,
+                timestamp,
+                round_name or "",
+                heat_id,
+            ]
+        )
 
         # Store in round_object if using tournament system
         if round_object is not None:
-            if 'actual_results' not in round_object:
-                round_object['actual_results'] = {}
-            round_object['actual_results'][name] = time_val
-            if 'finish_order' not in round_object:
-                round_object['finish_order'] = {}
-            round_object['finish_order'][name] = finish_order.get(name, 999)
+            if "actual_results" not in round_object:
+                round_object["actual_results"] = {}
+            round_object["actual_results"][name] = time_val
+            if "finish_order" not in round_object:
+                round_object["finish_order"] = {}
+            round_object["finish_order"][name] = finish_order.get(name, 999)
 
     if not rows_to_write:
         print("No results to write.")
@@ -546,7 +546,18 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
 
         # Ensure header exists with Excel column names (NEW: includes Round and HeatID)
         if ws.max_row == 0:
-            ws.append(["CompetitorID", "Event", "Time (seconds)", "Size (mm)", "Species Code", "Date", "Round", "HeatID"])
+            ws.append(
+                [
+                    "CompetitorID",
+                    "Event",
+                    "Time (seconds)",
+                    "Size (mm)",
+                    "Species Code",
+                    "Date",
+                    "Round",
+                    "HeatID",
+                ]
+            )
 
         # Append rows
         for r in rows_to_write:
@@ -558,7 +569,7 @@ def append_results_to_excel(heat_assignment_df: Optional[pd.DataFrame] = None,
 
         # NEW: Update round status if using tournament system
         if round_object is not None:
-            round_object['status'] = 'in_progress'  # Mark as in progress (not completed until advancers selected)
+            round_object["status"] = "in_progress"  # Mark as in progress (not completed until advancers selected)
 
     except Exception as e:
         print(f"Error appending results: {e}")
@@ -577,9 +588,9 @@ def judge_approval() -> Tuple[str, str]:
         >>> if initials:
         ...     print(f"Approved by {initials} at {timestamp}")
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("  JUDGE APPROVAL REQUIRED")
-    print("="*70)
+    print("=" * 70)
     print("\nBy entering your initials, you certify that:")
     print("  - These handicap marks are fair and appropriate")
     print("  - All calculations have been reviewed")
@@ -589,21 +600,21 @@ def judge_approval() -> Tuple[str, str]:
     while True:
         initials = input("Enter your initials to approve (or 'cancel' to abort): ").strip().upper()
 
-        if initials.lower() == 'cancel':
+        if initials.lower() == "cancel":
             print("\nApproval cancelled. Handicaps NOT saved.")
-            return '', ''
+            return "", ""
 
         if len(initials) < 2 or len(initials) > 5:
             print("ERROR: Initials must be 2-5 characters")
             continue
 
-        if not initials.replace('.', '').isalpha():
+        if not initials.replace(".", "").isalpha():
             print("ERROR: Initials must contain only letters (and optional periods)")
             continue
 
         # Confirm
         confirm = input(f"\nConfirm approval by {initials}? (y/n): ").strip().lower()
-        if confirm == 'y':
+        if confirm == "y":
             timestamp = datetime.now().isoformat(timespec="seconds")
             print(f"\n[OK] Approved by {initials} at {timestamp}")
             return initials, timestamp
@@ -611,10 +622,7 @@ def judge_approval() -> Tuple[str, str]:
             print("Approval cancelled. Please re-enter initials.")
 
 
-def manual_adjust_handicaps(
-    handicap_results: List[Dict],
-    wood_selection: Dict
-) -> Tuple[List[Dict], str, str]:
+def manual_adjust_handicaps(handicap_results: List[Dict], wood_selection: Dict) -> Tuple[List[Dict], str, str]:
     """
     Allow judge to manually adjust individual handicap marks with validation.
 
@@ -646,9 +654,9 @@ def manual_adjust_handicaps(
     # Work with a copy to avoid modifying original
     adjusted_results = [result.copy() for result in handicap_results]
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("  MANUAL HANDICAP ADJUSTMENT")
-    print("="*70)
+    print("=" * 70)
     print("\nYou can manually override calculated handicap marks.")
     print("This is useful when:")
     print("  - Competitor has recent injury or condition affecting performance")
@@ -660,18 +668,18 @@ def manual_adjust_handicaps(
         # Display current handicaps
         _display_handicap_summary(adjusted_results, wood_selection)
 
-        print("\n" + "="*70)
+        print("\n" + "=" * 70)
         print("OPTIONS:")
         print("  1-{}  Select competitor number to adjust".format(len(adjusted_results)))
         print("  'done' Accept current handicaps and proceed to approval")
         print("  'cancel' Abandon changes and return to original handicaps")
-        print("="*70)
+        print("=" * 70)
 
         choice = input("\nYour choice: ").strip().lower()
 
-        if choice == 'done':
+        if choice == "done":
             # Proceed to approval
-            print("\n" + "="*70)
+            print("\n" + "=" * 70)
             print("FINAL HANDICAP MARKS:")
             _display_handicap_summary(adjusted_results, wood_selection)
 
@@ -681,15 +689,15 @@ def manual_adjust_handicaps(
             else:
                 # Approval cancelled - ask if they want to continue adjusting
                 retry = input("\nContinue adjusting? (y/n): ").strip().lower()
-                if retry != 'y':
-                    return handicap_results, '', ''  # Return original unchanged
+                if retry != "y":
+                    return handicap_results, "", ""  # Return original unchanged
                 continue
 
-        elif choice == 'cancel':
+        elif choice == "cancel":
             confirm = input("\nAre you sure you want to abandon all changes? (y/n): ").strip().lower()
-            if confirm == 'y':
+            if confirm == "y":
                 print("Changes abandoned. Returning to original handicaps.")
-                return handicap_results, '', ''
+                return handicap_results, "", ""
             continue
 
         else:
@@ -712,9 +720,11 @@ def manual_adjust_handicaps(
 
                 # Get new mark
                 while True:
-                    new_mark_str = input(f"\nEnter new mark ({rules.MIN_MARK_SECONDS}-{rules.MAX_TIME_LIMIT_SECONDS}s, or 'cancel'): ").strip()
+                    new_mark_str = input(
+                        f"\nEnter new mark ({rules.MIN_MARK_SECONDS}-{rules.MAX_TIME_LIMIT_SECONDS}s, or 'cancel'): "
+                    ).strip()
 
-                    if new_mark_str.lower() == 'cancel':
+                    if new_mark_str.lower() == "cancel":
                         print("Adjustment cancelled for this competitor.")
                         break
 
@@ -731,7 +741,7 @@ def manual_adjust_handicaps(
                             continue
 
                         # Show change
-                        old_mark = competitor['mark']
+                        old_mark = competitor["mark"]
 
                         # Prompt for reason (A5 feature)
                         print("\n" + "-" * 70)
@@ -741,10 +751,10 @@ def manual_adjust_handicaps(
                             print("[WARN] Reason is required for adjustment tracking.")
                             reason = input("Reason: ").strip()
 
-                        competitor['mark'] = new_mark
-                        competitor['manual_adjustment'] = True
-                        competitor['original_mark'] = old_mark
-                        competitor['adjustment_reason'] = reason  # A5: Store reason
+                        competitor["mark"] = new_mark
+                        competitor["manual_adjustment"] = True
+                        competitor["original_mark"] = old_mark
+                        competitor["adjustment_reason"] = reason  # A5: Store reason
 
                         print(f"\n[OK] Updated {competitor['name']}: Mark {old_mark} -> {new_mark}")
                         print(f"  Reason: {reason}")
@@ -767,26 +777,27 @@ def _display_handicap_summary(handicap_results: List[Dict], wood_selection: Dict
         handicap_results: List of handicap dicts
         wood_selection: Wood characteristics for context
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("HANDICAP MARKS")
-    print("="*70)
+    print("=" * 70)
 
     print(f"\n{'#':<4} {'Competitor':<25} {'Mark':<6} {'Pred Time':<10} {'Confidence':<12} {'Status'}")
-    print("-"*70)
+    print("-" * 70)
 
     for idx, result in enumerate(handicap_results, 1):
-        status = "*ADJUSTED*" if result.get('manual_adjustment') else ""
-        print(f"{idx:<4} {result['name']:<25} {result['mark']:<6} {result['predicted_time']:<10.1f} {result['confidence']:<12} {status}")
+        status = "*ADJUSTED*" if result.get("manual_adjustment") else ""
+        print(
+            f"{idx:<4} {result['name']:<25} {result['mark']:<6} {result['predicted_time']:<10.1f} {result['confidence']:<12} {status}"
+        )
 
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
 
     # Get species name from code
     from woodchopping.data import get_species_name_from_code
-    species_code = wood_selection.get('species', 'Unknown')
+
+    species_code = wood_selection.get("species", "Unknown")
     species_name = get_species_name_from_code(species_code)
 
-    print(f"Wood: {species_name}, "
-          f"{wood_selection.get('size_mm', '?')}mm, "
-          f"Quality {wood_selection.get('quality', '?')}")
+    print(f"Wood: {species_name}, {wood_selection.get('size_mm', '?')}mm, Quality {wood_selection.get('quality', '?')}")
     print(f"Event: {wood_selection.get('event', '?')}")
-    print("="*70)
+    print("=" * 70)

@@ -9,18 +9,20 @@ Functions:
     predict_time_randomforest() - Predict time using trained RandomForest model
 """
 
-from typing import Optional, Dict, Tuple
-import pandas as pd
+from typing import Dict, Optional, Tuple
+
 import numpy as np
+import pandas as pd
 
 from config import data_req, ml_config
-from woodchopping.data import load_results_df, engineer_features_for_ml, standardize_results_data
+from woodchopping.data import engineer_features_for_ml, load_results_df, standardize_results_data
 from woodchopping.predictions.baseline import calculate_performance_weight
 
 # ML Libraries
 try:
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.metrics import mean_absolute_error, r2_score
+
     RF_AVAILABLE = True
 except ImportError:
     RF_AVAILABLE = False
@@ -35,7 +37,7 @@ _rf_training_data_size = 0
 def train_randomforest_model(
     results_df: Optional[pd.DataFrame] = None,
     force_retrain: bool = False,
-    event_code: Optional[str] = None
+    event_code: Optional[str] = None,
 ) -> Optional[Dict[str, object]]:
     """
     Train RandomForest models for SB and UH events.
@@ -75,30 +77,28 @@ def train_randomforest_model(
     # Check cache
     if not force_retrain and _cached_rf_model_sb is not None and _cached_rf_model_uh is not None:
         if len(df_engineered) == _rf_training_data_size:
-            return {'SB': _cached_rf_model_sb, 'UH': _cached_rf_model_uh}
+            return {"SB": _cached_rf_model_sb, "UH": _cached_rf_model_uh}
 
     feature_cols = list(ml_config.FEATURE_NAMES)
     missing = [col for col in feature_cols if col not in df_engineered.columns]
     if missing:
         return None
 
-    events_to_train = [event_code.upper()] if event_code else ['SB', 'UH']
+    events_to_train = [event_code.upper()] if event_code else ["SB", "UH"]
     models = {}
 
     for event in events_to_train:
-        event_df = df_engineered[df_engineered['event'] == event].copy()
+        event_df = df_engineered[df_engineered["event"] == event].copy()
 
         if len(event_df) < data_req.MIN_ML_TRAINING_RECORDS_PER_EVENT:
             continue
 
         X = event_df[feature_cols]
-        y = event_df['raw_time']
+        y = event_df["raw_time"]
 
         # RandomForest doesn't support sample_weight for OOB, so we'll resample
         # based on time-decay weights to achieve similar effect
-        sample_weights = event_df['date'].apply(
-            lambda d: calculate_performance_weight(d, half_life_days=730)
-        )
+        sample_weights = event_df["date"].apply(lambda d: calculate_performance_weight(d, half_life_days=730))
 
         mask = ~(X.isna().any(axis=1) | y.isna())
         X = X[mask]
@@ -110,16 +110,16 @@ def train_randomforest_model(
 
         # RandomForest parameters (optimized for variance estimation)
         rf_params = {
-            'n_estimators': 300,  # More trees for stable variance estimates
-            'max_depth': 20,  # Deeper than XGBoost (RF handles overfitting via bagging)
-            'min_samples_split': 5,
-            'min_samples_leaf': 2,
-            'max_features': 'sqrt',  # sqrt(n_features) per split
-            'oob_score': True,  # Enable OOB for free CV
-            'bootstrap': True,
-            'random_state': ml_config.RANDOM_STATE,
-            'n_jobs': -1,  # Use all CPU cores
-            'warm_start': False
+            "n_estimators": 300,  # More trees for stable variance estimates
+            "max_depth": 20,  # Deeper than XGBoost (RF handles overfitting via bagging)
+            "min_samples_split": 5,
+            "min_samples_leaf": 2,
+            "max_features": "sqrt",  # sqrt(n_features) per split
+            "oob_score": True,  # Enable OOB for free CV
+            "bootstrap": True,
+            "random_state": ml_config.RANDOM_STATE,
+            "n_jobs": -1,  # Use all CPU cores
+            "warm_start": False,
         }
 
         # Train model (note: RF doesn't use sample_weight with OOB)
@@ -129,7 +129,7 @@ def train_randomforest_model(
         models[event] = model
 
         # Cache models
-        if event == 'SB':
+        if event == "SB":
             _cached_rf_model_sb = model
         else:
             _cached_rf_model_uh = model
@@ -145,7 +145,7 @@ def predict_time_randomforest(
     quality: int,
     event_code: str,
     results_df: Optional[pd.DataFrame] = None,
-    return_std: bool = False
+    return_std: bool = False,
 ) -> Tuple[Optional[float], str, str, Optional[float]]:
     """
     Predict competitor time using RandomForest model.
@@ -181,7 +181,7 @@ def predict_time_randomforest(
         return None, "N/A", "Feature engineering failed", None
 
     # Get competitor's features
-    competitor_data = df_engineered[df_engineered['competitor_name'] == competitor_name]
+    competitor_data = df_engineered[df_engineered["competitor_name"] == competitor_name]
     if competitor_data.empty:
         return None, "LOW", "No historical data for competitor", None
 
@@ -189,9 +189,9 @@ def predict_time_randomforest(
     latest = competitor_data.iloc[-1].copy()
 
     # Update with prediction parameters
-    latest['size_mm'] = diameter
-    latest['diameter_squared'] = diameter ** 2
-    latest['wood_quality'] = quality
+    latest["size_mm"] = diameter
+    latest["diameter_squared"] = diameter**2
+    latest["wood_quality"] = quality
 
     feature_cols = list(ml_config.FEATURE_NAMES)
     X_pred = latest[feature_cols].to_frame().T
@@ -204,7 +204,7 @@ def predict_time_randomforest(
 
     # Confidence based on OOB score and sample count
     n_samples = len(competitor_data)
-    oob_score = model.oob_score_ if hasattr(model, 'oob_score_') else 0.0
+    oob_score = model.oob_score_ if hasattr(model, "oob_score_") else 0.0
 
     if n_samples >= 10 and oob_score > 0.6:
         confidence = "HIGH"

@@ -8,11 +8,12 @@ This module handles wood block configuration menus including:
 """
 
 from typing import Dict
+
 from woodchopping.data import load_wood_data
 from woodchopping.data.validation import (
-    is_high_variance_diameter,
+    check_diameter_sample_size,
     get_diameter_variance_warning,
-    check_diameter_sample_size
+    is_high_variance_diameter,
 )
 
 
@@ -33,16 +34,19 @@ def wood_menu(wood_selection: Dict) -> Dict:
         print("\n--- Wood Menu ---")
 
         # Display species name instead of code
-        species_code = wood_selection.get('species')
+        species_code = wood_selection.get("species")
         if species_code:
             from woodchopping.data import get_species_name_from_code
+
             species_display = get_species_name_from_code(species_code)
         else:
             species_display = None
 
-        print(f"Current: species={species_display}, "
-              f"size_mm={wood_selection.get('size_mm')}, "
-              f"quality={wood_selection.get('quality')}")
+        print(
+            f"Current: species={species_display}, "
+            f"size_mm={wood_selection.get('size_mm')}, "
+            f"quality={wood_selection.get('quality')}"
+        )
         print("1) Select wood species")
         print("2) Enter size (mm)")
         print("3) Enter quality (1 = softest, 4-7 = average for species, 8-10 = hardest)")
@@ -91,7 +95,7 @@ def select_wood_species(wood_selection: Dict) -> Dict:
     for i, row in wood_df.iterrows():
         species_name = row["species"]
         species_code = row["speciesID"]
-        print(f"{i+1}) {species_code} - {species_name}")
+        print(f"{i + 1}) {species_code} - {species_name}")
 
     choice = input("Select species by number: ").strip()
 
@@ -126,14 +130,14 @@ def enter_wood_size_mm(wood_selection: Dict) -> Dict:
 
         # Check for high-variance diameters
         if is_high_variance_diameter(val):
-            print(f"\n{'='*70}")
+            print(f"\n{'=' * 70}")
             warning_msg = get_diameter_variance_warning(val)
             if warning_msg:
                 print(warning_msg)
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
 
             proceed = input("\nProceed with this diameter anyway? (y/n): ").strip().lower()
-            if proceed != 'y':
+            if proceed != "y":
                 print("Diameter not set. Please select a different size.")
                 wood_selection["size_mm"] = None
                 return wood_selection
@@ -142,18 +146,19 @@ def enter_wood_size_mm(wood_selection: Dict) -> Dict:
         event = wood_selection.get("event")
         if event and val:
             from woodchopping.data import load_results_df
+
             results_df = load_results_df()
             sample_count, confidence = check_diameter_sample_size(results_df, val, event)
 
             if confidence in ["VERY LOW", "LOW"]:
-                print(f"\n{'='*70}")
-                print(f"  SPARSE DATA WARNING")
-                print(f"{'='*70}")
+                print(f"\n{'=' * 70}")
+                print("  SPARSE DATA WARNING")
+                print(f"{'=' * 70}")
                 print(f"Historical data for {int(val)}mm {event}: {sample_count} results")
                 print(f"Confidence level: {confidence}")
-                print(f"\nPredictions for this diameter will be based on LIMITED historical data.")
-                print(f"Expect higher uncertainty in handicap calculations.")
-                print(f"{'='*70}")
+                print("\nPredictions for this diameter will be based on LIMITED historical data.")
+                print("Expect higher uncertainty in handicap calculations.")
+                print(f"{'=' * 70}")
                 input("\nPress Enter to continue...")
 
         format_wood(wood_selection)
@@ -212,6 +217,7 @@ def format_wood(ws: Dict) -> str:
     # Get species name from code for display
     if species_code != "--":
         from woodchopping.data import get_species_name_from_code
+
         species_display = get_species_name_from_code(species_code)
     else:
         species_display = "--"

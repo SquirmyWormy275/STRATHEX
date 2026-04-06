@@ -1,33 +1,30 @@
 """Analyze backtesting outliers to understand prediction errors."""
 
 import pandas as pd
-import numpy as np
-from woodchopping.data import load_results_df, load_and_clean_results
+
+from woodchopping.data import load_and_clean_results, load_results_df
 
 # Load full results
 results = load_and_clean_results(load_results_df())
 
 # Load backtesting results
-test = pd.read_csv('baseline_v2_realistic_backtesting.csv')
+test = pd.read_csv("baseline_v2_realistic_backtesting.csv")
 
-print("="*70)
+print("=" * 70)
 print("OUTLIER ANALYSIS: Cases where prediction error > 20s")
-print("="*70)
+print("=" * 70)
 print("\nChecking if actual times are outliers in competitor's history...\n")
 
-outliers = test[test['abs_error'] > 20].copy()
+outliers = test[test["abs_error"] > 20].copy()
 
 for _, row in outliers.iterrows():
-    comp_name = row['competitor_name']
-    actual = row['actual_time']
-    predicted = row['predicted_time']
-    event = row['event']
+    comp_name = row["competitor_name"]
+    actual = row["actual_time"]
+    predicted = row["predicted_time"]
+    event = row["event"]
 
     # Get competitor's full history for this event
-    comp_history = results[
-        (results['competitor_name'] == comp_name) &
-        (results['event'] == event)
-    ]['raw_time']
+    comp_history = results[(results["competitor_name"] == comp_name) & (results["event"] == event)]["raw_time"]
 
     if len(comp_history) > 0:
         median = comp_history.median()
@@ -50,16 +47,16 @@ for _, row in outliers.iterrows():
         print(f"  Is statistical outlier? {'YES - actual > Q3 + 1.5*IQR' if is_outlier else 'NO'}")
         print()
 
-print("="*70)
+print("=" * 70)
 print("SUMMARY")
-print("="*70)
+print("=" * 70)
 
 total_outliers = len(outliers)
-print(f"\nPredictions with error > 20s: {total_outliers}/{len(test)} ({total_outliers/len(test)*100:.1f}%)")
+print(f"\nPredictions with error > 20s: {total_outliers}/{len(test)} ({total_outliers / len(test) * 100:.1f}%)")
 
 # Calculate metrics excluding extreme outliers
-filtered = test[test['abs_error'] <= 20].copy()
-print(f"\nMetrics EXCLUDING extreme outliers (>20s error):")
+filtered = test[test["abs_error"] <= 20].copy()
+print("\nMetrics EXCLUDING extreme outliers (>20s error):")
 print(f"  Sample size: {len(filtered)}")
 print(f"  MAE: {filtered['abs_error'].mean():.2f}s")
 print(f"  Median error: {filtered['abs_error'].median():.2f}s")
@@ -68,8 +65,8 @@ print(f"  Within +/-3s: {(filtered['abs_error'] <= 3).sum() / len(filtered) * 10
 print(f"  Within +/-5s: {(filtered['abs_error'] <= 5).sum() / len(filtered) * 100:.1f}%")
 
 # Also try excluding 10s outliers
-filtered_10 = test[test['abs_error'] <= 10].copy()
-print(f"\nMetrics EXCLUDING major outliers (>10s error):")
+filtered_10 = test[test["abs_error"] <= 10].copy()
+print("\nMetrics EXCLUDING major outliers (>10s error):")
 print(f"  Sample size: {len(filtered_10)}")
 print(f"  MAE: {filtered_10['abs_error'].mean():.2f}s")
 print(f"  Median error: {filtered_10['abs_error'].median():.2f}s")

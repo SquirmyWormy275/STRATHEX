@@ -1,22 +1,15 @@
 """Helpers for checking competitor history and capturing manual results entry."""
 
-from typing import Dict, List, Tuple, Optional
 from datetime import datetime
+from typing import Dict, List, Tuple
+
 import pandas as pd
 
-from woodchopping.data import standardize_results_data, save_time_to_results
-from woodchopping.data.validation import (
-    check_competitor_eligibility,
-    ABSOLUTE_MINIMUM_RESULTS,
-    RECOMMENDED_MINIMUM_RESULTS
-)
+from woodchopping.data import save_time_to_results, standardize_results_data
+from woodchopping.data.validation import check_competitor_eligibility
 
 
-def competitor_has_event_history(
-    results_df: pd.DataFrame,
-    competitor_name: str,
-    event_code: str
-) -> bool:
+def competitor_has_event_history(results_df: pd.DataFrame, competitor_name: str, event_code: str) -> bool:
     """Return True if competitor has any results for the event."""
     if results_df is None or results_df.empty:
         return False
@@ -24,15 +17,15 @@ def competitor_has_event_history(
         return False
     event_code = str(event_code).strip().upper()
     results_df, _ = standardize_results_data(results_df)
-    comp_match = results_df["competitor_name"].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    comp_match = (
+        results_df["competitor_name"].astype(str).str.strip().str.lower() == str(competitor_name).strip().lower()
+    )
     event_match = results_df["event"].astype(str).str.strip().str.upper() == event_code
     return not results_df[comp_match & event_match].empty
 
 
 def filter_competitors_with_history(
-    comp_df: pd.DataFrame,
-    results_df: pd.DataFrame,
-    event_code: str
+    comp_df: pd.DataFrame, results_df: pd.DataFrame, event_code: str
 ) -> Tuple[pd.DataFrame, List[str]]:
     """
     Filter roster to only competitors meeting minimum data requirements.
@@ -65,8 +58,8 @@ def filter_competitors_with_history(
             # Store warning message in row if needed (for display later)
             if message:  # Has warning (N < 10)
                 row_copy = row.copy()
-                row_copy['_warning'] = message
-                row_copy['_result_count'] = count
+                row_copy["_warning"] = message
+                row_copy["_result_count"] = count
                 eligible[-1] = row_copy
         else:
             blocked.append(name)
@@ -79,11 +72,7 @@ def filter_competitors_with_history(
     return eligible_df, blocked
 
 
-def prompt_add_competitor_times(
-    competitor_name: str,
-    event_code: str,
-    wood_info: Dict[str, any]
-) -> bool:
+def prompt_add_competitor_times(competitor_name: str, event_code: str, wood_info: Dict[str, any]) -> bool:
     """
     Prompt judge to add historical times for a competitor and append to Results sheet.
 
@@ -127,7 +116,7 @@ def prompt_add_competitor_times(
             quality=quality,
             time=time_val,
             heat_id=heat_id,
-            timestamp=timestamp
+            timestamp=timestamp,
         )
         added_any = True
         print("  [OK] Added")

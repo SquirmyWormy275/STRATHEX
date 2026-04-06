@@ -1,13 +1,15 @@
 """Excel I/O functions for loading and saving woodchopping competition data."""
 
-import pandas as pd
-from openpyxl import load_workbook, Workbook
-from typing import Tuple, Dict
-from datetime import datetime
+import os
 
 # Import config
 import sys
-import os
+from datetime import datetime
+from typing import Dict, Tuple
+
+import pandas as pd
+from openpyxl import Workbook, load_workbook
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from config import paths
 
@@ -42,8 +44,8 @@ def get_competitor_id_name_mapping() -> Tuple[Dict[str, str], Dict[str, str]]:
         name_to_id = {}
 
         for _, row in df.iterrows():
-            comp_id = str(row.get('CompetitorID', '')).strip()
-            name = str(row.get('Name', '')).strip()
+            comp_id = str(row.get("CompetitorID", "")).strip()
+            name = str(row.get("Name", "")).strip()
 
             if comp_id and name:
                 id_to_name[comp_id] = name
@@ -69,11 +71,11 @@ def load_competitors_df() -> pd.DataFrame:
 
         # Standardize column names
         column_mapping = {
-            'Name': 'competitor_name',
-            'Country': 'competitor_country',
-            'CompetitorID': 'competitor_id',
-            'State/Province': 'state_province',
-            'Gender': 'gender'
+            "Name": "competitor_name",
+            "Country": "competitor_country",
+            "CompetitorID": "competitor_id",
+            "State/Province": "state_province",
+            "Gender": "gender",
         }
         df = df.rename(columns=column_mapping)
 
@@ -112,21 +114,21 @@ def load_wood_data() -> pd.DataFrame:
         sheet_name = _resolve_sheet_name(paths.EXCEL_FILE, paths.WOOD_SHEET)
         df = pd.read_excel(paths.EXCEL_FILE, sheet_name=sheet_name)
         # Drop unnamed columns from Excel artifacts
-        df = df.loc[:, [c for c in df.columns if not str(c).startswith('Unnamed')]].copy()
+        df = df.loc[:, [c for c in df.columns if not str(c).startswith("Unnamed")]].copy()
         df.columns = [str(c).strip() for c in df.columns]
 
         # Coerce numeric wood property columns
-        numeric_cols = ['janka_hard', 'spec_gravity', 'crush_strength', 'shear', 'MOR', 'MOE']
+        numeric_cols = ["janka_hard", "spec_gravity", "crush_strength", "shear", "MOR", "MOE"]
         for col in numeric_cols:
             if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+                df[col] = pd.to_numeric(df[col], errors="coerce")
                 if df[col].isna().any():
                     median_val = df[col].median()
                     if pd.notna(median_val):
                         df[col] = df[col].fillna(median_val)
 
-        if 'speciesID' in df.columns:
-            df['speciesID'] = df['speciesID'].astype(str).str.strip()
+        if "speciesID" in df.columns:
+            df["speciesID"] = df["speciesID"].astype(str).str.strip()
 
         return df
     except Exception as e:
@@ -136,6 +138,7 @@ def load_wood_data() -> pd.DataFrame:
 
 # Cache for species name lookups to avoid repeated Excel reads
 _species_cache = {}
+
 
 def get_species_name_from_code(species_code: str) -> str:
     """
@@ -157,11 +160,11 @@ def get_species_name_from_code(species_code: str) -> str:
         sheet_name = _resolve_sheet_name(paths.EXCEL_FILE, paths.WOOD_SHEET)
         wood_df = pd.read_excel(paths.EXCEL_FILE, sheet_name=sheet_name)
 
-        if 'speciesID' in wood_df.columns and 'species' in wood_df.columns:
+        if "speciesID" in wood_df.columns and "species" in wood_df.columns:
             # Build cache for all species
             for _, row in wood_df.iterrows():
-                code = row['speciesID']
-                name = row['species']
+                code = row["speciesID"]
+                name = row["species"]
                 if pd.notna(code) and pd.notna(name):
                     _species_cache[code] = name
 
@@ -201,82 +204,80 @@ def load_results_df() -> pd.DataFrame:
 
         # Map column names (Phase 5: Added FinishPosition for stacking ensemble)
         column_mapping = {
-            'CompetitorID': 'competitor_id',
-            'Event': 'event',
-            'Time (seconds)': 'raw_time',
-            'Size (mm)': 'size_mm',
-            'Species Code': 'species',
-            'Date': 'date',
-            'Date (optional)': 'date',
-            'Quality': 'quality',
-            'HeatID': 'heat_id',
-            'FinishPosition': 'finish_position'  # NEW: Nullable field for stacking ensemble
+            "CompetitorID": "competitor_id",
+            "Event": "event",
+            "Time (seconds)": "raw_time",
+            "Size (mm)": "size_mm",
+            "Species Code": "species",
+            "Date": "date",
+            "Date (optional)": "date",
+            "Quality": "quality",
+            "HeatID": "heat_id",
+            "FinishPosition": "finish_position",  # NEW: Nullable field for stacking ensemble
         }
         df = df.rename(columns=column_mapping)
 
         # Flexible normalization for variant headers (case-insensitive)
-        if 'size_mm' not in df.columns:
+        if "size_mm" not in df.columns:
             for col in df.columns:
                 col_lower = str(col).strip().lower()
-                if 'diameter' in col_lower or ('size' in col_lower and 'mm' in col_lower):
-                    df = df.rename(columns={col: 'size_mm'})
+                if "diameter" in col_lower or ("size" in col_lower and "mm" in col_lower):
+                    df = df.rename(columns={col: "size_mm"})
                     break
-        if 'raw_time' not in df.columns:
+        if "raw_time" not in df.columns:
             for col in df.columns:
                 col_lower = str(col).strip().lower()
-                if 'time' in col_lower and 'date' not in col_lower:
-                    df = df.rename(columns={col: 'raw_time'})
+                if "time" in col_lower and "date" not in col_lower:
+                    df = df.rename(columns={col: "raw_time"})
                     break
-        if 'event' not in df.columns:
+        if "event" not in df.columns:
             for col in df.columns:
                 col_lower = str(col).strip().lower()
-                if 'event' in col_lower:
-                    df = df.rename(columns={col: 'event'})
+                if "event" in col_lower:
+                    df = df.rename(columns={col: "event"})
                     break
-        if 'species' not in df.columns:
+        if "species" not in df.columns:
             for col in df.columns:
                 col_lower = str(col).strip().lower()
-                if 'species' in col_lower:
-                    df = df.rename(columns={col: 'species'})
+                if "species" in col_lower:
+                    df = df.rename(columns={col: "species"})
                     break
-        if 'competitor_id' not in df.columns and 'competitor_name' not in df.columns:
+        if "competitor_id" not in df.columns and "competitor_name" not in df.columns:
             for col in df.columns:
                 col_lower = str(col).strip().lower()
-                if 'competitor' in col_lower and 'id' in col_lower:
-                    df = df.rename(columns={col: 'competitor_id'})
+                if "competitor" in col_lower and "id" in col_lower:
+                    df = df.rename(columns={col: "competitor_id"})
                     break
-                if col_lower in {'name', 'competitor', 'competitor name'}:
-                    df = df.rename(columns={col: 'competitor_name'})
+                if col_lower in {"name", "competitor", "competitor name"}:
+                    df = df.rename(columns={col: "competitor_name"})
                     break
 
         # Phase 5: Handle FinishPosition field (backward compatible - nullable)
-        if 'finish_position' in df.columns:
-            df['finish_position'] = pd.to_numeric(df['finish_position'], errors='coerce')
+        if "finish_position" in df.columns:
+            df["finish_position"] = pd.to_numeric(df["finish_position"], errors="coerce")
             # NaN values indicate no finish position recorded (backward compatible)
         else:
             # Add column if missing (backward compatibility)
-            df['finish_position'] = pd.NA
+            df["finish_position"] = pd.NA
 
         # Convert IDs to names
-        if 'competitor_id' in df.columns and 'competitor_name' not in df.columns:
-            df['competitor_name'] = df['competitor_id'].apply(
-                lambda x: id_to_name.get(str(x).strip(), f"Unknown_{x}")
-            )
+        if "competitor_id" in df.columns and "competitor_name" not in df.columns:
+            df["competitor_name"] = df["competitor_id"].apply(lambda x: id_to_name.get(str(x).strip(), f"Unknown_{x}"))
 
         # Parse dates to datetime objects (critical for time-decay weighting)
-        if 'date' in df.columns:
-            df['date'] = pd.to_datetime(df['date'], errors='coerce')
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
             # Note: errors='coerce' converts invalid/missing dates to NaT (Not a Time)
             # This maintains backward compatibility with results that have no dates
 
         # Coerce quality to numeric (non-numeric values become NaN)
-        if 'quality' in df.columns:
-            df['quality'] = pd.to_numeric(df['quality'], errors='coerce')
+        if "quality" in df.columns:
+            df["quality"] = pd.to_numeric(df["quality"], errors="coerce")
 
         # CRITICAL FIX: Normalize event codes to uppercase (fix UH/uh and SB/sb inconsistency)
         # This bug caused separate baselines for uppercase vs lowercase event codes
-        if 'event' in df.columns:
-            df['event'] = df['event'].str.upper()
+        if "event" in df.columns:
+            df["event"] = df["event"].str.upper()
 
         return df
 
@@ -303,16 +304,18 @@ def detect_results_sheet(wb: Workbook):
     else:
         # Create Results sheet with proper headers
         ws = wb.create_sheet(paths.RESULTS_SHEET)
-        ws.append([
-            "CompetitorID",
-            "Event",
-            "Time (seconds)",
-            "Size (mm)",
-            "Species Code",
-            "Quality",
-            "HeatID",
-            "Date"
-        ])
+        ws.append(
+            [
+                "CompetitorID",
+                "Event",
+                "Time (seconds)",
+                "Size (mm)",
+                "Species Code",
+                "Quality",
+                "HeatID",
+                "Date",
+            ]
+        )
         print(f"Created '{paths.RESULTS_SHEET}' sheet with headers.")
         return ws
 
@@ -325,7 +328,7 @@ def save_time_to_results(
     quality: int,
     time: float,
     heat_id: str,
-    timestamp: str
+    timestamp: str,
 ) -> None:
     """
     Save a single time entry to the results sheet.
@@ -354,16 +357,7 @@ def save_time_to_results(
         wb = load_workbook(paths.EXCEL_FILE)
         ws = detect_results_sheet(wb)
 
-        ws.append([
-            competitor_id,
-            event,
-            time,
-            size,
-            species,
-            quality,
-            heat_id,
-            timestamp
-        ])
+        ws.append([competitor_id, event, time, size, species, quality, heat_id, timestamp])
 
         wb.save(paths.EXCEL_FILE)
         wb.close()
@@ -372,7 +366,9 @@ def save_time_to_results(
         print(f"Error saving time to results: {e}")
 
 
-def append_results_to_excel(heat_assignment_df, wood_selection, round_object=None, tournament_state=None, event_name=None):
+def append_results_to_excel(
+    heat_assignment_df, wood_selection, round_object=None, tournament_state=None, event_name=None
+):
     """
     Append heat results to Excel Results sheet.
 
@@ -388,14 +384,14 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
     # Determine if using new tournament system or legacy single-heat system
     if round_object is not None:
         # NEW TOURNAMENT SYSTEM
-        competitors_list = round_object['competitors']
-        round_name = round_object['round_name']
+        competitors_list = round_object["competitors"]
+        round_name = round_object["round_name"]
     else:
         # LEGACY SINGLE-HEAT SYSTEM
         if heat_assignment_df is None or heat_assignment_df.empty:
             print("No competitors in heat assignment.")
             return
-        competitors_list = heat_assignment_df['competitor_name'].tolist()
+        competitors_list = heat_assignment_df["competitor_name"].tolist()
         round_name = None
 
     event_code = wood_selection.get("event")
@@ -418,9 +414,9 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
             evt_name = event_name
         elif tournament_state:
             # Single-event tournament: get from tournament_state
-            evt_name = tournament_state.get('event_name', 'Event')
+            evt_name = tournament_state.get("event_name", "Event")
         else:
-            evt_name = 'Event'
+            evt_name = "Event"
 
         heat_id = f"{event_code}-{evt_name}-{round_name}".replace(" ", "-")
     else:
@@ -436,11 +432,11 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
     times_collected = {}
 
     def _build_mark_map() -> Dict[str, int]:
-        if round_object and round_object.get('handicap_results'):
-            return {r.get('name'): r.get('mark') for r in round_object['handicap_results']}
+        if round_object and round_object.get("handicap_results"):
+            return {r.get("name"): r.get("mark") for r in round_object["handicap_results"]}
         if heat_assignment_df is not None and not heat_assignment_df.empty:
-            if 'competitor_name' in heat_assignment_df.columns and 'mark' in heat_assignment_df.columns:
-                return dict(zip(heat_assignment_df['competitor_name'], heat_assignment_df['mark']))
+            if "competitor_name" in heat_assignment_df.columns and "mark" in heat_assignment_df.columns:
+                return dict(zip(heat_assignment_df["competitor_name"], heat_assignment_df["mark"]))
         return {}
 
     def _collect_finish_order() -> Dict[str, int]:
@@ -541,9 +537,9 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
     if choice == "1":
         finish_order = _collect_finish_order()
         if round_object is not None:
-            if 'finish_order' not in round_object:
-                round_object['finish_order'] = {}
-            round_object['finish_order'].update(finish_order)
+            if "finish_order" not in round_object:
+                round_object["finish_order"] = {}
+            round_object["finish_order"].update(finish_order)
         print("\nPlacings recorded. No times saved to Excel.")
         return
 
@@ -551,24 +547,24 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
         times_collected = _collect_times(require_all=True)
         finish_order = _compute_finish_order_from_times(times_collected)
         if round_object is not None:
-            if 'finish_order' not in round_object:
-                round_object['finish_order'] = {}
-            round_object['finish_order'].update(finish_order)
+            if "finish_order" not in round_object:
+                round_object["finish_order"] = {}
+            round_object["finish_order"].update(finish_order)
         if round_object is not None:
-            if 'actual_results' not in round_object:
-                round_object['actual_results'] = {}
-            round_object['actual_results'].update(times_collected)
+            if "actual_results" not in round_object:
+                round_object["actual_results"] = {}
+            round_object["actual_results"].update(times_collected)
     else:
         finish_order = _collect_finish_order()
         if round_object is not None:
-            if 'finish_order' not in round_object:
-                round_object['finish_order'] = {}
-            round_object['finish_order'].update(finish_order)
+            if "finish_order" not in round_object:
+                round_object["finish_order"] = {}
+            round_object["finish_order"].update(finish_order)
         times_collected = _collect_times(require_all=False)
         if round_object is not None and times_collected:
-            if 'actual_results' not in round_object:
-                round_object['actual_results'] = {}
-            round_object['actual_results'].update(times_collected)
+            if "actual_results" not in round_object:
+                round_object["actual_results"] = {}
+            round_object["actual_results"].update(times_collected)
 
     if not times_collected:
         print("\nNo cutting times recorded. Finish order saved; nothing written to Excel.")
@@ -581,25 +577,16 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
         competitor_id = name_to_id.get(str(name).strip().lower(), name)
 
         # Include Quality and HeatID columns
-        rows_to_write.append([
-            competitor_id,
-            event_code,
-            time_val,
-            size_mm,
-            species,
-            quality,
-            heat_id,
-            timestamp
-        ])
+        rows_to_write.append([competitor_id, event_code, time_val, size_mm, species, quality, heat_id, timestamp])
 
         # Store in round_object if using tournament system
         if round_object is not None:
-            if 'actual_results' not in round_object:
-                round_object['actual_results'] = {}
-            round_object['actual_results'][name] = time_val
-            if 'finish_order' not in round_object:
-                round_object['finish_order'] = {}
-            round_object['finish_order'][name] = finish_order.get(name, 999)
+            if "actual_results" not in round_object:
+                round_object["actual_results"] = {}
+            round_object["actual_results"][name] = time_val
+            if "finish_order" not in round_object:
+                round_object["finish_order"] = {}
+            round_object["finish_order"][name] = finish_order.get(name, 999)
 
     if not rows_to_write:
         print("No results to write.")
@@ -618,16 +605,18 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
 
         # Ensure header exists with Excel column names
         if ws.max_row == 0:
-            ws.append([
-                "CompetitorID",
-                "Event",
-                "Time (seconds)",
-                "Size (mm)",
-                "Species Code",
-                "Quality",
-                "HeatID",
-                "Date"
-            ])
+            ws.append(
+                [
+                    "CompetitorID",
+                    "Event",
+                    "Time (seconds)",
+                    "Size (mm)",
+                    "Species Code",
+                    "Quality",
+                    "HeatID",
+                    "Date",
+                ]
+            )
 
         # Append rows
         for r in rows_to_write:
@@ -640,13 +629,20 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
         # Dual-write to STRATHMARK ResultStore (persists results for improving future predictions)
         try:
             from woodchopping.data.store_registry import get_store as _get_store
+
             _store = _get_store()
             if _store is not None:
                 from woodchopping.strathmark_adapter import record_round_results as _record_rr
+
                 if round_object is not None:
                     _record_rr(
                         round_object,
-                        {'species': species, 'size_mm': size_mm, 'quality': quality, 'event': event_code},
+                        {
+                            "species": species,
+                            "size_mm": size_mm,
+                            "quality": quality,
+                            "event": event_code,
+                        },
                         _store,
                     )
                 else:
@@ -669,7 +665,7 @@ def append_results_to_excel(heat_assignment_df, wood_selection, round_object=Non
 
         # NEW: Update round status if using tournament system
         if round_object is not None:
-            round_object['status'] = 'in_progress'  # Mark as in progress (not completed until advancers selected)
+            round_object["status"] = "in_progress"  # Mark as in progress (not completed until advancers selected)
 
     except Exception as e:
         print(f"Error appending results: {e}")

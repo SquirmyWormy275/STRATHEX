@@ -6,7 +6,7 @@ This module provides text-based visualization of simulation statistics,
 including summary reports and bar charts showing win rate distributions.
 """
 
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def generate_simulation_summary(analysis: Dict[str, Any]) -> str:
@@ -45,11 +45,11 @@ def generate_simulation_summary(analysis: Dict[str, Any]) -> str:
         ...
     """
     summary = []
-    summary.append("\n" + "="*70)
+    summary.append("\n" + "=" * 70)
     summary.append("MONTE CARLO SIMULATION RESULTS")
-    summary.append("="*70)
+    summary.append("=" * 70)
     summary.append(f"Simulated {analysis['num_simulations']} races with +/- 3s absolute performance variation")
-    if analysis.get('heat_variance_seconds') is not None:
+    if analysis.get("heat_variance_seconds") is not None:
         summary.append(f"Heat variance: +/-{analysis['heat_variance_seconds']:.1f}s shared effect")
     summary.append("")
 
@@ -57,30 +57,28 @@ def generate_simulation_summary(analysis: Dict[str, Any]) -> str:
     summary.append(f"  Average spread: {analysis['avg_spread']:.1f} seconds")
     summary.append(f"  Median spread:  {analysis['median_spread']:.1f} seconds")
     summary.append(f"  Range: {analysis['min_spread']:.1f}s - {analysis['max_spread']:.1f}s")
-    summary.append(f"  Tight finish (<10s): {analysis['tight_finish_prob']*100:.1f}% of races")
-    summary.append(f"  Very tight (<5s):    {analysis['very_tight_finish_prob']*100:.1f}% of races")
+    summary.append(f"  Tight finish (<10s): {analysis['tight_finish_prob'] * 100:.1f}% of races")
+    summary.append(f"  Very tight (<5s):    {analysis['very_tight_finish_prob'] * 100:.1f}% of races")
     summary.append("")
 
     summary.append("WIN PROBABILITIES:")
-    sorted_winners = sorted(analysis['winner_percentages'].items(),
-                           key=lambda x: x[1], reverse=True)
+    sorted_winners = sorted(analysis["winner_percentages"].items(), key=lambda x: x[1], reverse=True)
     for name, pct in sorted_winners:
         summary.append(f"  {name:25s} {pct:5.1f}% ({analysis['winner_counts'][name]:4d} wins)")
     summary.append("")
 
     summary.append("AVERAGE FINISH POSITIONS:")
-    sorted_positions = sorted(analysis['avg_finish_positions'].items(),
-                             key=lambda x: x[1])
+    sorted_positions = sorted(analysis["avg_finish_positions"].items(), key=lambda x: x[1])
     for name, avg_pos in sorted_positions:
         summary.append(f"  {name:25s} Avg position: {avg_pos:.2f}")
     summary.append("")
 
     summary.append("FRONT/BACK MARKER ANALYSIS:")
     summary.append(f"  Front marker (slowest): {analysis['front_marker_name']}")
-    summary.append(f"    Win rate: {analysis['front_marker_wins']/analysis['num_simulations']*100:.1f}%")
+    summary.append(f"    Win rate: {analysis['front_marker_wins'] / analysis['num_simulations'] * 100:.1f}%")
     summary.append(f"  Back marker (fastest): {analysis['back_marker_name']}")
-    summary.append(f"    Win rate: {analysis['back_marker_wins']/analysis['num_simulations']*100:.1f}%")
-    summary.append("="*70)
+    summary.append(f"    Win rate: {analysis['back_marker_wins'] / analysis['num_simulations'] * 100:.1f}%")
+    summary.append("=" * 70)
 
     return "\n".join(summary)
 
@@ -122,18 +120,17 @@ def visualize_simulation_results(analysis: Dict[str, Any]) -> None:
         >>> analysis = run_monte_carlo_simulation(competitors)
         >>> visualize_simulation_results(analysis)
     """
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("WIN RATE VISUALIZATION")
-    print("="*70)
+    print("=" * 70)
 
-    max_pct = max(analysis['winner_percentages'].values())
+    max_pct = max(analysis["winner_percentages"].values())
 
-    sorted_winners = sorted(analysis['winner_percentages'].items(),
-                           key=lambda x: x[1], reverse=True)
+    sorted_winners = sorted(analysis["winner_percentages"].items(), key=lambda x: x[1], reverse=True)
 
     for name, pct in sorted_winners:
         bar_length = int((pct / max_pct) * 40)  # Scale to 40 chars max
         bar = "█" * bar_length
         print(f"{name:25s} {pct:5.1f}% {bar}")
 
-    print("="*70)
+    print("=" * 70)

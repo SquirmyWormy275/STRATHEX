@@ -5,6 +5,7 @@ Checks that predicted times are non-decreasing as diameter increases.
 """
 
 from typing import Dict, List, Optional
+
 import pandas as pd
 
 from woodchopping.data import load_results_df, load_wood_data, standardize_results_data
@@ -18,7 +19,7 @@ def run_diameter_monotonicity_diagnostic(
     event_filter: Optional[str] = None,
     min_results: int = 3,
     tolerance_seconds: float = 0.25,
-    sample_limit: Optional[int] = None
+    sample_limit: Optional[int] = None,
 ) -> Dict[str, any]:
     """
     Diagnose diameter monotonicity for Baseline V2 predictions.
@@ -41,7 +42,7 @@ def run_diameter_monotonicity_diagnostic(
         wood_df = load_wood_data()
 
     if results_df is None or results_df.empty:
-        return {'status': 'ERROR', 'message': 'No results data available'}
+        return {"status": "ERROR", "message": "No results data available"}
 
     results_df, _ = standardize_results_data(results_df)
 
@@ -56,7 +57,7 @@ def run_diameter_monotonicity_diagnostic(
     violations = []
     total_checked = 0
 
-    grouped = results_df.groupby(['competitor_name', 'event'])
+    grouped = results_df.groupby(["competitor_name", "event"])
     for (competitor, event), group in grouped:
         event_code = str(event).strip().upper()
         if event_filter and event_code != event_filter:
@@ -64,7 +65,7 @@ def run_diameter_monotonicity_diagnostic(
         if len(group) < min_results:
             continue
 
-        species_counts = group['species'].dropna().astype(str).str.strip().value_counts()
+        species_counts = group["species"].dropna().astype(str).str.strip().value_counts()
         if species_counts.empty:
             continue
         species = species_counts.index[0]
@@ -80,7 +81,7 @@ def run_diameter_monotonicity_diagnostic(
                 results_df=results_df,
                 wood_df=wood_df,
                 tournament_results=None,
-                enable_calibration=False
+                enable_calibration=False,
             )
             if pred is None:
                 preds = []
@@ -98,27 +99,29 @@ def run_diameter_monotonicity_diagnostic(
         last_d, last_t = preds[0]
         for d, t in preds[1:]:
             if t + tolerance_seconds < last_t:
-                violations.append({
-                    'competitor': competitor,
-                    'event': event_code,
-                    'species': species,
-                    'diameter_prev': last_d,
-                    'time_prev': last_t,
-                    'diameter': d,
-                    'time': t,
-                    'delta': t - last_t
-                })
+                violations.append(
+                    {
+                        "competitor": competitor,
+                        "event": event_code,
+                        "species": species,
+                        "diameter_prev": last_d,
+                        "time_prev": last_t,
+                        "diameter": d,
+                        "time": t,
+                        "delta": t - last_t,
+                    }
+                )
                 break
             last_d, last_t = d, t
 
     summary = {
-        'status': 'OK',
-        'total_checked': total_checked,
-        'violations': violations,
-        'violation_count': len(violations),
-        'tolerance_seconds': tolerance_seconds,
-        'diameters': diameters,
-        'event_filter': event_filter or 'ALL'
+        "status": "OK",
+        "total_checked": total_checked,
+        "violations": violations,
+        "violation_count": len(violations),
+        "tolerance_seconds": tolerance_seconds,
+        "diameters": diameters,
+        "event_filter": event_filter or "ALL",
     }
 
     print("\nDIAMETER MONOTONICITY DIAGNOSTIC")

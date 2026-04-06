@@ -4,7 +4,7 @@ This module provides tools for judges to track entry fee payments
 for multi-event tournaments.
 """
 
-from typing import Dict, List, Tuple
+from typing import Dict
 
 
 def view_entry_fee_status(tournament_state: Dict) -> None:
@@ -19,14 +19,14 @@ def view_entry_fee_status(tournament_state: Dict) -> None:
     Args:
         tournament_state: Multi-event tournament state
     """
-    if not tournament_state.get('entry_fee_tracking_enabled'):
+    if not tournament_state.get("entry_fee_tracking_enabled"):
         print("\n[WARN] Entry fee tracking is not enabled for this tournament")
         print("Enable it when setting up the tournament roster (Option 3)")
         input("\nPress Enter to continue...")
         return
 
-    roster = tournament_state.get('tournament_roster', [])
-    events = tournament_state.get('events', [])
+    roster = tournament_state.get("tournament_roster", [])
+    events = tournament_state.get("events", [])
 
     if not roster:
         print("\n[WARN] No competitors in tournament roster")
@@ -40,19 +40,19 @@ def view_entry_fee_status(tournament_state: Dict) -> None:
     unpaid_by_event = {}
 
     for comp in roster:
-        comp_name = comp['competitor_name']
+        comp_name = comp["competitor_name"]
         unpaid_events = []
 
-        for event_id in comp.get('events_entered', []):
+        for event_id in comp.get("events_entered", []):
             total_entries += 1
-            is_paid = comp.get('entry_fees_paid', {}).get(event_id, False)
+            is_paid = comp.get("entry_fees_paid", {}).get(event_id, False)
 
             if is_paid:
                 paid_entries += 1
             else:
                 # Find event name
-                event = next((e for e in events if e['event_id'] == event_id), None)
-                event_name = event['event_name'] if event else event_id
+                event = next((e for e in events if e["event_id"] == event_id), None)
+                event_name = event["event_name"] if event else event_id
                 unpaid_events.append(event_name)
 
                 # Track by event
@@ -110,11 +110,11 @@ def view_entry_fee_status(tournament_state: Dict) -> None:
 
         choice = input("\nChoice [1-4]: ").strip()
 
-        if choice == '1':
+        if choice == "1":
             mark_fees_paid_by_competitor(tournament_state, unpaid_by_competitor)
-        elif choice == '2':
+        elif choice == "2":
             mark_fees_paid_by_event(tournament_state, unpaid_by_event)
-        elif choice == '3':
+        elif choice == "3":
             display_payment_grid(tournament_state)
         else:
             return
@@ -146,8 +146,8 @@ def mark_fees_paid_by_competitor(tournament_state: Dict, unpaid_by_competitor: D
             selected_comp = comp_list[choice - 1]
 
             # Find competitor in roster
-            roster = tournament_state['tournament_roster']
-            comp_obj = next((c for c in roster if c['competitor_name'] == selected_comp), None)
+            roster = tournament_state["tournament_roster"]
+            comp_obj = next((c for c in roster if c["competitor_name"] == selected_comp), None)
 
             if not comp_obj:
                 print("\n[WARN] Competitor not found")
@@ -161,21 +161,22 @@ def mark_fees_paid_by_competitor(tournament_state: Dict, unpaid_by_competitor: D
                 print(f"  {idx}. {event_name}")
 
             # Find event IDs
-            events = tournament_state.get('events', [])
+            events = tournament_state.get("events", [])
             event_ids = []
             for event_name in unpaid_events:
-                event = next((e for e in events if e['event_name'] == event_name), None)
+                event = next((e for e in events if e["event_name"] == event_name), None)
                 if event:
-                    event_ids.append(event['event_id'])
+                    event_ids.append(event["event_id"])
 
             # Confirm
             confirm = input(f"\nMark all {len(unpaid_events)} fees as PAID? (y/n): ").strip().lower()
-            if confirm == 'y':
+            if confirm == "y":
                 for event_id in event_ids:
-                    comp_obj['entry_fees_paid'][event_id] = True
+                    comp_obj["entry_fees_paid"][event_id] = True
 
                 # Auto-save
                 from woodchopping.ui.multi_event_ui import auto_save_multi_event
+
                 auto_save_multi_event(tournament_state)
 
                 print(f"\n[OK] {len(event_ids)} fee(s) marked as paid for {selected_comp}")
@@ -216,15 +217,15 @@ def mark_fees_paid_by_event(tournament_state: Dict, unpaid_by_event: Dict) -> No
             unpaid_comps = unpaid_by_event[selected_event]
 
             # Find event ID
-            events = tournament_state.get('events', [])
-            event = next((e for e in events if e['event_name'] == selected_event), None)
+            events = tournament_state.get("events", [])
+            event = next((e for e in events if e["event_name"] == selected_event), None)
 
             if not event:
                 print("\n[WARN] Event not found")
                 input("\nPress Enter to continue...")
                 return
 
-            event_id = event['event_id']
+            event_id = event["event_id"]
 
             # Show unpaid competitors
             print(f"\nUnpaid fees for {selected_event}:")
@@ -233,18 +234,19 @@ def mark_fees_paid_by_event(tournament_state: Dict, unpaid_by_event: Dict) -> No
 
             # Confirm
             confirm = input(f"\nMark all {len(unpaid_comps)} fees as PAID? (y/n): ").strip().lower()
-            if confirm == 'y':
-                roster = tournament_state['tournament_roster']
+            if confirm == "y":
+                roster = tournament_state["tournament_roster"]
                 marked_count = 0
 
                 for comp_name in unpaid_comps:
-                    comp_obj = next((c for c in roster if c['competitor_name'] == comp_name), None)
+                    comp_obj = next((c for c in roster if c["competitor_name"] == comp_name), None)
                     if comp_obj:
-                        comp_obj['entry_fees_paid'][event_id] = True
+                        comp_obj["entry_fees_paid"][event_id] = True
                         marked_count += 1
 
                 # Auto-save
                 from woodchopping.ui.multi_event_ui import auto_save_multi_event
+
                 auto_save_multi_event(tournament_state)
 
                 print(f"\n[OK] {marked_count} fee(s) marked as paid for {selected_event}")
@@ -266,8 +268,8 @@ def display_payment_grid(tournament_state: Dict) -> None:
     Args:
         tournament_state: Multi-event tournament state
     """
-    roster = tournament_state.get('tournament_roster', [])
-    events = tournament_state.get('events', [])
+    roster = tournament_state.get("tournament_roster", [])
+    events = tournament_state.get("events", [])
 
     if not roster or not events:
         print("\n[WARN] No data to display")
@@ -287,7 +289,7 @@ def display_payment_grid(tournament_state: Dict) -> None:
     event_abbrevs = []
     for event in events:
         # Abbreviate event name to 10 chars max
-        abbrev = event['event_name'][:10]
+        abbrev = event["event_name"][:10]
         event_abbrevs.append(abbrev)
 
     header = "Competitor".ljust(30) + " | " + " | ".join(f"{abbrev:10s}" for abbrev in event_abbrevs)
@@ -296,14 +298,14 @@ def display_payment_grid(tournament_state: Dict) -> None:
 
     # Data rows
     for comp in roster:
-        comp_name = comp['competitor_name'][:28]  # Truncate if needed
+        comp_name = comp["competitor_name"][:28]  # Truncate if needed
         row = f"{comp_name:30s}"
 
         for event in events:
-            event_id = event['event_id']
+            event_id = event["event_id"]
 
-            if event_id in comp.get('events_entered', []):
-                is_paid = comp.get('entry_fees_paid', {}).get(event_id, False)
+            if event_id in comp.get("events_entered", []):
+                is_paid = comp.get("entry_fees_paid", {}).get(event_id, False)
                 symbol = "[OK]" if is_paid else "?"
             else:
                 symbol = "-"

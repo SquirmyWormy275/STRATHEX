@@ -7,15 +7,15 @@ This module handles roster management operations including:
 """
 
 from datetime import datetime
+
 import pandas as pd
-from openpyxl import load_workbook, Workbook
+from openpyxl import Workbook, load_workbook
+
+from config import paths
 from woodchopping.data import (
     load_competitors_df,
-    get_competitor_id_name_mapping,
-    save_time_to_results
+    save_time_to_results,
 )
-from config import paths
-
 
 # File/sheet names from config
 COMPETITOR_FILE = paths.EXCEL_FILE
@@ -59,16 +59,16 @@ def personnel_management_menu(comp_df: pd.DataFrame) -> pd.DataFrame:
             if comp_df is None or comp_df.empty:
                 print("\nRoster is empty. No competitors found.")
             else:
-                print(f"\n{'='*60}")
+                print(f"\n{'=' * 60}")
                 print(f"  FULL ROSTER ({len(comp_df)} competitors)")
-                print(f"{'='*60}")
+                print(f"{'=' * 60}")
                 for idx in range(len(comp_df)):
                     row = comp_df.iloc[idx]
                     name = row.get("competitor_name", "Unknown")
                     country = row.get("competitor_country", "Unknown")
                     comp_id = row.get("competitor_id", "N/A")
                     print(f"{idx + 1:3d}) {name:30s} ({country:15s}) [ID: {comp_id}]")
-                print(f"{'='*60}")
+                print(f"{'=' * 60}")
 
         elif choice == "3":
             # Remove competitor from roster
@@ -182,7 +182,7 @@ def add_historical_times_for_competitor(competitor_name: str) -> None:
             print(f"\n--- Historical Time Entry {times_added + 1} (minimum 3 required) ---")
         else:
             cont = input(f"\n{times_added} times entered. Add another? (y/n): ").strip().lower()
-            if cont != 'y':
+            if cont != "y":
                 break
             print(f"\n--- Historical Time Entry {times_added + 1} ---")
 
@@ -237,8 +237,16 @@ def add_historical_times_for_competitor(competitor_name: str) -> None:
                 timestamp = datetime.now().isoformat(timespec="seconds")
 
         # Save to results sheet
-        save_time_to_results(event, competitor_name, species, size_val, quality, time_val,
-                           f"Historical-{event}", timestamp)
+        save_time_to_results(
+            event,
+            competitor_name,
+            species,
+            size_val,
+            quality,
+            time_val,
+            f"Historical-{event}",
+            timestamp,
+        )
         times_added += 1
         print(f"[OK] Time #{times_added} saved successfully")
 

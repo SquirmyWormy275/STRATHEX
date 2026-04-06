@@ -15,17 +15,17 @@ returns only the winner's name (str), while STRATHEX callers expect the full
 list-of-dicts with finish time details.
 """
 
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
-
 import strathmark.variance as _sm_variance
-from config import rules, sim_config
 
+from config import rules, sim_config
 
 # ---------------------------------------------------------------------------
 # Per-competitor variance (delegates to STRATHMARK's version)
 # ---------------------------------------------------------------------------
+
 
 def _get_competitor_variance_seconds(comp: Dict[str, Any]) -> float:
     """Return per-competitor variance (std-dev) delegating to STRATHMARK."""
@@ -36,6 +36,7 @@ def _get_competitor_variance_seconds(comp: Dict[str, Any]) -> float:
 # simulate_single_race — kept local for backward compat
 # STRATHMARK's version returns str (winner name); STRATHEX expects list[dict].
 # ---------------------------------------------------------------------------
+
 
 def simulate_single_race(competitors_with_marks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
@@ -55,35 +56,36 @@ def simulate_single_race(competitors_with_marks: List[Dict[str, Any]]) -> List[D
     heat_delta = np.random.normal(0.0, sim_config.HEAT_VARIANCE_SECONDS)
 
     for comp in competitors_with_marks:
-        pt = comp.get('predicted_time')
+        pt = comp.get("predicted_time")
         if pt is None or (isinstance(pt, float) and np.isnan(pt)):
-            raise ValueError(
-                f"Invalid predicted_time for competitor '{comp.get('name', 'unknown')}': {pt!r}"
-            )
+            raise ValueError(f"Invalid predicted_time for competitor '{comp.get('name', 'unknown')}': {pt!r}")
         variance_seconds = _get_competitor_variance_seconds(comp)
         actual_time = np.random.normal(
             pt + heat_delta,
             variance_seconds,
         )
         actual_time = max(actual_time, pt * 0.5)
-        start_delay = comp['mark'] - rules.MIN_MARK_SECONDS
+        start_delay = comp["mark"] - rules.MIN_MARK_SECONDS
         finish_time = start_delay + actual_time
 
-        finish_results.append({
-            'name': comp['name'],
-            'mark': comp['mark'],
-            'actual_time': actual_time,
-            'finish_time': finish_time,
-            'predicted_time': comp['predicted_time'],
-        })
+        finish_results.append(
+            {
+                "name": comp["name"],
+                "mark": comp["mark"],
+                "actual_time": actual_time,
+                "finish_time": finish_time,
+                "predicted_time": comp["predicted_time"],
+            }
+        )
 
-    finish_results.sort(key=lambda x: x['finish_time'])
+    finish_results.sort(key=lambda x: x["finish_time"])
     return finish_results
 
 
 # ---------------------------------------------------------------------------
 # run_monte_carlo_simulation — delegates to STRATHMARK
 # ---------------------------------------------------------------------------
+
 
 def run_monte_carlo_simulation(
     competitors_with_marks: List[Dict[str, Any]],
@@ -131,20 +133,20 @@ def run_monte_carlo_simulation(
     # STRATHEX UI code reads stats['mean'], stats['min'], stats['max'],
     # but CompetitorTimeStats uses .min_time / .max_time attribute names.
     converted: Dict[str, Any] = {}
-    for name, stats in analysis.get('competitor_time_stats', {}).items():
-        if hasattr(stats, 'mean'):
+    for name, stats in analysis.get("competitor_time_stats", {}).items():
+        if hasattr(stats, "mean"):
             converted[name] = {
-                'mean': stats.mean,
-                'std_dev': stats.std_dev,
-                'min': stats.min_time,
-                'max': stats.max_time,
-                'p25': stats.p25,
-                'p50': stats.p50,
-                'p75': stats.p75,
-                'consistency_rating': stats.consistency_rating,
+                "mean": stats.mean,
+                "std_dev": stats.std_dev,
+                "min": stats.min_time,
+                "max": stats.max_time,
+                "p25": stats.p25,
+                "p50": stats.p50,
+                "p75": stats.p75,
+                "consistency_rating": stats.consistency_rating,
             }
         else:
             converted[name] = stats  # already a plain dict
 
-    analysis['competitor_time_stats'] = converted
+    analysis["competitor_time_stats"] = converted
     return analysis

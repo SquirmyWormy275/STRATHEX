@@ -1,11 +1,13 @@
 """Data validation and cleaning functions for woodchopping competition results."""
 
-import pandas as pd
-from typing import List, Tuple, Optional
+import os
 
 # Import config
 import sys
-import os
+from typing import List, Optional, Tuple
+
+import pandas as pd
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from config import data_req, events
 
@@ -37,30 +39,29 @@ def validate_results_data(results_df: pd.DataFrame) -> Tuple[Optional[pd.DataFra
     initial_count = len(df)
 
     # Check for required columns
-    required_cols = ['competitor_name', 'event', 'raw_time', 'size_mm', 'species']
+    required_cols = ["competitor_name", "event", "raw_time", "size_mm", "species"]
     missing_cols = [col for col in required_cols if col not in df.columns]
     if missing_cols:
         warnings.append(f"Missing columns: {missing_cols}")
         return None, warnings
 
     # Coerce quality to numeric if present (non-numeric becomes NaN)
-    if 'quality' in df.columns:
-        df['quality'] = pd.to_numeric(df['quality'], errors='coerce')
+    if "quality" in df.columns:
+        df["quality"] = pd.to_numeric(df["quality"], errors="coerce")
 
     # Coerce time and size to numeric to prevent comparison errors
-    df['raw_time'] = pd.to_numeric(df['raw_time'], errors='coerce')
-    df['size_mm'] = pd.to_numeric(df['size_mm'], errors='coerce')
+    df["raw_time"] = pd.to_numeric(df["raw_time"], errors="coerce")
+    df["size_mm"] = pd.to_numeric(df["size_mm"], errors="coerce")
 
     # Remove rows with missing core numeric fields
-    missing_numeric = df[df['raw_time'].isna() | df['size_mm'].isna()]
+    missing_numeric = df[df["raw_time"].isna() | df["size_mm"].isna()]
     if not missing_numeric.empty:
         warnings.append(f"Removed {len(missing_numeric)} records with non-numeric time/diameter")
-        df = df[df['raw_time'].notna() & df['size_mm'].notna()]
+        df = df[df["raw_time"].notna() & df["size_mm"].notna()]
 
     # Remove invalid times (use config constants)
     invalid_times = df[
-        (df['raw_time'] <= data_req.MIN_VALID_TIME_SECONDS) |
-        (df['raw_time'] > data_req.MAX_VALID_TIME_SECONDS)
+        (df["raw_time"] <= data_req.MIN_VALID_TIME_SECONDS) | (df["raw_time"] > data_req.MAX_VALID_TIME_SECONDS)
     ]
     if not invalid_times.empty:
         warnings.append(
@@ -68,66 +69,59 @@ def validate_results_data(results_df: pd.DataFrame) -> Tuple[Optional[pd.DataFra
             f"(<{data_req.MIN_VALID_TIME_SECONDS}s or >{data_req.MAX_VALID_TIME_SECONDS}s)"
         )
         df = df[
-            (df['raw_time'] > data_req.MIN_VALID_TIME_SECONDS) &
-            (df['raw_time'] <= data_req.MAX_VALID_TIME_SECONDS)
+            (df["raw_time"] > data_req.MIN_VALID_TIME_SECONDS) & (df["raw_time"] <= data_req.MAX_VALID_TIME_SECONDS)
         ]
 
     # Remove invalid sizes (use config constants)
-    invalid_sizes = df[
-        (df['size_mm'] < data_req.MIN_DIAMETER_MM) |
-        (df['size_mm'] > data_req.MAX_DIAMETER_MM)
-    ]
+    invalid_sizes = df[(df["size_mm"] < data_req.MIN_DIAMETER_MM) | (df["size_mm"] > data_req.MAX_DIAMETER_MM)]
     if not invalid_sizes.empty:
         warnings.append(
             f"Removed {len(invalid_sizes)} records with invalid diameters "
             f"(<{data_req.MIN_DIAMETER_MM}mm or >{data_req.MAX_DIAMETER_MM}mm)"
         )
-        df = df[
-            (df['size_mm'] >= data_req.MIN_DIAMETER_MM) &
-            (df['size_mm'] <= data_req.MAX_DIAMETER_MM)
-        ]
+        df = df[(df["size_mm"] >= data_req.MIN_DIAMETER_MM) & (df["size_mm"] <= data_req.MAX_DIAMETER_MM)]
 
     # Check for missing competitor names
-    missing_names = df[df['competitor_name'].isna() | (df['competitor_name'] == '')]
+    missing_names = df[df["competitor_name"].isna() | (df["competitor_name"] == "")]
     if not missing_names.empty:
         warnings.append(f"Removed {len(missing_names)} records with missing competitor names")
-        df = df[df['competitor_name'].notna() & (df['competitor_name'] != '')]
+        df = df[df["competitor_name"].notna() & (df["competitor_name"] != "")]
 
     # Normalize event codes before validation (e.g., "sb" -> "SB")
-    if 'event' in df.columns:
-        df['event'] = df['event'].astype(str).str.strip().str.upper()
+    if "event" in df.columns:
+        df["event"] = df["event"].astype(str).str.strip().str.upper()
 
     # Check for invalid event codes (use config constants)
-    invalid_events = df[~df['event'].isin(events.VALID_EVENTS)]
+    invalid_events = df[~df["event"].isin(events.VALID_EVENTS)]
     if not invalid_events.empty:
         warnings.append(
             f"Removed {len(invalid_events)} records with invalid event codes "
             f"(must be {' or '.join(events.VALID_EVENTS)})"
         )
-        df = df[df['event'].isin(events.VALID_EVENTS)]
+        df = df[df["event"].isin(events.VALID_EVENTS)]
 
     # Detect statistical outliers using IQR method (event + size bins when possible)
     outliers_removed = 0
-    if 'size_mm' in df.columns:
-        df['size_bin'] = (df['size_mm'] / 25.0).round() * 25.0
+    if "size_mm" in df.columns:
+        df["size_bin"] = (df["size_mm"] / 25.0).round() * 25.0
 
     for event in events.VALID_EVENTS:
-        event_df = df[df['event'] == event]
+        event_df = df[df["event"] == event]
         if len(event_df) <= 10:
             continue
 
         # Event-level fallback bounds
-        Q1 = event_df['raw_time'].quantile(0.25)
-        Q3 = event_df['raw_time'].quantile(0.75)
+        Q1 = event_df["raw_time"].quantile(0.25)
+        Q3 = event_df["raw_time"].quantile(0.75)
         IQR = Q3 - Q1
         event_lower = Q1 - data_req.OUTLIER_IQR_MULTIPLIER * IQR
         event_upper = Q3 + data_req.OUTLIER_IQR_MULTIPLIER * IQR
 
-        if 'size_bin' in df.columns:
-            for _, group in event_df.groupby('size_bin'):
+        if "size_bin" in df.columns:
+            for _, group in event_df.groupby("size_bin"):
                 if len(group) >= 10:
-                    gq1 = group['raw_time'].quantile(0.25)
-                    gq3 = group['raw_time'].quantile(0.75)
+                    gq1 = group["raw_time"].quantile(0.25)
+                    gq3 = group["raw_time"].quantile(0.75)
                     giqr = gq3 - gq1
                     lower = gq1 - data_req.OUTLIER_IQR_MULTIPLIER * giqr
                     upper = gq3 + data_req.OUTLIER_IQR_MULTIPLIER * giqr
@@ -135,32 +129,28 @@ def validate_results_data(results_df: pd.DataFrame) -> Tuple[Optional[pd.DataFra
                     lower = event_lower
                     upper = event_upper
 
-                outliers = group[(group['raw_time'] < lower) | (group['raw_time'] > upper)]
+                outliers = group[(group["raw_time"] < lower) | (group["raw_time"] > upper)]
                 if not outliers.empty:
                     outliers_removed += len(outliers)
                     df = df.drop(index=outliers.index)
         else:
-            outliers = event_df[
-                (event_df['raw_time'] < event_lower) | (event_df['raw_time'] > event_upper)
-            ]
+            outliers = event_df[(event_df["raw_time"] < event_lower) | (event_df["raw_time"] > event_upper)]
             if not outliers.empty:
                 outliers_removed += len(outliers)
                 df = df.drop(index=outliers.index)
 
     if outliers_removed > 0:
         warnings.append(
-            f"Removed {outliers_removed} statistical outliers "
-            f"(>{data_req.OUTLIER_IQR_MULTIPLIER}x IQR from median)"
+            f"Removed {outliers_removed} statistical outliers (>{data_req.OUTLIER_IQR_MULTIPLIER}x IQR from median)"
         )
 
-    if 'size_bin' in df.columns:
-        df = df.drop(columns=['size_bin'])
+    if "size_bin" in df.columns:
+        df = df.drop(columns=["size_bin"])
 
     final_count = len(df)
     if final_count < initial_count:
         warnings.append(
-            f"Data cleaned: {initial_count} -> {final_count} records "
-            f"({initial_count - final_count} removed)"
+            f"Data cleaned: {initial_count} -> {final_count} records ({initial_count - final_count} removed)"
         )
 
     if final_count < data_req.MIN_ML_TRAINING_RECORDS_TOTAL:
@@ -258,12 +248,12 @@ def get_competitor_result_count(results_df: pd.DataFrame, competitor_name: str, 
         return 0
 
     # Filter by competitor name (case-insensitive)
-    comp_data = results_df[results_df['competitor_name'].str.lower() == competitor_name.lower()]
+    comp_data = results_df[results_df["competitor_name"].str.lower() == competitor_name.lower()]
 
     # Filter by event if specified
     if event:
         event = event.upper()
-        comp_data = comp_data[comp_data['event'] == event]
+        comp_data = comp_data[comp_data["event"] == event]
 
     return len(comp_data)
 
@@ -325,7 +315,9 @@ def check_competitor_eligibility(results_df: pd.DataFrame, competitor_name: str,
         return True, "", result_count
 
 
-def validate_all_competitors_eligibility(results_df: pd.DataFrame, competitor_names: List[str], event: str) -> Tuple[List[str], List[str], List[str]]:
+def validate_all_competitors_eligibility(
+    results_df: pd.DataFrame, competitor_names: List[str], event: str
+) -> Tuple[List[str], List[str], List[str]]:
     """
     Validate all competitors in a list for minimum data requirements.
 
@@ -364,7 +356,7 @@ HIGH_VARIANCE_DIAMETERS = {
     279: 71,  # CoV = 71% (HIGHEST VARIANCE)
     254: 67,  # CoV = 67%
     270: 63,  # CoV = 63%
-    275: 61   # CoV = 61%
+    275: 61,  # CoV = 61%
 }
 
 HIGH_VARIANCE_THRESHOLD_COV = 60  # Coefficient of Variation threshold (%)
@@ -426,9 +418,9 @@ def check_diameter_sample_size(results_df: pd.DataFrame, diameter_mm: float, eve
     # Filter by event and diameter (within ±5mm tolerance)
     event = event.upper()
     diameter_data = results_df[
-        (results_df['event'] == event) &
-        (results_df['size_mm'] >= diameter_mm - 5) &
-        (results_df['size_mm'] <= diameter_mm + 5)
+        (results_df["event"] == event)
+        & (results_df["size_mm"] >= diameter_mm - 5)
+        & (results_df["size_mm"] <= diameter_mm + 5)
     ]
 
     sample_count = len(diameter_data)

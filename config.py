@@ -6,8 +6,8 @@ to improve maintainability and make it easier to adjust system behavior.
 """
 
 from dataclasses import dataclass
-from typing import Final
 from pathlib import Path as _Path
+from typing import Final
 
 # Resolve the project root relative to this config file so that
 # woodchopping.xlsx is found correctly regardless of the working directory.
@@ -17,6 +17,7 @@ _BASE_DIR = _Path(__file__).parent
 # =============================================================================
 # AAA Competition Rules
 # =============================================================================
+
 
 @dataclass(frozen=True)
 class Rules:
@@ -37,6 +38,7 @@ class Rules:
 # =============================================================================
 # Data Requirements & Validation
 # =============================================================================
+
 
 @dataclass(frozen=True)
 class DataRequirements:
@@ -81,6 +83,7 @@ class DataRequirements:
 # Machine Learning Configuration
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class MLConfig:
     """XGBoost ML model hyperparameters and settings"""
@@ -98,10 +101,10 @@ class MLConfig:
     RANDOM_STATE: int = 42
     """Random seed for reproducibility"""
 
-    OBJECTIVE: str = 'reg:squarederror'
+    OBJECTIVE: str = "reg:squarederror"
     """Loss function (regression with squared error)"""
 
-    TREE_METHOD: str = 'hist'
+    TREE_METHOD: str = "hist"
     """Tree construction algorithm (histogram-based)"""
 
     # Cross-validation
@@ -118,29 +121,29 @@ class MLConfig:
     # Feature names (23 features - ALL 6 wood properties included for maximum accuracy)
     # Data analysis showed ALL 6 properties combined: r=0.621 (vs shear alone r=0.523)
     FEATURE_NAMES: tuple = (
-        'competitor_avg_time_by_event',  # 1 - PRIMARY (70-80% importance)
-        'event_encoded',                # 2
-        'size_mm',                      # 3
-        'wood_janka_hardness',         # 4
-        'wood_spec_gravity',            # 5
-        'wood_shear_strength',          # 6 - BEST single predictor (r=0.527)
-        'wood_crush_strength',          # 7 - Second best (r=0.447)
-        'wood_MOR',                     # 8 - Modulus of Rupture
-        'wood_MOE',                     # 9 - Modulus of Elasticity
-        'competitor_experience',        # 10
-        'competitor_trend_slope',       # 11
-        'wood_quality',                 # 12 - NEW (CRITICAL MISSING FEATURE)
-        'diameter_squared',             # 13 - NEW (non-linear size)
-        'quality_x_diameter',           # 14 - NEW (interaction)
-        'quality_x_hardness',           # 15 - NEW (interaction)
-        'experience_x_size',            # 16 - NEW (interaction)
-        'competitor_variance',          # 17 - NEW (consistency)
-        'competitor_median_diameter',   # 18 - NEW (selection bias)
-        'recency_score',                # 19 - NEW (momentum vs rust)
-        'career_phase',                 # 20 - NEW (rising/peak/declining)
-        'seasonal_month_sin',           # 21 - NEW (cyclical season)
-        'seasonal_month_cos',           # 22 - NEW (cyclical season)
-        'event_x_diameter'              # 23 - NEW (UH vs SB scaling)
+        "competitor_avg_time_by_event",  # 1 - PRIMARY (70-80% importance)
+        "event_encoded",  # 2
+        "size_mm",  # 3
+        "wood_janka_hardness",  # 4
+        "wood_spec_gravity",  # 5
+        "wood_shear_strength",  # 6 - BEST single predictor (r=0.527)
+        "wood_crush_strength",  # 7 - Second best (r=0.447)
+        "wood_MOR",  # 8 - Modulus of Rupture
+        "wood_MOE",  # 9 - Modulus of Elasticity
+        "competitor_experience",  # 10
+        "competitor_trend_slope",  # 11
+        "wood_quality",  # 12 - NEW (CRITICAL MISSING FEATURE)
+        "diameter_squared",  # 13 - NEW (non-linear size)
+        "quality_x_diameter",  # 14 - NEW (interaction)
+        "quality_x_hardness",  # 15 - NEW (interaction)
+        "experience_x_size",  # 16 - NEW (interaction)
+        "competitor_variance",  # 17 - NEW (consistency)
+        "competitor_median_diameter",  # 18 - NEW (selection bias)
+        "recency_score",  # 19 - NEW (momentum vs rust)
+        "career_phase",  # 20 - NEW (rising/peak/declining)
+        "seasonal_month_sin",  # 21 - NEW (cyclical season)
+        "seasonal_month_cos",  # 22 - NEW (cyclical season)
+        "event_x_diameter",  # 23 - NEW (UH vs SB scaling)
     )
 
     # Bayesian optimization parameters (NEW for Phase 2)
@@ -194,6 +197,7 @@ class MLConfig:
 # Monte Carlo Simulation Configuration
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class SimulationConfig:
     """Monte Carlo simulation parameters"""
@@ -231,6 +235,7 @@ class SimulationConfig:
 # =============================================================================
 # Baseline V2 Hybrid Model Configuration
 # =============================================================================
+
 
 @dataclass(frozen=True)
 class BaselineV2HybridConfig:
@@ -344,6 +349,7 @@ class BaselineV2HybridConfig:
 # LLM Configuration (Ollama)
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class LLMConfig:
     """Ollama LLM settings for AI-enhanced predictions"""
@@ -384,6 +390,7 @@ class LLMConfig:
 # File Paths & Excel Configuration
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class Paths:
     """File paths and Excel sheet names"""
@@ -407,6 +414,7 @@ class Paths:
 # Event Codes
 # =============================================================================
 
+
 @dataclass(frozen=True)
 class EventCodes:
     """Valid event type codes"""
@@ -424,6 +432,7 @@ class EventCodes:
 # =============================================================================
 # Display & UI Configuration
 # =============================================================================
+
 
 @dataclass(frozen=True)
 class DisplayConfig:
@@ -448,6 +457,7 @@ class DisplayConfig:
 # =============================================================================
 # Confidence Level Strings
 # =============================================================================
+
 
 class ConfidenceLevels:
     """Confidence level string constants"""
@@ -477,6 +487,7 @@ confidence = ConfidenceLevels()
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
 
 def get_event_encoding(event_code: str) -> int:
     """

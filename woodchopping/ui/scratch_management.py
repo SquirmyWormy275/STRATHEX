@@ -7,9 +7,8 @@ This module handles day-of scratches and withdrawals:
 - Track scratch history
 """
 
-from typing import Dict, List, Optional
 from datetime import datetime
-import copy
+from typing import Dict
 
 
 def manage_tournament_scratches(tournament_state: Dict) -> Dict:
@@ -33,8 +32,8 @@ def manage_tournament_scratches(tournament_state: Dict) -> Dict:
         print("╠" + "═" * 68 + "╣")
 
         # Count scratches
-        roster = tournament_state.get('tournament_roster', [])
-        scratch_count = sum(1 for c in roster if c.get('status') == 'scratched')
+        roster = tournament_state.get("tournament_roster", [])
+        scratch_count = sum(1 for c in roster if c.get("status") == "scratched")
 
         print("║" + f"  Tournament: {tournament_state.get('tournament_name', 'Unknown')}".ljust(68) + "║")
         print("║" + f"  Total competitors: {len(roster)}".ljust(68) + "║")
@@ -49,15 +48,15 @@ def manage_tournament_scratches(tournament_state: Dict) -> Dict:
 
         choice = input("\nChoice [1-5]: ").strip()
 
-        if choice == '1':
+        if choice == "1":
             view_all_competitors_with_status(tournament_state)
-        elif choice == '2':
+        elif choice == "2":
             tournament_state = mark_competitor_scratched(tournament_state)
-        elif choice == '3':
+        elif choice == "3":
             view_scratch_history(tournament_state)
-        elif choice == '4':
+        elif choice == "4":
             tournament_state = restore_scratched_competitor(tournament_state)
-        elif choice == '5' or choice == '':
+        elif choice == "5" or choice == "":
             break
         else:
             print("\n[WARN] Invalid choice")
@@ -72,8 +71,8 @@ def view_all_competitors_with_status(tournament_state: Dict) -> None:
     Args:
         tournament_state: Multi-event tournament state
     """
-    roster = tournament_state.get('tournament_roster', [])
-    events = tournament_state.get('events', [])
+    roster = tournament_state.get("tournament_roster", [])
+    events = tournament_state.get("events", [])
 
     if not roster:
         print("\n[WARN] No competitors in tournament")
@@ -88,18 +87,18 @@ def view_all_competitors_with_status(tournament_state: Dict) -> None:
     scratched_count = 0
 
     for idx, comp in enumerate(roster, 1):
-        name = comp['competitor_name']
-        status = comp.get('status', 'active')
-        events_entered = comp.get('events_entered', [])
+        name = comp["competitor_name"]
+        status = comp.get("status", "active")
+        events_entered = comp.get("events_entered", [])
 
         # Count events
         event_names = []
         for event_id in events_entered:
-            event = next((e for e in events if e['event_id'] == event_id), None)
+            event = next((e for e in events if e["event_id"] == event_id), None)
             if event:
-                event_names.append(event['event_name'][:20])  # Truncate
+                event_names.append(event["event_name"][:20])  # Truncate
 
-        if status == 'scratched':
+        if status == "scratched":
             status_icon = "✗ SCRATCHED"
             scratched_count += 1
         else:
@@ -138,8 +137,8 @@ def mark_competitor_scratched(tournament_state: Dict) -> Dict:
     Returns:
         dict: Updated tournament_state
     """
-    roster = tournament_state.get('tournament_roster', [])
-    active_roster = [c for c in roster if c.get('status', 'active') == 'active']
+    roster = tournament_state.get("tournament_roster", [])
+    active_roster = [c for c in roster if c.get("status", "active") == "active"]
 
     if not active_roster:
         print("\n[WARN] No active competitors to scratch")
@@ -151,8 +150,8 @@ def mark_competitor_scratched(tournament_state: Dict) -> Dict:
     print("╠" + "═" * 68 + "╣")
 
     for idx, comp in enumerate(active_roster, 1):
-        name = comp['competitor_name']
-        events_count = len(comp.get('events_entered', []))
+        name = comp["competitor_name"]
+        events_count = len(comp.get("events_entered", []))
         print("║" + f"  {idx:3d}. {name:40s} ({events_count} events)".ljust(68) + "║")
 
     print("╠" + "═" * 68 + "╣")
@@ -167,8 +166,8 @@ def mark_competitor_scratched(tournament_state: Dict) -> Dict:
 
         if 1 <= choice <= len(active_roster):
             selected_comp = active_roster[choice - 1]
-            comp_name = selected_comp['competitor_name']
-            events_entered = selected_comp.get('events_entered', [])
+            comp_name = selected_comp["competitor_name"]
+            events_entered = selected_comp.get("events_entered", [])
 
             # Show events they're in
             print(f"\n{comp_name} is entered in {len(events_entered)} event(s)")
@@ -184,81 +183,83 @@ def mark_competitor_scratched(tournament_state: Dict) -> Dict:
             reason_choice = input("\nSelect reason (1-5) or enter custom: ").strip()
 
             reasons = {
-                '1': 'Injury',
-                '2': 'Personal emergency',
-                '3': 'No-show',
-                '4': 'Equipment failure',
-                '5': 'Other'
+                "1": "Injury",
+                "2": "Personal emergency",
+                "3": "No-show",
+                "4": "Equipment failure",
+                "5": "Other",
             }
 
             if reason_choice in reasons:
                 reason = reasons[reason_choice]
-                if reason == 'Other':
+                if reason == "Other":
                     reason = input("Enter custom reason: ").strip()
             else:
                 reason = reason_choice if reason_choice else "No reason given"
 
             # Confirm
-            print(f"\n{'='*70}")
-            print(f"  CONFIRM SCRATCH")
-            print(f"{'='*70}")
+            print(f"\n{'=' * 70}")
+            print("  CONFIRM SCRATCH")
+            print(f"{'=' * 70}")
             print(f"  Competitor: {comp_name}")
             print(f"  Reason: {reason}")
             print(f"  Will be removed from {len(events_entered)} event(s)")
-            print(f"{'='*70}")
+            print(f"{'=' * 70}")
 
             confirm = input("\nConfirm scratch? (yes/no): ").strip().lower()
 
-            if confirm in ['yes', 'y']:
+            if confirm in ["yes", "y"]:
                 # Mark as scratched
-                selected_comp['status'] = 'scratched'
-                selected_comp['scratch_reason'] = reason
-                selected_comp['scratch_timestamp'] = datetime.now().isoformat(timespec='seconds')
+                selected_comp["status"] = "scratched"
+                selected_comp["scratch_reason"] = reason
+                selected_comp["scratch_timestamp"] = datetime.now().isoformat(timespec="seconds")
 
                 # Initialize scratch history if not exists
-                if 'scratch_history' not in tournament_state:
-                    tournament_state['scratch_history'] = []
+                if "scratch_history" not in tournament_state:
+                    tournament_state["scratch_history"] = []
 
                 # Add to history
-                tournament_state['scratch_history'].append({
-                    'competitor_name': comp_name,
-                    'reason': reason,
-                    'timestamp': selected_comp['scratch_timestamp'],
-                    'events_affected': events_entered.copy()
-                })
+                tournament_state["scratch_history"].append(
+                    {
+                        "competitor_name": comp_name,
+                        "reason": reason,
+                        "timestamp": selected_comp["scratch_timestamp"],
+                        "events_affected": events_entered.copy(),
+                    }
+                )
 
                 # Remove from events
-                events = tournament_state.get('events', [])
+                events = tournament_state.get("events", [])
                 affected_events = []
 
                 for event in events:
-                    event_id = event['event_id']
+                    event_id = event["event_id"]
 
                     if event_id in events_entered:
                         # Remove from all_competitors list
-                        if comp_name in event.get('all_competitors', []):
-                            event['all_competitors'].remove(comp_name)
-                            affected_events.append(event['event_name'])
+                        if comp_name in event.get("all_competitors", []):
+                            event["all_competitors"].remove(comp_name)
+                            affected_events.append(event["event_name"])
 
                         # Update competitor_status
-                        if 'competitor_status' in event:
-                            event['competitor_status'][comp_name] = 'scratched'
+                        if "competitor_status" in event:
+                            event["competitor_status"][comp_name] = "scratched"
 
                         # Remove from rounds if not yet completed
-                        for round_obj in event.get('rounds', []):
-                            if round_obj.get('status') == 'pending':
-                                if comp_name in round_obj.get('competitors', []):
-                                    round_obj['competitors'].remove(comp_name)
+                        for round_obj in event.get("rounds", []):
+                            if round_obj.get("status") == "pending":
+                                if comp_name in round_obj.get("competitors", []):
+                                    round_obj["competitors"].remove(comp_name)
 
                                 # Remove from handicap_results
-                                if 'handicap_results' in round_obj:
-                                    round_obj['handicap_results'] = [
-                                        r for r in round_obj['handicap_results']
-                                        if r.get('name') != comp_name
+                                if "handicap_results" in round_obj:
+                                    round_obj["handicap_results"] = [
+                                        r for r in round_obj["handicap_results"] if r.get("name") != comp_name
                                     ]
 
                 # Auto-save
                 from woodchopping.ui.multi_event_ui import auto_save_multi_event
+
                 auto_save_multi_event(tournament_state)
 
                 print(f"\n[OK] {comp_name} marked as SCRATCHED")
@@ -269,7 +270,7 @@ def mark_competitor_scratched(tournament_state: Dict) -> Dict:
                 # Offer to recalculate heats
                 if affected_events:
                     recalc = input("\nRecalculate heats for affected events? (y/n): ").strip().lower()
-                    if recalc == 'y':
+                    if recalc == "y":
                         print("\n[WARN] Heat recalculation not yet implemented")
                         print("Please regenerate heats manually if needed")
 
@@ -293,7 +294,7 @@ def view_scratch_history(tournament_state: Dict) -> None:
     Args:
         tournament_state: Multi-event tournament state
     """
-    history = tournament_state.get('scratch_history', [])
+    history = tournament_state.get("scratch_history", [])
 
     if not history:
         print("\n[OK] No scratches recorded for this tournament")
@@ -305,10 +306,10 @@ def view_scratch_history(tournament_state: Dict) -> None:
     print("╠" + "═" * 68 + "╣")
 
     for idx, record in enumerate(history, 1):
-        comp_name = record['competitor_name']
-        reason = record['reason']
-        timestamp = record['timestamp']
-        events_affected = record.get('events_affected', [])
+        comp_name = record["competitor_name"]
+        reason = record["reason"]
+        timestamp = record["timestamp"]
+        events_affected = record.get("events_affected", [])
 
         print("║" + f"  {idx}. {comp_name}".ljust(68) + "║")
         print("║" + f"     Reason: {reason}".ljust(68) + "║")
@@ -332,8 +333,8 @@ def restore_scratched_competitor(tournament_state: Dict) -> Dict:
     Returns:
         dict: Updated tournament_state
     """
-    roster = tournament_state.get('tournament_roster', [])
-    scratched_roster = [c for c in roster if c.get('status') == 'scratched']
+    roster = tournament_state.get("tournament_roster", [])
+    scratched_roster = [c for c in roster if c.get("status") == "scratched"]
 
     if not scratched_roster:
         print("\n[OK] No scratched competitors to restore")
@@ -345,8 +346,8 @@ def restore_scratched_competitor(tournament_state: Dict) -> Dict:
     print("╠" + "═" * 68 + "╣")
 
     for idx, comp in enumerate(scratched_roster, 1):
-        name = comp['competitor_name']
-        reason = comp.get('scratch_reason', 'Unknown')
+        name = comp["competitor_name"]
+        reason = comp.get("scratch_reason", "Unknown")
         print("║" + f"  {idx}. {name:40s}".ljust(68) + "║")
         print("║" + f"     Reason: {reason}".ljust(68) + "║")
 
@@ -362,34 +363,35 @@ def restore_scratched_competitor(tournament_state: Dict) -> Dict:
 
         if 1 <= choice <= len(scratched_roster):
             selected_comp = scratched_roster[choice - 1]
-            comp_name = selected_comp['competitor_name']
+            comp_name = selected_comp["competitor_name"]
 
             confirm = input(f"\nRestore {comp_name} to active status? (y/n): ").strip().lower()
 
-            if confirm == 'y':
+            if confirm == "y":
                 # Restore status
-                selected_comp['status'] = 'active'
+                selected_comp["status"] = "active"
 
                 # Re-add to events
-                events = tournament_state.get('events', [])
-                events_entered = selected_comp.get('events_entered', [])
+                events = tournament_state.get("events", [])
+                events_entered = selected_comp.get("events_entered", [])
                 restored_events = []
 
                 for event in events:
-                    event_id = event['event_id']
+                    event_id = event["event_id"]
 
                     if event_id in events_entered:
                         # Add back to all_competitors
-                        if comp_name not in event.get('all_competitors', []):
-                            event['all_competitors'].append(comp_name)
-                            restored_events.append(event['event_name'])
+                        if comp_name not in event.get("all_competitors", []):
+                            event["all_competitors"].append(comp_name)
+                            restored_events.append(event["event_name"])
 
                         # Update competitor_status
-                        if 'competitor_status' in event:
-                            event['competitor_status'][comp_name] = 'active'
+                        if "competitor_status" in event:
+                            event["competitor_status"][comp_name] = "active"
 
                 # Auto-save
                 from woodchopping.ui.multi_event_ui import auto_save_multi_event
+
                 auto_save_multi_event(tournament_state)
 
                 print(f"\n[OK] {comp_name} restored to ACTIVE status")
@@ -422,12 +424,12 @@ def check_competitor_status(tournament_state: Dict, competitor_name: str) -> str
     Returns:
         str: 'active' or 'scratched'
     """
-    roster = tournament_state.get('tournament_roster', [])
-    comp = next((c for c in roster if c['competitor_name'] == competitor_name), None)
+    roster = tournament_state.get("tournament_roster", [])
+    comp = next((c for c in roster if c["competitor_name"] == competitor_name), None)
 
     if comp:
-        return comp.get('status', 'active')
-    return 'active'  # Default if not found
+        return comp.get("status", "active")
+    return "active"  # Default if not found
 
 
 def get_scratch_count(tournament_state: Dict) -> int:
@@ -439,5 +441,5 @@ def get_scratch_count(tournament_state: Dict) -> int:
     Returns:
         int: Number of scratched competitors
     """
-    roster = tournament_state.get('tournament_roster', [])
-    return sum(1 for c in roster if c.get('status') == 'scratched')
+    roster = tournament_state.get("tournament_roster", [])
+    return sum(1 for c in roster if c.get("status") == "scratched")

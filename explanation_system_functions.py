@@ -16,12 +16,11 @@ Author: STRATHEX Project
 Purpose: Transparency and education for woodchopping handicapping
 """
 
-import sys
-
 
 # =============================================================================
 # MAIN EXPLANATION MENU
 # =============================================================================
+
 
 def explanation_menu():
     """Interactive menu system for learning about handicap calculations."""
@@ -52,15 +51,15 @@ def explanation_menu():
 
         choice = input("\nSelect option (1-5): ").strip()
 
-        if choice == '1':
+        if choice == "1":
             show_system_overview()
-        elif choice == '2':
+        elif choice == "2":
             show_prediction_methods_explained()
-        elif choice == '3':
+        elif choice == "3":
             show_statistical_glossary()
-        elif choice == '4':
+        elif choice == "4":
             show_technical_deep_dive()
-        elif choice == '5':
+        elif choice == "5":
             print("\nReturning to main menu...")
             break
         else:
@@ -70,6 +69,7 @@ def explanation_menu():
 # =============================================================================
 # SYSTEM OVERVIEW
 # =============================================================================
+
 
 def show_system_overview():
     """Explain what the STRATHEX handicap system does and why."""
@@ -183,6 +183,7 @@ This is TRANSPARENT, DEFENSIBLE, and FAIR handicapping.
 # =============================================================================
 # PREDICTION METHODS EXPLAINED
 # =============================================================================
+
 
 def show_prediction_methods_explained():
     """Explain the three prediction methods with advantages/disadvantages."""
@@ -1877,199 +1878,200 @@ COMBINED V6.0 IMPACT:
 # STATISTICAL GLOSSARY
 # =============================================================================
 
+
 def show_statistical_glossary():
     """Comprehensive glossary of all statistical terms used in the program."""
 
     terms = [
         {
-            'term': 'AVERAGE (MEAN)',
-            'definition': 'The sum of all values divided by the count of values.',
-            'example': 'If John cut blocks in 30s, 32s, 28s, 31s, and 29s, his average is (30+32+28+31+29)÷5 = 30.0 seconds.',
-            'relevance': 'Used to calculate a competitor\'s typical performance. The baseline prediction starts with their historical average.',
-            'where_seen': 'Handicap calculation screen, prediction methods display'
+            "term": "AVERAGE (MEAN)",
+            "definition": "The sum of all values divided by the count of values.",
+            "example": "If John cut blocks in 30s, 32s, 28s, 31s, and 29s, his average is (30+32+28+31+29)÷5 = 30.0 seconds.",
+            "relevance": "Used to calculate a competitor's typical performance. The baseline prediction starts with their historical average.",
+            "where_seen": "Handicap calculation screen, prediction methods display",
         },
         {
-            'term': 'STANDARD DEVIATION (STD DEV)',
-            'definition': 'Measures how spread out values are from the average. Low = consistent, high = variable.',
-            'example': 'Competitor A: times of 30s, 30s, 31s (std dev ~0.5s - very consistent)\nCompetitor B: times of 25s, 35s, 30s (std dev ~4.1s - inconsistent)',
-            'relevance': 'Shows performance consistency. Consistent competitors are more predictable. We use ±3 second standard deviation in Monte Carlo simulations.',
-            'where_seen': 'Monte Carlo simulation results, statistical analysis section'
+            "term": "STANDARD DEVIATION (STD DEV)",
+            "definition": "Measures how spread out values are from the average. Low = consistent, high = variable.",
+            "example": "Competitor A: times of 30s, 30s, 31s (std dev ~0.5s - very consistent)\nCompetitor B: times of 25s, 35s, 30s (std dev ~4.1s - inconsistent)",
+            "relevance": "Shows performance consistency. Consistent competitors are more predictable. We use ±3 second standard deviation in Monte Carlo simulations.",
+            "where_seen": "Monte Carlo simulation results, statistical analysis section",
         },
         {
-            'term': 'IQR (INTERQUARTILE RANGE)',
-            'definition': 'The range containing the middle 50% of data values. Calculated as Q3 - Q1 (75th percentile minus 25th percentile).',
-            'example': 'Times: 25, 27, 28, 30, 31, 33, 45 seconds\nQ1 (25th %ile) = 27s, Q3 (75th %ile) = 33s\nIQR = 33 - 27 = 6 seconds',
-            'relevance': 'Used for robust outlier detection. IQR is not affected by extreme values, unlike standard deviation.',
-            'where_seen': 'Data validation process (background), you won\'t see this directly'
+            "term": "IQR (INTERQUARTILE RANGE)",
+            "definition": "The range containing the middle 50% of data values. Calculated as Q3 - Q1 (75th percentile minus 25th percentile).",
+            "example": "Times: 25, 27, 28, 30, 31, 33, 45 seconds\nQ1 (25th %ile) = 27s, Q3 (75th %ile) = 33s\nIQR = 33 - 27 = 6 seconds",
+            "relevance": "Used for robust outlier detection. IQR is not affected by extreme values, unlike standard deviation.",
+            "where_seen": "Data validation process (background), you won't see this directly",
         },
         {
-            'term': '3xIQR (OUTLIER DETECTION)',
-            'definition': 'A value is an extreme outlier if it\'s more than 3xIQR away from the quartiles. This is a very conservative threshold.',
-            'example': 'If IQR = 6s, outlier threshold is 18s from quartiles.\nTimes: 28, 29, 30, 31, 85s ? 85s is flagged and removed',
-            'relevance': 'Removes data entry errors and invalid results (like a competitor who stopped mid-cut). Only extreme outliers are removed to preserve real performance variation.',
-            'where_seen': 'Data validation warnings when loading historical results'
+            "term": "3xIQR (OUTLIER DETECTION)",
+            "definition": "A value is an extreme outlier if it's more than 3xIQR away from the quartiles. This is a very conservative threshold.",
+            "example": "If IQR = 6s, outlier threshold is 18s from quartiles.\nTimes: 28, 29, 30, 31, 85s ? 85s is flagged and removed",
+            "relevance": "Removes data entry errors and invalid results (like a competitor who stopped mid-cut). Only extreme outliers are removed to preserve real performance variation.",
+            "where_seen": "Data validation warnings when loading historical results",
         },
         {
-            'term': 'OUTLIER',
-            'definition': 'A data point that is extremely different from others. Could be error or genuine exceptional performance.',
-            'example': 'If most times are 28-35s, a time of 95s is probably an error (competitor fell, axe broke, etc.)',
-            'relevance': 'Outliers distort averages and predictions. System removes only EXTREME outliers (3xIQR method) to prevent errors while keeping genuine performances.',
-            'where_seen': 'Data validation report shows how many outliers were detected and removed'
+            "term": "OUTLIER",
+            "definition": "A data point that is extremely different from others. Could be error or genuine exceptional performance.",
+            "example": "If most times are 28-35s, a time of 95s is probably an error (competitor fell, axe broke, etc.)",
+            "relevance": "Outliers distort averages and predictions. System removes only EXTREME outliers (3xIQR method) to prevent errors while keeping genuine performances.",
+            "where_seen": "Data validation report shows how many outliers were detected and removed",
         },
         {
-            'term': 'BASELINE TIME / BASELINE PREDICTION',
-            'definition': 'The manual statistical prediction method using historical averages + adjustment factors.',
-            'example': 'Baseline for Joe on Cottonwood 380mm: His avg (32s) x species factor (0.95) x quality factor (1.08) = 32.8s',
-            'relevance': 'This is the "fallback" prediction method that always works. Simple, transparent, reliable.',
-            'where_seen': 'Handicap display shows "Baseline: 32.8s" alongside ML and LLM predictions'
+            "term": "BASELINE TIME / BASELINE PREDICTION",
+            "definition": "The manual statistical prediction method using historical averages + adjustment factors.",
+            "example": "Baseline for Joe on Cottonwood 380mm: His avg (32s) x species factor (0.95) x quality factor (1.08) = 32.8s",
+            "relevance": 'This is the "fallback" prediction method that always works. Simple, transparent, reliable.',
+            "where_seen": 'Handicap display shows "Baseline: 32.8s" alongside ML and LLM predictions',
         },
         {
-            'term': 'ADJUSTMENT FACTOR',
-            'definition': 'A multiplier applied to base time to account for wood characteristics. Usually ranges from 0.85 to 1.20.',
-            'example': 'Soft wood species: 0.90 factor (10% faster)\nHard wood species: 1.10 factor (10% slower)\nQuality 9/10 (very hard): +8% adjustment',
-            'relevance': 'Adjusts predictions for today\'s specific wood. Same competitor will have different predictions on pine vs oak.',
-            'where_seen': 'Visible in baseline prediction explanations and detailed calculation breakdowns'
+            "term": "ADJUSTMENT FACTOR",
+            "definition": "A multiplier applied to base time to account for wood characteristics. Usually ranges from 0.85 to 1.20.",
+            "example": "Soft wood species: 0.90 factor (10% faster)\nHard wood species: 1.10 factor (10% slower)\nQuality 9/10 (very hard): +8% adjustment",
+            "relevance": "Adjusts predictions for today's specific wood. Same competitor will have different predictions on pine vs oak.",
+            "where_seen": "Visible in baseline prediction explanations and detailed calculation breakdowns",
         },
         {
-            'term': 'HANDICAP MARK',
-            'definition': 'The number called for a competitor that determines their start delay. Mark 3 = start immediately, Mark 20 = wait 17 seconds.',
-            'example': 'Front marker (slowest): Mark 3 (starts at "Mark 3!")\nBack marker (fastest): Mark 18 (waits 15 seconds, starts at "Mark 18!")',
-            'relevance': 'THIS IS THE MAIN OUTPUT. The handicap mark equalizes competition by giving faster competitors delayed starts.',
-            'where_seen': 'Main handicap display, heat assignments, announcer calls'
+            "term": "HANDICAP MARK",
+            "definition": "The number called for a competitor that determines their start delay. Mark 3 = start immediately, Mark 20 = wait 17 seconds.",
+            "example": 'Front marker (slowest): Mark 3 (starts at "Mark 3!")\nBack marker (fastest): Mark 18 (waits 15 seconds, starts at "Mark 18!")',
+            "relevance": "THIS IS THE MAIN OUTPUT. The handicap mark equalizes competition by giving faster competitors delayed starts.",
+            "where_seen": "Main handicap display, heat assignments, announcer calls",
         },
         {
-            'term': 'GAP',
-            'definition': 'The predicted time difference between a competitor and the slowest competitor. Used to calculate handicap marks.',
-            'example': 'Slowest competitor: predicted 55.0s\nJoe Smith: predicted 42.0s\nGap = 55.0 - 42.0 = 13.0s -> Mark 16 (3 + 13 rounded up)',
-            'relevance': 'Larger gap = higher mark = longer delay. The gap directly converts predicted time into start delay.',
-            'where_seen': 'Calculation process (background), visible in detailed handicap explanations'
+            "term": "GAP",
+            "definition": "The predicted time difference between a competitor and the slowest competitor. Used to calculate handicap marks.",
+            "example": "Slowest competitor: predicted 55.0s\nJoe Smith: predicted 42.0s\nGap = 55.0 - 42.0 = 13.0s -> Mark 16 (3 + 13 rounded up)",
+            "relevance": "Larger gap = higher mark = longer delay. The gap directly converts predicted time into start delay.",
+            "where_seen": "Calculation process (background), visible in detailed handicap explanations",
         },
         {
-            'term': 'FRONT MARKER',
-            'definition': 'The slowest predicted competitor who receives Mark 3 (starts first). Acts as the baseline for all other marks.',
-            'example': 'If Sue is predicted slowest at 58.2s, she gets Mark 3 and starts immediately when "Mark 3!" is called.',
-            'relevance': 'Front marker has NO delay. All other competitors\' delays are calculated relative to them.',
-            'where_seen': 'Handicap results display, Monte Carlo simulation analysis'
+            "term": "FRONT MARKER",
+            "definition": "The slowest predicted competitor who receives Mark 3 (starts first). Acts as the baseline for all other marks.",
+            "example": 'If Sue is predicted slowest at 58.2s, she gets Mark 3 and starts immediately when "Mark 3!" is called.',
+            "relevance": "Front marker has NO delay. All other competitors' delays are calculated relative to them.",
+            "where_seen": "Handicap results display, Monte Carlo simulation analysis",
         },
         {
-            'term': 'BACK MARKER',
-            'definition': 'The fastest predicted competitor who receives the highest mark (starts last with longest delay).',
-            'example': 'If John is predicted fastest at 28.5s and slowest is 55.0s, gap is 26.5s -> Mark 30 (3 + 27). He waits 27 seconds.',
-            'relevance': 'Back marker has the LONGEST delay. In a perfect handicap system, they should finish at the same time as front marker.',
-            'where_seen': 'Handicap results display, Monte Carlo simulation analysis'
+            "term": "BACK MARKER",
+            "definition": "The fastest predicted competitor who receives the highest mark (starts last with longest delay).",
+            "example": "If John is predicted fastest at 28.5s and slowest is 55.0s, gap is 26.5s -> Mark 30 (3 + 27). He waits 27 seconds.",
+            "relevance": "Back marker has the LONGEST delay. In a perfect handicap system, they should finish at the same time as front marker.",
+            "where_seen": "Handicap results display, Monte Carlo simulation analysis",
         },
         {
-            'term': 'MONTE CARLO SIMULATION',
-            'definition': 'A method that runs thousands/millions of virtual races with random performance variation to test handicap fairness.',
-            'example': 'System runs 1,000,000 simulated races:\n- Each race, competitors vary ±3s from predicted time\n- Count who wins each race\n- Calculate win probability for each competitor',
-            'relevance': 'Validates that handicaps are FAIR. If one competitor wins 40% of simulations while others win 5%, the handicaps are biased.',
-            'where_seen': 'Optional fairness analysis after calculating handicaps (Menu Option 5)'
+            "term": "MONTE CARLO SIMULATION",
+            "definition": "A method that runs thousands/millions of virtual races with random performance variation to test handicap fairness.",
+            "example": "System runs 1,000,000 simulated races:\n- Each race, competitors vary ±3s from predicted time\n- Count who wins each race\n- Calculate win probability for each competitor",
+            "relevance": "Validates that handicaps are FAIR. If one competitor wins 40% of simulations while others win 5%, the handicaps are biased.",
+            "where_seen": "Optional fairness analysis after calculating handicaps (Menu Option 5)",
         },
         {
-            'term': 'WIN PROBABILITY / WIN RATE',
-            'definition': 'The percentage of simulated races won by each competitor. Ideally, all competitors should have equal win probability.',
-            'example': 'Heat with 5 competitors:\nIdeal: 20% win rate each (5 competitors = 100%÷5)\nActual: Joe 23%, Sue 21%, Bob 19%, Amy 22%, Dan 15%\nDan is disadvantaged (15% vs 20% ideal)',
-            'relevance': 'Measures handicap fairness. Spread <3% = Excellent, <6% = Very Good, <10% = Good, >16% = Poor.',
-            'where_seen': 'Monte Carlo simulation results, displayed as bar charts and percentages'
+            "term": "WIN PROBABILITY / WIN RATE",
+            "definition": "The percentage of simulated races won by each competitor. Ideally, all competitors should have equal win probability.",
+            "example": "Heat with 5 competitors:\nIdeal: 20% win rate each (5 competitors = 100%÷5)\nActual: Joe 23%, Sue 21%, Bob 19%, Amy 22%, Dan 15%\nDan is disadvantaged (15% vs 20% ideal)",
+            "relevance": "Measures handicap fairness. Spread <3% = Excellent, <6% = Very Good, <10% = Good, >16% = Poor.",
+            "where_seen": "Monte Carlo simulation results, displayed as bar charts and percentages",
         },
         {
-            'term': 'WIN RATE SPREAD',
-            'definition': 'The difference between highest and lowest win rates. Lower spread = fairer handicaps.',
-            'example': 'Highest win rate: 22.5%\nLowest win rate: 18.7%\nSpread = 22.5 - 18.7 = 3.8% (rates as "Very Good")',
-            'relevance': 'PRIMARY FAIRNESS METRIC. Spread <3% means handicaps are nearly perfect. >10% means predictions have systematic bias.',
-            'where_seen': 'Monte Carlo simulation summary, AI fairness assessment'
+            "term": "WIN RATE SPREAD",
+            "definition": "The difference between highest and lowest win rates. Lower spread = fairer handicaps.",
+            "example": 'Highest win rate: 22.5%\nLowest win rate: 18.7%\nSpread = 22.5 - 18.7 = 3.8% (rates as "Very Good")',
+            "relevance": "PRIMARY FAIRNESS METRIC. Spread <3% means handicaps are nearly perfect. >10% means predictions have systematic bias.",
+            "where_seen": "Monte Carlo simulation summary, AI fairness assessment",
         },
         {
-            'term': 'CONFIDENCE LEVEL',
-            'definition': 'How much historical data supports a prediction. More data = higher confidence = more reliable prediction.',
-            'example': 'HIGH: Competitor has 12 past events, ML trained on 95 records\nMEDIUM: Competitor has 4 past events, ML trained on 55 records\nLOW: Competitor has 3 past events, ML trained on 35 records',
-            'relevance': 'Tells judges how much to trust a prediction. LOW confidence predictions might be adjusted for safety.',
-            'where_seen': 'Prediction methods summary shows ML confidence level (HIGH/MEDIUM/LOW)'
+            "term": "CONFIDENCE LEVEL",
+            "definition": "How much historical data supports a prediction. More data = higher confidence = more reliable prediction.",
+            "example": "HIGH: Competitor has 12 past events, ML trained on 95 records\nMEDIUM: Competitor has 4 past events, ML trained on 55 records\nLOW: Competitor has 3 past events, ML trained on 35 records",
+            "relevance": "Tells judges how much to trust a prediction. LOW confidence predictions might be adjusted for safety.",
+            "where_seen": "Prediction methods summary shows ML confidence level (HIGH/MEDIUM/LOW)",
         },
         {
-            'term': 'LLM (LARGE LANGUAGE MODEL)',
-            'definition': 'An AI system trained on massive text data that can understand context and make intelligent predictions. Like ChatGPT but specialized.',
-            'example': 'qwen2.5:7b model (7 billion parameters) running on Ollama. Optimized for mathematical reasoning tasks.',
-            'relevance': 'LLM prediction method uses AI to consider subtle factors like wood quality, recent form, and species characteristics that formulas might miss.',
-            'where_seen': 'Prediction methods display shows "LLM Model: 31.2s" when LLM prediction is available'
+            "term": "LLM (LARGE LANGUAGE MODEL)",
+            "definition": "An AI system trained on massive text data that can understand context and make intelligent predictions. Like ChatGPT but specialized.",
+            "example": "qwen2.5:7b model (7 billion parameters) running on Ollama. Optimized for mathematical reasoning tasks.",
+            "relevance": "LLM prediction method uses AI to consider subtle factors like wood quality, recent form, and species characteristics that formulas might miss.",
+            "where_seen": 'Prediction methods display shows "LLM Model: 31.2s" when LLM prediction is available',
         },
         {
-            'term': 'ML (MACHINE LEARNING)',
-            'definition': 'Computer algorithms that learn patterns from historical data and use those patterns to make predictions on new data.',
-            'example': 'ML model learns: "Competitors 2s faster than average on soft wood" or "380mm blocks take 1.2x longer than 320mm blocks"',
-            'relevance': 'ML prediction method is the MOST ACCURATE when enough training data exists. Learns complex patterns humans might miss.',
-            'where_seen': 'Prediction methods display shows "ML Model: 30.8s" when ML prediction is used'
+            "term": "ML (MACHINE LEARNING)",
+            "definition": "Computer algorithms that learn patterns from historical data and use those patterns to make predictions on new data.",
+            "example": 'ML model learns: "Competitors 2s faster than average on soft wood" or "380mm blocks take 1.2x longer than 320mm blocks"',
+            "relevance": "ML prediction method is the MOST ACCURATE when enough training data exists. Learns complex patterns humans might miss.",
+            "where_seen": 'Prediction methods display shows "ML Model: 30.8s" when ML prediction is used',
         },
         {
-            'term': 'TRAINING DATA',
-            'definition': 'Historical competition results used to teach the ML model patterns. More training data = better predictions.',
-            'example': 'Database with 127 historical results:\n- 68 Standing Block times\n- 59 Underhand times\n- Spanning 15 different competitors\n- 8 different wood species',
-            'relevance': 'ML model needs minimum 30 total records (15 per event type) to make reliable predictions. Quality matters more than quantity.',
-            'where_seen': 'Prediction methods summary shows "ML Model: XGBoost trained on 127 records"'
+            "term": "TRAINING DATA",
+            "definition": "Historical competition results used to teach the ML model patterns. More training data = better predictions.",
+            "example": "Database with 127 historical results:\n- 68 Standing Block times\n- 59 Underhand times\n- Spanning 15 different competitors\n- 8 different wood species",
+            "relevance": "ML model needs minimum 30 total records (15 per event type) to make reliable predictions. Quality matters more than quantity.",
+            "where_seen": 'Prediction methods summary shows "ML Model: XGBoost trained on 127 records"',
         },
         {
-            'term': 'XGBOOST',
-            'definition': 'eXtreme Gradient Boosting - a specific ML algorithm that\'s highly accurate for prediction tasks with structured data.',
-            'example': 'XGBoost won 17 of 29 Kaggle competitions in 2015. Used by Microsoft, Netflix, Airbnb for predictions.',
-            'relevance': 'We chose XGBoost because it\'s the gold standard for small-to-medium tabular datasets (our exact use case).',
-            'where_seen': 'Technical documentation, prediction methods explanation'
+            "term": "XGBOOST",
+            "definition": "eXtreme Gradient Boosting - a specific ML algorithm that's highly accurate for prediction tasks with structured data.",
+            "example": "XGBoost won 17 of 29 Kaggle competitions in 2015. Used by Microsoft, Netflix, Airbnb for predictions.",
+            "relevance": "We chose XGBoost because it's the gold standard for small-to-medium tabular datasets (our exact use case).",
+            "where_seen": "Technical documentation, prediction methods explanation",
         },
         {
-            'term': 'CROSS-VALIDATION (CV)',
-            'definition': 'A technique to test ML model accuracy by training on part of data and testing on another part. Prevents overfitting.',
-            'example': '5-fold CV: Split data into 5 parts, train on 4, test on 1. Repeat 5 times. Average the results.',
-            'relevance': 'Ensures ML model works on NEW data, not just memorizing training data. Validates prediction reliability.',
-            'where_seen': 'Background process during ML training (not directly visible to user)'
+            "term": "CROSS-VALIDATION (CV)",
+            "definition": "A technique to test ML model accuracy by training on part of data and testing on another part. Prevents overfitting.",
+            "example": "5-fold CV: Split data into 5 parts, train on 4, test on 1. Repeat 5 times. Average the results.",
+            "relevance": "Ensures ML model works on NEW data, not just memorizing training data. Validates prediction reliability.",
+            "where_seen": "Background process during ML training (not directly visible to user)",
         },
         {
-            'term': 'FEATURE ENGINEERING',
-            'definition': 'Converting raw data into "features" (numerical inputs) that ML models can learn from.',
-            'example': 'Raw data: "Standing Block, Cottonwood, 380mm"\nFeatures: event=0, janka=430, spec_gravity=0.40, size=380',
-            'relevance': 'ML models need numbers, not text. Feature engineering transforms wood characteristics into learnable patterns.',
-            'where_seen': 'Background process (not directly visible), mentioned in technical documentation'
+            "term": "FEATURE ENGINEERING",
+            "definition": 'Converting raw data into "features" (numerical inputs) that ML models can learn from.',
+            "example": 'Raw data: "Standing Block, Cottonwood, 380mm"\nFeatures: event=0, janka=430, spec_gravity=0.40, size=380',
+            "relevance": "ML models need numbers, not text. Feature engineering transforms wood characteristics into learnable patterns.",
+            "where_seen": "Background process (not directly visible), mentioned in technical documentation",
         },
         {
-            'term': 'PREDICTION',
-            'definition': 'An estimated cutting time for a competitor on a specific block of wood, calculated before the competition.',
-            'example': 'System predicts Joe will cut this Cottonwood block in 31.4 seconds based on his history and wood characteristics.',
-            'relevance': 'Predictions are converted into handicap marks. Accurate predictions = fair competition.',
-            'where_seen': 'Main handicap display shows predicted times alongside marks for each competitor'
+            "term": "PREDICTION",
+            "definition": "An estimated cutting time for a competitor on a specific block of wood, calculated before the competition.",
+            "example": "System predicts Joe will cut this Cottonwood block in 31.4 seconds based on his history and wood characteristics.",
+            "relevance": "Predictions are converted into handicap marks. Accurate predictions = fair competition.",
+            "where_seen": "Main handicap display shows predicted times alongside marks for each competitor",
         },
         {
-            'term': 'QUALITY RATING (0-10 SCALE)',
-            'definition': 'Judge\'s assessment of wood firmness/difficulty. 0=rotten/soft, 5=average, 10=exceptionally hard.',
-            'example': 'Quality 3: Soft Cottonwood with loose grain (cuts fast)\nQuality 7: Firm Cottonwood with tight grain (cuts slower)\nQuality 10: Rock-hard oak, nearly impossible',
-            'relevance': 'CRITICAL INPUT. Same species varies dramatically. Quality 3 vs Quality 9 can change times by 20%+.',
-            'where_seen': 'Wood characteristics input (Menu Option 1), displayed in all handicap calculations'
+            "term": "QUALITY RATING (0-10 SCALE)",
+            "definition": "Judge's assessment of wood firmness/difficulty. 0=rotten/soft, 5=average, 10=exceptionally hard.",
+            "example": "Quality 3: Soft Cottonwood with loose grain (cuts fast)\nQuality 7: Firm Cottonwood with tight grain (cuts slower)\nQuality 10: Rock-hard oak, nearly impossible",
+            "relevance": "CRITICAL INPUT. Same species varies dramatically. Quality 3 vs Quality 9 can change times by 20%+.",
+            "where_seen": "Wood characteristics input (Menu Option 1), displayed in all handicap calculations",
         },
         {
-            'term': 'SPECIES HARDNESS / JANKA HARDNESS',
-            'definition': 'Standard measure of wood hardness (pounds of force to embed steel ball halfway). Higher = harder to cut.',
-            'example': 'Cottonwood: 430 lbf (soft)\nDouglas Fir: 710 lbf (medium)\nWhite Oak: 1360 lbf (very hard)',
-            'relevance': 'Different species cut at vastly different speeds. ML model uses Janka hardness as a feature for predictions.',
-            'where_seen': 'Wood species data (background), technical deep dive explanations'
+            "term": "SPECIES HARDNESS / JANKA HARDNESS",
+            "definition": "Standard measure of wood hardness (pounds of force to embed steel ball halfway). Higher = harder to cut.",
+            "example": "Cottonwood: 430 lbf (soft)\nDouglas Fir: 710 lbf (medium)\nWhite Oak: 1360 lbf (very hard)",
+            "relevance": "Different species cut at vastly different speeds. ML model uses Janka hardness as a feature for predictions.",
+            "where_seen": "Wood species data (background), technical deep dive explanations",
         },
         {
-            'term': 'SPECIFIC GRAVITY',
-            'definition': 'Wood density relative to water. Higher = denser = more material to cut through.',
-            'example': 'Cottonwood: 0.40 (light, airy)\nPine: 0.55 (medium density)  \nOak: 0.75 (dense, heavy)',
-            'relevance': 'Denser wood takes longer to cut (more material). ML model uses specific gravity to refine predictions.',
-            'where_seen': 'Wood species data (background), technical deep dive explanations'
+            "term": "SPECIFIC GRAVITY",
+            "definition": "Wood density relative to water. Higher = denser = more material to cut through.",
+            "example": "Cottonwood: 0.40 (light, airy)\nPine: 0.55 (medium density)  \nOak: 0.75 (dense, heavy)",
+            "relevance": "Denser wood takes longer to cut (more material). ML model uses specific gravity to refine predictions.",
+            "where_seen": "Wood species data (background), technical deep dive explanations",
         },
         {
-            'term': 'ABSOLUTE VARIANCE (±3 SECONDS)',
-            'definition': 'Every competitor varies by the SAME number of seconds (±3s), not a percentage. Critical for fairness.',
-            'example': 'Fast chopper (30s predicted): actual time between 27-33s\nSlow chopper (60s predicted): actual time between 57-63s\nBOTH vary by ±3s absolute',
-            'relevance': 'MAJOR INNOVATION. Proportional variance (±5%) gives unfair advantage to fast choppers. Real factors (grain knots, fatigue) affect everyone equally in seconds, not percentages.',
-            'where_seen': 'Monte Carlo simulation methodology, system overview documentation'
+            "term": "ABSOLUTE VARIANCE (±3 SECONDS)",
+            "definition": "Every competitor varies by the SAME number of seconds (±3s), not a percentage. Critical for fairness.",
+            "example": "Fast chopper (30s predicted): actual time between 27-33s\nSlow chopper (60s predicted): actual time between 57-63s\nBOTH vary by ±3s absolute",
+            "relevance": "MAJOR INNOVATION. Proportional variance (±5%) gives unfair advantage to fast choppers. Real factors (grain knots, fatigue) affect everyone equally in seconds, not percentages.",
+            "where_seen": "Monte Carlo simulation methodology, system overview documentation",
         },
         {
-            'term': 'PROPORTIONAL VARIANCE',
-            'definition': 'Variation as a percentage of predicted time (e.g., ±5%). REJECTED by this system as unfair.',
-            'example': 'With ±5% variance:\nFast chopper (30s): varies 27-33s (±3s range)\nSlow chopper (60s): varies 54-66s (±6s range)\nSlow chopper gets DOUBLE the variation!',
-            'relevance': 'Proportional variance creates bias. Testing showed 31% win rate spread vs 6.7% with absolute variance. This is why we use absolute.',
-            'where_seen': 'System documentation, mentioned in technical explanations of fairness'
-        }
+            "term": "PROPORTIONAL VARIANCE",
+            "definition": "Variation as a percentage of predicted time (e.g., ±5%). REJECTED by this system as unfair.",
+            "example": "With ±5% variance:\nFast chopper (30s): varies 27-33s (±3s range)\nSlow chopper (60s): varies 54-66s (±6s range)\nSlow chopper gets DOUBLE the variation!",
+            "relevance": "Proportional variance creates bias. Testing showed 31% win rate spread vs 6.7% with absolute variance. This is why we use absolute.",
+            "where_seen": "System documentation, mentioned in technical explanations of fairness",
+        },
     ]
 
     print("\n" + "=" * 70)
@@ -2082,22 +2084,22 @@ def show_statistical_glossary():
         print(f"  TERM {i} of {len(terms)}: {entry['term']}")
         print("=" * 70)
 
-        print(f"\nDEFINITION:")
+        print("\nDEFINITION:")
         print(f"  {entry['definition']}")
 
-        print(f"\nEXAMPLE:")
-        for line in entry['example'].split('\n'):
+        print("\nEXAMPLE:")
+        for line in entry["example"].split("\n"):
             print(f"  {line}")
 
-        print(f"\nWHY IT MATTERS FOR WOODCHOPPING:")
+        print("\nWHY IT MATTERS FOR WOODCHOPPING:")
         print(f"  {entry['relevance']}")
 
-        print(f"\nWHERE YOU'LL SEE IT:")
+        print("\nWHERE YOU'LL SEE IT:")
         print(f"  {entry['where_seen']}")
 
         if i < len(terms):
             cont = input("\nPress Enter for next term (or 'q' to return to menu): ").strip().lower()
-            if cont == 'q':
+            if cont == "q":
                 break
 
     print("\n" + "=" * 70)
@@ -2110,10 +2112,10 @@ def show_statistical_glossary():
 # TECHNICAL DEEP DIVE
 # =============================================================================
 
+
 def show_technical_deep_dive():
     """Detailed technical explanation with wizard ASCII art."""
 
-  
     print("\n")
     print("""
       ╔════════════════════════════════════════════════════════════╗
@@ -2133,30 +2135,30 @@ def show_technical_deep_dive():
       ║                                                            ║
       ╚════════════════════════════════════════════════════════════╝
 
-          
 
-            ____ 
+
+            ____
             .'* *.'
             __/_*_*(_
             / _______ \
-            _\_)/___\(_/_
-            / _((\- -/))_ \
-            \ \())(-)(()/ /
-            ' \(((()))/ '
-            / ' \)).))/ ' \
-            / _ \ - | - /_  \
+            _\\_)/___\\(_/_
+            / _((\\- -/))_ \
+            \\ \\())(-)(()/ /
+            ' \\(((()))/ '
+            / ' \\)).))/ ' \
+            / _ \\ - | - /_  \
             (   ( .;''';. .'  )
-            _\"__ /    )\ __"/_
-            \/  \   ' /  \/
+            _\"__ /    )\\ __"/_
+            \\/  \\   ' /  \\/
             .'  '...' ' )
-            / /  |  \ \
+            / /  |  \\ \
             / .   .   . \
             /   .     .   \
-            /   /   |   \   \
+            /   /   |   \\   \
             .'   /    b    '.  '.
             _.-'    /     Bb     '-. '-._
             _.-'       |      BBb       '-.  '-.
-            (___________\____.dBBBb.________)____)
+            (___________\\____.dBBBb.________)____)
 
 
 

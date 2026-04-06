@@ -10,13 +10,16 @@ The public function signatures are unchanged for backward compatibility
 with all STRATHEX UI callers.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from strathmark.fairness import (
     get_ai_assessment_of_handicaps as _sm_assess,
+)
+from strathmark.fairness import (
     get_championship_race_analysis as _sm_championship,
+)
+from strathmark.fairness import (
     simulate_and_assess_handicaps as _sm_simulate_and_assess,
-    format_ai_assessment,
 )
 
 

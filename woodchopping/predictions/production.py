@@ -12,15 +12,15 @@ Features:
 - Automatic retraining triggers
 """
 
-from typing import Optional, Dict, List, Tuple
-import json
-import pandas as pd
-import numpy as np
 from datetime import datetime
-from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 try:
     from scipy.stats import ks_2samp
+
     STATS_AVAILABLE = True
 except ImportError:
     STATS_AVAILABLE = False
@@ -28,24 +28,24 @@ except ImportError:
 
 # Model Registry
 MODEL_REGISTRY = {
-    'baseline_v2_hybrid': {
-        'version': '2.0',
-        'mae': 3.58,
-        'active': True,
-        'description': 'Hierarchical regression + convergence calibration'
+    "baseline_v2_hybrid": {
+        "version": "2.0",
+        "mae": 3.58,
+        "active": True,
+        "description": "Hierarchical regression + convergence calibration",
     },
-    'xgboost_enhanced': {
-        'version': '2.0',
-        'mae': None,  # TBD from validation
-        'active': True,
-        'description': 'XGBoost with 19 features + Bayesian optimization'
+    "xgboost_enhanced": {
+        "version": "2.0",
+        "mae": None,  # TBD from validation
+        "active": True,
+        "description": "XGBoost with 19 features + Bayesian optimization",
     },
-    'stacking_ensemble': {
-        'version': '1.0',
-        'mae': None,  # TBD from validation
-        'active': False,  # Enable after validation
-        'description': 'Hierarchical stacking of 6 base models'
-    }
+    "stacking_ensemble": {
+        "version": "1.0",
+        "mae": None,  # TBD from validation
+        "active": False,  # Enable after validation
+        "description": "Hierarchical stacking of 6 base models",
+    },
 }
 
 
@@ -66,9 +66,9 @@ class PerformanceMonitor:
 
         # Keep only recent window
         if len(self.predictions) > self.window_size:
-            self.predictions = self.predictions[-self.window_size:]
-            self.actuals = self.actuals[-self.window_size:]
-            self.timestamps = self.timestamps[-self.window_size:]
+            self.predictions = self.predictions[-self.window_size :]
+            self.actuals = self.actuals[-self.window_size :]
+            self.timestamps = self.timestamps[-self.window_size :]
 
     def get_rolling_mae(self) -> Optional[float]:
         """Calculate rolling MAE over window"""
@@ -142,7 +142,7 @@ class DriftDetector:
             statistic, p_value = ks_2samp(baseline_vals, new_vals)
 
             # Drift detected if p < alpha
-            drift_results[col] = (p_value < alpha)
+            drift_results[col] = p_value < alpha
 
         return drift_results
 
@@ -181,7 +181,7 @@ class ABTester:
     def get_comparison(self) -> Dict:
         """Get A/B test comparison results"""
         if len(self.results_a) < 10 or len(self.results_b) < 10:
-            return {'status': 'insufficient_data'}
+            return {"status": "insufficient_data"}
 
         mae_a = np.mean(self.results_a)
         mae_b = np.mean(self.results_b)
@@ -189,15 +189,15 @@ class ABTester:
         improvement = (mae_a - mae_b) / mae_a * 100
 
         return {
-            'status': 'ready',
-            'model_a': self.model_a,
-            'model_b': self.model_b,
-            'mae_a': mae_a,
-            'mae_b': mae_b,
-            'improvement_pct': improvement,
-            'n_samples_a': len(self.results_a),
-            'n_samples_b': len(self.results_b),
-            'winner': self.model_a if mae_a < mae_b else self.model_b
+            "status": "ready",
+            "model_a": self.model_a,
+            "model_b": self.model_b,
+            "mae_a": mae_a,
+            "mae_b": mae_b,
+            "improvement_pct": improvement,
+            "n_samples_a": len(self.results_a),
+            "n_samples_b": len(self.results_b),
+            "winner": self.model_a if mae_a < mae_b else self.model_b,
         }
 
 
@@ -207,8 +207,8 @@ def predict_with_versioning(
     diameter: float,
     quality: int,
     event_code: str,
-    model_version: str = 'stacking_ensemble',
-    fallback: str = 'baseline_v2_hybrid'
+    model_version: str = "stacking_ensemble",
+    fallback: str = "baseline_v2_hybrid",
 ) -> Tuple[Optional[float], str, str]:
     """
     Make prediction with model versioning and fallback.
@@ -231,28 +231,35 @@ def predict_with_versioning(
         print(f"Unknown model version: {model_version}, using fallback")
         model_version = fallback
 
-    if not MODEL_REGISTRY[model_version]['active']:
+    if not MODEL_REGISTRY[model_version]["active"]:
         print(f"Model {model_version} not active, using fallback {fallback}")
         model_version = fallback
 
     try:
         # Route to appropriate model
-        if model_version == 'stacking_ensemble':
+        if model_version == "stacking_ensemble":
             from woodchopping.predictions.stacking_ensemble import StackingEnsemble
+
             ensemble = StackingEnsemble()
             result = ensemble.predict(competitor_name, species, diameter, quality, event_code)
             return result.time, result.confidence, result.explanation
 
-        elif model_version == 'baseline_v2_hybrid':
-            from woodchopping.predictions.baseline import predict_baseline_v2_hybrid
+        elif model_version == "baseline_v2_hybrid":
             from woodchopping.data import load_results_df, load_wood_data
+            from woodchopping.predictions.baseline import predict_baseline_v2_hybrid
+
             time, conf, exp, _ = predict_baseline_v2_hybrid(
-                competitor_name, species, diameter, quality, event_code,
-                load_results_df(), load_wood_data()
+                competitor_name,
+                species,
+                diameter,
+                quality,
+                event_code,
+                load_results_df(),
+                load_wood_data(),
             )
             return time, conf, exp
 
-        elif model_version == 'xgboost_enhanced':
+        elif model_version == "xgboost_enhanced":
             # Placeholder - would call enhanced XGBoost predict function
             return None, "N/A", "XGBoost enhanced not yet implemented"
 
@@ -260,8 +267,13 @@ def predict_with_versioning(
         print(f"Model {model_version} failed: {e}, falling back to {fallback}")
         if fallback != model_version:
             return predict_with_versioning(
-                competitor_name, species, diameter, quality, event_code,
-                model_version=fallback, fallback='baseline_v2_hybrid'
+                competitor_name,
+                species,
+                diameter,
+                quality,
+                event_code,
+                model_version=fallback,
+                fallback="baseline_v2_hybrid",
             )
         else:
             return None, "N/A", f"All models failed: {e}"
@@ -271,7 +283,7 @@ def trigger_retraining(
     reason: str,
     new_results_count: Optional[int] = None,
     degradation_pct: Optional[float] = None,
-    drift_features: Optional[List[str]] = None
+    drift_features: Optional[List[str]] = None,
 ):
     """
     Trigger model retraining based on conditions.
@@ -283,9 +295,9 @@ def trigger_retraining(
         drift_features: List of features with detected drift
     """
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print(f"RETRAINING TRIGGER: {reason}")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
 
     if new_results_count:
         print(f"  New results: {new_results_count}")
@@ -294,13 +306,13 @@ def trigger_retraining(
     if drift_features:
         print(f"  Features with drift: {', '.join(drift_features)}")
 
-    print(f"\nAction required: Retrain models with updated data")
-    print(f"{'='*70}\n")
+    print("\nAction required: Retrain models with updated data")
+    print(f"{'=' * 70}\n")
 
 
 # Auto-monitoring configuration
 AUTO_RETRAIN_CONFIG = {
-    'new_results_threshold': 50,  # Retrain after 50 new results
-    'degradation_threshold': 0.20,  # Retrain if MAE degrades >20%
-    'drift_alpha': 0.05,  # Drift detection significance level
+    "new_results_threshold": 50,  # Retrain after 50 new results
+    "degradation_threshold": 0.20,  # Retrain if MAE degrades >20%
+    "drift_alpha": 0.05,  # Drift detection significance level
 }

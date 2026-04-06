@@ -9,20 +9,18 @@ Functions:
 """
 
 import re
-import statistics
-from typing import Tuple, Optional, Dict
+from typing import Dict, Optional, Tuple
+
 import pandas as pd
 
 # Import config
-from config import llm_config
-
 # Import local modules
 from woodchopping.data import load_wood_data, standardize_results_data
 from woodchopping.predictions.baseline import (
+    apply_shrinkage,
+    compute_robust_weighted_mean,
     get_competitor_historical_times_normalized,
     get_event_baseline_flexible,
-    compute_robust_weighted_mean,
-    apply_shrinkage,
     predict_baseline_v2_hybrid,
 )
 from woodchopping.predictions.llm import call_ollama
@@ -35,7 +33,7 @@ def predict_competitor_time_with_ai(
     quality: int,
     event_code: str,
     results_df: pd.DataFrame,
-    tournament_results: Optional[Dict[str, float]] = None
+    tournament_results: Optional[Dict[str, float]] = None,
 ) -> Tuple[float, str, str]:
     """
     Predict competitor's time using historical data + LLM reasoning for quality adjustment.
@@ -95,14 +93,14 @@ def predict_competitor_time_with_ai(
             results_df=results_df,
             wood_df=wood_df,
             tournament_results=tournament_results,
-            enable_calibration=False
+            enable_calibration=False,
         )
 
         if baseline_v2 is not None:
             baseline = baseline_v2
             confidence = conf_v2
             explanation_source = f"Baseline V2: {expl_v2}"
-            tournament_weighted = bool(meta_v2.get('tournament_weighted')) if meta_v2 else False
+            tournament_weighted = bool(meta_v2.get("tournament_weighted")) if meta_v2 else False
     except Exception:
         baseline = None
 
@@ -110,7 +108,13 @@ def predict_competitor_time_with_ai(
     data_source = ""
     if baseline is None:
         historical_data, data_source, _ = get_competitor_historical_times_normalized(
-            competitor_name, species, diameter, event_code, results_df, return_weights=True, wood_df=wood_df
+            competitor_name,
+            species,
+            diameter,
+            event_code,
+            results_df,
+            return_weights=True,
+            wood_df=wood_df,
         )
 
     # Step 2: Calculate time-weighted baseline (V1 fallback only)
@@ -168,7 +172,9 @@ def predict_competitor_time_with_ai(
             confidence = "MEDIUM"
 
         else:
-            baseline, baseline_source = get_event_baseline_flexible(species, diameter, event_code, results_df, wood_df=wood_df)
+            baseline, baseline_source = get_event_baseline_flexible(
+                species, diameter, event_code, results_df, wood_df=wood_df
+            )
 
             if baseline:
                 confidence = "LOW"
@@ -203,13 +209,13 @@ def predict_competitor_time_with_ai(
     if wood_df is not None and not wood_df.empty:
         wood_data_text = "\nAVAILABLE WOOD SPECIES DATABASE:\n"
         for _, row in wood_df.iterrows():
-            species_name = row.get('species', 'Unknown')
+            species_name = row.get("species", "Unknown")
             wood_data_text += f"  - {species_name}"
-            if 'hardness_category' in row:
+            if "hardness_category" in row:
                 wood_data_text += f": Category={row.get('hardness_category', 'N/A')}"
-            if 'base_adjustment_pct' in row:
+            if "base_adjustment_pct" in row:
                 wood_data_text += f", Base Adjustment={row.get('base_adjustment_pct', 0):+.1f}%"
-            if 'description' in row:
+            if "description" in row:
                 wood_data_text += f", Description: {row.get('description', '')}"
             wood_data_text += "\n"
 
@@ -380,7 +386,7 @@ Your adjustment must account for this to maintain fair handicapping.
 
 WOOD DENSITY AND SIZE INTERACTION
 
-The {diameter:.0f}mm diameter creates a cutting area of approximately {3.14159 * (diameter/2)**2 / 10000:.2f} square cm.
+The {diameter:.0f}mm diameter creates a cutting area of approximately {3.14159 * (diameter / 2) ** 2 / 10000:.2f} square cm.
 - Larger diameter = exponentially more wood volume to remove
 - Quality affects this proportionally: softer wood on large diameter saves significant time
 - This diameter/quality interaction is already partially in baseline, but verify your adjustment makes sense
@@ -421,8 +427,8 @@ Your response:"""
         response = response.strip()
 
         # Try to split by pipe delimiter
-        if '|' in response:
-            parts = [p.strip() for p in response.split('|')]
+        if "|" in response:
+            parts = [p.strip() for p in response.split("|")]
             if len(parts) >= 3:
                 # Extract all three components
                 multiplier_str = parts[0]
@@ -430,7 +436,7 @@ Your response:"""
                 quality_explanation = parts[2]
 
                 # Parse multiplier
-                numbers = re.findall(r'\d+\.?\d*', multiplier_str)
+                numbers = re.findall(r"\d+\.?\d*", multiplier_str)
                 if numbers:
                     multiplier = float(numbers[0])
 
@@ -451,7 +457,7 @@ Your response:"""
                             return predicted_time, confidence, explanation
 
         # If structured parsing fails, try fallback to old format (single number)
-        numbers = re.findall(r'\d+\.?\d*', response)
+        numbers = re.findall(r"\d+\.?\d*", response)
         if numbers:
             multiplier = float(numbers[0])
 
@@ -462,7 +468,7 @@ Your response:"""
                 if baseline * 0.5 <= predicted_time <= baseline * 1.5:
                     explanation = f"Predicted {predicted_time:.1f}s ({explanation_source}, AI calibrated)"
                     return predicted_time, confidence, explanation
-    except Exception as e:
+    except Exception:
         # Log parsing failure silently, fall through to baseline
         pass
 

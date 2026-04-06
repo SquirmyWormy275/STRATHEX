@@ -13,13 +13,13 @@ Key Concepts:
 The scaling exponent is calibrated from empirical data where available.
 """
 
-from typing import Tuple, Optional, List, Dict
-import pandas as pd
-import numpy as np
 from dataclasses import dataclass
+from typing import Dict, List, Optional, Tuple
+
+import numpy as np
+import pandas as pd
 
 from woodchopping.data import standardize_results_data
-
 
 # Default scaling exponent (can be overridden with empirical calibration)
 DEFAULT_SCALING_EXPONENT = 1.4
@@ -34,6 +34,7 @@ _event_exponent_cache: Dict[str, float] = {}
 @dataclass
 class ScalingMetadata:
     """Metadata about diameter scaling applied to a prediction."""
+
     was_scaled: bool
     original_diameter: Optional[float]
     target_diameter: Optional[float]
@@ -43,9 +44,7 @@ class ScalingMetadata:
 
 
 def calculate_scaling_factor(
-    from_diameter: float,
-    to_diameter: float,
-    exponent: float = DEFAULT_SCALING_EXPONENT
+    from_diameter: float, to_diameter: float, exponent: float = DEFAULT_SCALING_EXPONENT
 ) -> float:
     """
     Calculate time scaling factor based on diameter difference.
@@ -78,7 +77,7 @@ def calculate_scaling_factor(
     # Time scales with diameter^exponent
     # If target is smaller (ratio < 1), scaling_factor < 1 (faster)
     # If target is larger (ratio > 1), scaling_factor > 1 (slower)
-    scaling_factor = ratio ** exponent
+    scaling_factor = ratio**exponent
 
     return scaling_factor
 
@@ -87,7 +86,7 @@ def scale_time(
     time_seconds: float,
     from_diameter: float,
     to_diameter: float,
-    exponent: float = DEFAULT_SCALING_EXPONENT
+    exponent: float = DEFAULT_SCALING_EXPONENT,
 ) -> Tuple[float, ScalingMetadata]:
     """
     Scale a single time value for diameter difference.
@@ -111,7 +110,9 @@ def scale_time(
     if was_scaled:
         diameter_diff = abs(to_diameter - from_diameter)
         direction = "smaller" if to_diameter < from_diameter else "larger"
-        warning = f"Scaled from {from_diameter:.0f}mm to {to_diameter:.0f}mm ({direction}, {diameter_diff:.0f}mm difference)"
+        warning = (
+            f"Scaled from {from_diameter:.0f}mm to {to_diameter:.0f}mm ({direction}, {diameter_diff:.0f}mm difference)"
+        )
     else:
         warning = ""
 
@@ -130,7 +131,7 @@ def scale_time(
         target_diameter=to_diameter if was_scaled else None,
         scaling_factor=factor,
         confidence_adjustment=confidence_adj,
-        warning_message=warning
+        warning_message=warning,
     )
 
     return scaled_time, metadata
@@ -140,7 +141,7 @@ def scale_time_list(
     times: List[float],
     from_diameter: float,
     to_diameter: float,
-    exponent: float = DEFAULT_SCALING_EXPONENT
+    exponent: float = DEFAULT_SCALING_EXPONENT,
 ) -> Tuple[List[float], ScalingMetadata]:
     """
     Scale a list of times for diameter difference.
@@ -163,10 +164,7 @@ def scale_time_list(
     return scaled_times, metadata
 
 
-def adjust_confidence_for_scaling(
-    original_confidence: str,
-    metadata: ScalingMetadata
-) -> str:
+def adjust_confidence_for_scaling(original_confidence: str, metadata: ScalingMetadata) -> str:
     """
     Adjust confidence level when diameter scaling is applied.
 
@@ -182,20 +180,12 @@ def adjust_confidence_for_scaling(
     if metadata.confidence_adjustment != "downgrade":
         return original_confidence
 
-    confidence_map = {
-        "HIGH": "MEDIUM",
-        "MEDIUM": "LOW",
-        "LOW": "LOW"
-    }
+    confidence_map = {"HIGH": "MEDIUM", "MEDIUM": "LOW", "LOW": "LOW"}
 
     return confidence_map.get(original_confidence, original_confidence)
 
 
-def calibrate_scaling_exponent(
-    results_df: pd.DataFrame,
-    event_code: str,
-    min_samples: int = 5
-) -> Optional[float]:
+def calibrate_scaling_exponent(results_df: pd.DataFrame, event_code: str, min_samples: int = 5) -> Optional[float]:
     """
     Calibrate scaling exponent from competitors with results in multiple diameters.
 
@@ -220,13 +210,13 @@ def calibrate_scaling_exponent(
         return None
 
     # Filter to this event
-    event_data = results_df[results_df['event'] == event_code].copy()
+    event_data = results_df[results_df["event"] == event_code].copy()
 
     if len(event_data) < min_samples:
         return None
 
     # Find competitors with multiple diameter sizes
-    competitor_diameters = event_data.groupby('competitor_name')['size_mm'].nunique()
+    competitor_diameters = event_data.groupby("competitor_name")["size_mm"].nunique()
     multi_diameter_competitors = competitor_diameters[competitor_diameters >= 2].index
 
     if len(multi_diameter_competitors) == 0:
@@ -235,10 +225,10 @@ def calibrate_scaling_exponent(
     exponents = []
 
     for comp in multi_diameter_competitors:
-        comp_data = event_data[event_data['competitor_name'] == comp]
+        comp_data = event_data[event_data["competitor_name"] == comp]
 
         # Get average time for each diameter
-        diameter_times = comp_data.groupby('size_mm')['raw_time'].mean()
+        diameter_times = comp_data.groupby("size_mm")["raw_time"].mean()
 
         if len(diameter_times) < 2:
             continue
@@ -275,10 +265,7 @@ def calibrate_scaling_exponent(
     return float(np.median(exponents))
 
 
-def get_event_scaling_exponent(
-    results_df: Optional[pd.DataFrame],
-    event_code: str
-) -> float:
+def get_event_scaling_exponent(results_df: Optional[pd.DataFrame], event_code: str) -> float:
     """
     Return a calibrated diameter scaling exponent for an event.
 
@@ -303,9 +290,7 @@ def get_event_scaling_exponent(
 
 
 def get_diameter_info_from_historical_data(
-    results_df: pd.DataFrame,
-    competitor_name: str,
-    event_code: str
+    results_df: pd.DataFrame, competitor_name: str, event_code: str
 ) -> Optional[float]:
     """
     Get the predominant diameter from a competitor's historical data.
@@ -320,20 +305,17 @@ def get_diameter_info_from_historical_data(
     """
     if results_df is None or results_df.empty:
         return None
-    required_cols = {'competitor_name', 'event', 'size_mm'}
+    required_cols = {"competitor_name", "event", "size_mm"}
     if not required_cols.issubset(results_df.columns):
         return None
 
-    comp_data = results_df[
-        (results_df['competitor_name'] == competitor_name) &
-        (results_df['event'] == event_code)
-    ]
+    comp_data = results_df[(results_df["competitor_name"] == competitor_name) & (results_df["event"] == event_code)]
 
     if len(comp_data) == 0:
         return None
 
     # Return most common diameter
-    diameter_counts = comp_data['size_mm'].value_counts()
+    diameter_counts = comp_data["size_mm"].value_counts()
     if len(diameter_counts) == 0:
         return None
 

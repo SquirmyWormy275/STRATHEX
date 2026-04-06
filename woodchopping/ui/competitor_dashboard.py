@@ -8,17 +8,17 @@ Comprehensive competitor performance dashboard integrating:
 Accessible from Personnel Management menu only.
 """
 
-import pandas as pd
-from typing import Optional
-import sys
 import os
+import sys
+
+import pandas as pd
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from woodchopping.data.excel_io import load_competitors_df, load_results_df
-from woodchopping.analytics.performance_history import analyze_performance_history
 from woodchopping.analytics.competitor_profiling import profile_competitor_strengths
+from woodchopping.analytics.performance_history import analyze_performance_history
+from woodchopping.data.excel_io import load_competitors_df, load_results_df
 
 
 def display_competitor_dashboard():
@@ -47,7 +47,7 @@ def display_competitor_dashboard():
     print("\nAvailable Competitors:")
     print("-" * 70)
 
-    competitors_list = competitors_df['competitor_name'].tolist()
+    competitors_list = competitors_df["competitor_name"].tolist()
     for idx, name in enumerate(competitors_list, 1):
         print(f"  {idx}. {name}")
 
@@ -58,7 +58,7 @@ def display_competitor_dashboard():
         try:
             choice = input("\nEnter competitor number (or 'q' to quit): ").strip().lower()
 
-            if choice == 'q':
+            if choice == "q":
                 return
 
             choice_num = int(choice)
@@ -74,13 +74,13 @@ def display_competitor_dashboard():
     results_df = _load_and_prepare_results()
 
     if results_df.empty:
-        print(f"\n[WARN] No historical results found for analysis.")
+        print("\n[WARN] No historical results found for analysis.")
         print("Please add competition results first.\n")
         input("Press Enter to return to menu...")
         return
 
     # Get competitor info
-    comp_info = competitors_df[competitors_df['competitor_name'] == selected_competitor].iloc[0]
+    comp_info = competitors_df[competitors_df["competitor_name"] == selected_competitor].iloc[0]
 
     # Generate dashboard
     _generate_dashboard(selected_competitor, comp_info, results_df)
@@ -100,12 +100,12 @@ def _load_and_prepare_results() -> pd.DataFrame:
 
     # Rename columns to match what analytics modules expect
     column_mapping = {
-        'competitor_name': 'Competitor',
-        'event': 'Event',
-        'raw_time': 'Time (seconds)',
-        'size_mm': 'Size (mm)',
-        'species': 'Species Code',
-        'date': 'Date'
+        "competitor_name": "Competitor",
+        "event": "Event",
+        "raw_time": "Time (seconds)",
+        "size_mm": "Size (mm)",
+        "species": "Species Code",
+        "date": "Date",
     }
 
     results_df = results_df.rename(columns=column_mapping)
@@ -123,7 +123,7 @@ def _generate_dashboard(competitor_name: str, comp_info: pd.Series, results_df: 
         results_df: DataFrame with historical results
     """
     # Clear screen (platform-independent)
-    os.system('cls' if os.name == 'nt' else 'clear')
+    os.system("cls" if os.name == "nt" else "clear")
 
     # Run analytics
     history_analysis = analyze_performance_history(competitor_name, results_df)
@@ -172,15 +172,15 @@ def _display_career_summary(history: dict):
     print(f"| Total Competitions: {history['total_comps']:<48}|")
 
     # Event breakdown
-    if history['event_breakdown']:
-        event_str = ", ".join([f"{event} ({count})" for event, count in history['event_breakdown'].items()])
+    if history["event_breakdown"]:
+        event_str = ", ".join([f"{event} ({count})" for event, count in history["event_breakdown"].items()])
         print(f"| Events: {event_str:<58}|")
     else:
         print(f"| Events: No data{' ' * 53}|")
 
     # Date range
-    if history['date_range']:
-        dr = history['date_range']
+    if history["date_range"]:
+        dr = history["date_range"]
         date_range_str = f"{dr['first']} to {dr['last']} (available for {dr['available']}/{dr['total']} results)"
         print(f"| Date Range: {date_range_str:<56}|")
         print(f"| First Competition: {dr['first_ago']:<50}|")
@@ -198,14 +198,14 @@ def _display_performance_statistics(history: dict):
     print("| SECTION 2: PERFORMANCE STATISTICS (B2 Integration)" + " " * 17 + "|")
     print("+" + "-" * 68 + "+")
 
-    if not history['by_event']:
+    if not history["by_event"]:
         print("| No performance data available" + " " * 38 + "|")
         print("+" + "-" * 68 + "+")
         print()
         return
 
     # Per-event statistics
-    for event, stats in history['by_event'].items():
+    for event, stats in history["by_event"].items():
         print(f"| {event}:{' ' * (65 - len(event))}|")
         print(f"|   Best Time: {stats['best_time']:.1f} sec ({stats['best_context']})".ljust(67) + "|")
         print(f"|   Average Time: {stats['avg_time']:.1f} sec (across all diameters)".ljust(67) + "|")
@@ -213,16 +213,16 @@ def _display_performance_statistics(history: dict):
         print("|" + " " * 68 + "|")
 
     # Recent form (if dates available)
-    if history['recent_form']:
+    if history["recent_form"]:
         print("| Recent Form (last 5 results, if dates available):" + " " * 18 + "|")
-        for form in history['recent_form']:
+        for form in history["recent_form"]:
             form_str = f"   {form['date']}: {form['time']:.1f} sec ({form['context']}) - {form['note']}"
             print(f"| {form_str}".ljust(67) + "|")
         print("|" + " " * 68 + "|")
 
     # Performance trend
-    trend = history['trend']
-    if trend['slope'] is not None:
+    trend = history["trend"]
+    if trend["slope"] is not None:
         trend_str = f"Performance Trend: {trend['direction']} (slope: {trend['slope']:.1f} sec/year)"
     else:
         trend_str = f"Performance Trend: {trend['direction']}"
@@ -243,29 +243,29 @@ def _display_specialization_analysis(profile: dict):
     print(f"| Preferred Event: {profile['preferred_event']}".ljust(67) + "|")
 
     # Preferred diameter
-    if profile['preferred_diameter']:
-        pd_info = profile['preferred_diameter']
+    if profile["preferred_diameter"]:
+        pd_info = profile["preferred_diameter"]
         pref_diam_str = f"Preferred Diameter: {pd_info['diameter']}mm ({pd_info['reason']})"
         print(f"| {pref_diam_str}".ljust(67) + "|")
     else:
-        print(f"| Preferred Diameter: Insufficient data (need 3+ results per diameter)".ljust(67) + "|")
+        print("| Preferred Diameter: Insufficient data (need 3+ results per diameter)".ljust(67) + "|")
 
     # Preferred species
-    if profile['preferred_species']:
-        ps_info = profile['preferred_species']
+    if profile["preferred_species"]:
+        ps_info = profile["preferred_species"]
         pref_species_str = f"Preferred Species: {ps_info['species']} ({ps_info['reason']})"
         print(f"| {pref_species_str}".ljust(67) + "|")
     else:
-        print(f"| Preferred Species: Insufficient data (need 3+ results per species)".ljust(67) + "|")
+        print("| Preferred Species: Insufficient data (need 3+ results per species)".ljust(67) + "|")
 
     print("|" + " " * 68 + "|")
 
     # Diameter breakdown
-    if profile['diameter_breakdown']:
+    if profile["diameter_breakdown"]:
         print("| Diameter Performance Breakdown:" + " " * 37 + "|")
-        for diameter in sorted(profile['diameter_breakdown'].keys()):
-            stats = profile['diameter_breakdown'][diameter]
-            rating_flag = " ?" if stats['rating'] == "STRONGEST" else ""
+        for diameter in sorted(profile["diameter_breakdown"].keys()):
+            stats = profile["diameter_breakdown"][diameter]
+            rating_flag = " ?" if stats["rating"] == "STRONGEST" else ""
             diam_str = f"   {diameter}mm: {stats['avg_time']:.1f} sec avg ({stats['count']} results) - {stats['rating']}{rating_flag}"
             print(f"| {diam_str}".ljust(67) + "|")
         print("|" + " " * 68 + "|")
@@ -274,14 +274,14 @@ def _display_specialization_analysis(profile: dict):
         print("|" + " " * 68 + "|")
 
     # Species breakdown (only species with 3+ results)
-    if profile['species_breakdown']:
-        species_with_data = {k: v for k, v in profile['species_breakdown'].items() if v['count'] >= 3}
+    if profile["species_breakdown"]:
+        species_with_data = {k: v for k, v in profile["species_breakdown"].items() if v["count"] >= 3}
 
         if species_with_data:
             print("| Species Performance Breakdown (only species with 3+ results):" + " " * 6 + "|")
             for species in sorted(species_with_data.keys()):
                 stats = species_with_data[species]
-                rating_flag = " ?" if stats['rating'] == "STRONGEST" else ""
+                rating_flag = " ?" if stats["rating"] == "STRONGEST" else ""
                 species_str = f"   {species}: {stats['avg_time']:.1f} sec avg ({stats['count']} results) - {stats['rating']}{rating_flag}"
                 print(f"| {species_str}".ljust(67) + "|")
             print("|" + " " * 68 + "|")
@@ -290,8 +290,8 @@ def _display_specialization_analysis(profile: dict):
             print("|" + " " * 68 + "|")
 
     # Outlier detection
-    fast_outliers = profile['outliers']['fast']
-    slow_outliers = profile['outliers']['slow']
+    fast_outliers = profile["outliers"]["fast"]
+    slow_outliers = profile["outliers"]["slow"]
 
     if fast_outliers or slow_outliers:
         print("| Outlier Detection:" + " " * 50 + "|")

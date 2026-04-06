@@ -4,16 +4,16 @@ from woodchopping.simulation.monte_carlo import run_monte_carlo_simulation
 
 # Create test competitors with championship marks (all Mark 3)
 test_competitors = [
-    {'name': 'Alice', 'mark': 3, 'predicted_time': 25.0},
-    {'name': 'Bob', 'mark': 3, 'predicted_time': 28.0},
-    {'name': 'Charlie', 'mark': 3, 'predicted_time': 30.0},
-    {'name': 'Diana', 'mark': 3, 'predicted_time': 33.0}
+    {"name": "Alice", "mark": 3, "predicted_time": 25.0},
+    {"name": "Bob", "mark": 3, "predicted_time": 28.0},
+    {"name": "Charlie", "mark": 3, "predicted_time": 30.0},
+    {"name": "Diana", "mark": 3, "predicted_time": 33.0},
 ]
 
 print("=" * 70)
 print("TESTING MONTE CARLO INDIVIDUAL STATISTICS TRACKING")
 print("=" * 70)
-print(f"\nTest Competitors (Championship format - all Mark 3):")
+print("\nTest Competitors (Championship format - all Mark 3):")
 for comp in test_competitors:
     print(f"  - {comp['name']}: Predicted time {comp['predicted_time']}s")
 
@@ -25,12 +25,12 @@ print("INDIVIDUAL COMPETITOR STATISTICS TEST RESULTS")
 print("=" * 70)
 
 # Verify competitor_time_stats exists
-if 'competitor_time_stats' in analysis:
+if "competitor_time_stats" in analysis:
     print("\n[SUCCESS] 'competitor_time_stats' key found in analysis")
 
-    for comp_name in ['Alice', 'Bob', 'Charlie', 'Diana']:
-        if comp_name in analysis['competitor_time_stats']:
-            stats = analysis['competitor_time_stats'][comp_name]
+    for comp_name in ["Alice", "Bob", "Charlie", "Diana"]:
+        if comp_name in analysis["competitor_time_stats"]:
+            stats = analysis["competitor_time_stats"][comp_name]
             print(f"\n{comp_name}:")
             print(f"  Mean finish time:    {stats['mean']:.2f}s")
             print(f"  Std deviation:       {stats['std_dev']:.2f}s")
@@ -42,8 +42,8 @@ if 'competitor_time_stats' in analysis:
             print(f"  Consistency rating:  {stats['consistency_rating']}")
 
             # Validation: std_dev should be close to 3.0s (the variance model)
-            if 2.5 <= stats['std_dev'] <= 3.5:
-                print(f"  [PASS] Std dev validation: within expected range 2.5-3.5s")
+            if 2.5 <= stats["std_dev"] <= 3.5:
+                print("  [PASS] Std dev validation: within expected range 2.5-3.5s")
             else:
                 print(f"  [WARNING] Std dev validation: expected 2.5-3.5s, got {stats['std_dev']:.2f}s")
         else:
