@@ -43,3 +43,17 @@ data/results/*.csv
 
 # STRATHMARK lives in its own git repo
 STRATHMARK/
+
+# Packaging / build artifacts
+*.egg
+*.egg-info/
+build/
+dist/
+
+# Tooling caches
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Runtime tournament state (session-specific)
+tournament_state.json
