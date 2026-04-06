@@ -22,17 +22,21 @@ Output:
     and recommendation for which model to use.
 """
 
-import time
 import sys
-import pandas as pd
-from typing import Dict, List, Tuple
-from statistics import mean, stdev
+import time
+from statistics import mean
+from typing import Dict, List
+
+import pytest
+
+# Entire module requires a local Ollama instance — CI skips it via -m "not ollama".
+pytestmark = pytest.mark.ollama
 
 # Add project root to path
-sys.path.insert(0, '.')
+sys.path.insert(0, ".")
 
-from woodchopping.llm import call_ollama
 from config import llm_config
+from woodchopping.predictions.llm import call_ollama
 
 
 def test_time_prediction_accuracy(model: str, num_tests: int = 10) -> Dict:
@@ -57,20 +61,20 @@ def test_time_prediction_accuracy(model: str, num_tests: int = 10) -> Dict:
     test_cases = [
         # (baseline, quality, expected_direction, expected_range)
         (45.0, 8, "higher", (1.05, 1.08)),  # Hard wood -> slower
-        (45.0, 3, "lower", (0.95, 0.97)),   # Soft wood -> faster
-        (45.0, 5, "same", (0.99, 1.01)),    # Average -> no change
-        (30.0, 10, "higher", (1.12, 1.15)), # Very hard -> much slower
-        (60.0, 1, "lower", (0.85, 0.90)),   # Very soft -> much faster
+        (45.0, 3, "lower", (0.95, 0.97)),  # Soft wood -> faster
+        (45.0, 5, "same", (0.99, 1.01)),  # Average -> no change
+        (30.0, 10, "higher", (1.12, 1.15)),  # Very hard -> much slower
+        (60.0, 1, "lower", (0.85, 0.90)),  # Very soft -> much faster
     ]
 
     results = {
-        'successes': 0,
-        'parsing_failures': 0,
-        'bounds_violations': 0,
-        'direction_errors': 0,
-        'latencies': [],
-        'structured_responses': 0,
-        'total_tests': len(test_cases)
+        "successes": 0,
+        "parsing_failures": 0,
+        "bounds_violations": 0,
+        "direction_errors": 0,
+        "latencies": [],
+        "structured_responses": 0,
+        "total_tests": len(test_cases),
     }
 
     for baseline, quality, expected_dir, expected_range in test_cases:
@@ -99,62 +103,63 @@ Your response:"""
         response = call_ollama(prompt, model=model, num_predict=100)
         latency = time.time() - start
 
-        results['latencies'].append(latency)
+        results["latencies"].append(latency)
 
         if not response:
-            results['parsing_failures'] += 1
+            results["parsing_failures"] += 1
             continue
 
         # Try to parse structured response
-        if '|' in response:
-            results['structured_responses'] += 1
-            parts = [p.strip() for p in response.split('|')]
+        if "|" in response:
+            results["structured_responses"] += 1
+            parts = [p.strip() for p in response.split("|")]
             if len(parts) >= 3:
                 try:
                     multiplier = float(parts[0])
 
                     # Check bounds
                     if not (0.85 <= multiplier <= 1.15):
-                        results['bounds_violations'] += 1
+                        results["bounds_violations"] += 1
                         continue
 
                     # Check direction
                     predicted_time = baseline * multiplier
                     if expected_dir == "higher" and predicted_time <= baseline:
-                        results['direction_errors'] += 1
+                        results["direction_errors"] += 1
                     elif expected_dir == "lower" and predicted_time >= baseline:
-                        results['direction_errors'] += 1
+                        results["direction_errors"] += 1
                     elif expected_dir == "same" and abs(predicted_time - baseline) > baseline * 0.02:
-                        results['direction_errors'] += 1
+                        results["direction_errors"] += 1
                     else:
                         # Check if multiplier is within expected range
                         if expected_range[0] <= multiplier <= expected_range[1]:
-                            results['successes'] += 1
+                            results["successes"] += 1
 
                 except (ValueError, IndexError):
-                    results['parsing_failures'] += 1
+                    results["parsing_failures"] += 1
             else:
-                results['parsing_failures'] += 1
+                results["parsing_failures"] += 1
         else:
             # Try fallback parsing (single number)
             import re
-            numbers = re.findall(r'\d+\.?\d*', response)
+
+            numbers = re.findall(r"\d+\.?\d*", response)
             if numbers:
                 try:
                     multiplier = float(numbers[0])
                     if 0.85 <= multiplier <= 1.15:
                         if expected_range[0] <= multiplier <= expected_range[1]:
-                            results['successes'] += 1
+                            results["successes"] += 1
                     else:
-                        results['bounds_violations'] += 1
+                        results["bounds_violations"] += 1
                 except ValueError:
-                    results['parsing_failures'] += 1
+                    results["parsing_failures"] += 1
             else:
-                results['parsing_failures'] += 1
+                results["parsing_failures"] += 1
 
-    results['avg_latency'] = mean(results['latencies']) if results['latencies'] else 0
-    results['accuracy_rate'] = (results['successes'] / results['total_tests']) * 100
-    results['structured_rate'] = (results['structured_responses'] / results['total_tests']) * 100
+    results["avg_latency"] = mean(results["latencies"]) if results["latencies"] else 0
+    results["accuracy_rate"] = (results["successes"] / results["total_tests"]) * 100
+    results["structured_rate"] = (results["structured_responses"] / results["total_tests"]) * 100
 
     return results
 
@@ -212,40 +217,42 @@ Your assessment:"""
     latency = time.time() - start
 
     results = {
-        'latency': latency,
-        'has_rating': False,
-        'has_analysis': False,
-        'has_diagnosis': False,
-        'has_accuracy': False,
-        'has_recommendations': False,
-        'valid_rating': False,
-        'response_length': len(response) if response else 0,
-        'complete': False
+        "latency": latency,
+        "has_rating": False,
+        "has_analysis": False,
+        "has_diagnosis": False,
+        "has_accuracy": False,
+        "has_recommendations": False,
+        "valid_rating": False,
+        "response_length": len(response) if response else 0,
+        "complete": False,
     }
 
     if response:
         response_upper = response.upper()
 
         # Check for sections
-        results['has_rating'] = 'FAIRNESS RATING' in response_upper
-        results['has_analysis'] = 'STATISTICAL ANALYSIS' in response_upper
-        results['has_diagnosis'] = 'PATTERN DIAGNOSIS' in response_upper or 'PATTERN' in response_upper
-        results['has_accuracy'] = 'PREDICTION ACCURACY' in response_upper or 'ACCURACY' in response_upper
-        results['has_recommendations'] = 'RECOMMENDATIONS' in response_upper or 'RECOMMEND' in response_upper
+        results["has_rating"] = "FAIRNESS RATING" in response_upper
+        results["has_analysis"] = "STATISTICAL ANALYSIS" in response_upper
+        results["has_diagnosis"] = "PATTERN DIAGNOSIS" in response_upper or "PATTERN" in response_upper
+        results["has_accuracy"] = "PREDICTION ACCURACY" in response_upper or "ACCURACY" in response_upper
+        results["has_recommendations"] = "RECOMMENDATIONS" in response_upper or "RECOMMEND" in response_upper
 
         # Check for valid rating
         valid_ratings = ["EXCELLENT", "VERY GOOD", "GOOD", "FAIR", "POOR", "UNACCEPTABLE"]
-        results['valid_rating'] = any(rating in response_upper for rating in valid_ratings)
+        results["valid_rating"] = any(rating in response_upper for rating in valid_ratings)
 
         # Check completeness
-        results['complete'] = all([
-            results['has_rating'],
-            results['has_analysis'],
-            results['has_diagnosis'],
-            results['has_accuracy'],
-            results['has_recommendations'],
-            results['valid_rating']
-        ])
+        results["complete"] = all(
+            [
+                results["has_rating"],
+                results["has_analysis"],
+                results["has_diagnosis"],
+                results["has_accuracy"],
+                results["has_recommendations"],
+                results["valid_rating"],
+            ]
+        )
 
     return results
 
@@ -267,17 +274,17 @@ def compare_models(models: List[str]) -> Dict:
         print("=" * 60)
 
         model_results = {
-            'time_prediction': test_time_prediction_accuracy(model),
-            'fairness_assessment': test_fairness_assessment_quality(model)
+            "time_prediction": test_time_prediction_accuracy(model),
+            "fairness_assessment": test_fairness_assessment_quality(model),
         }
 
         comparison_results[model] = model_results
 
         # Print summary
-        tp = model_results['time_prediction']
-        fa = model_results['fairness_assessment']
+        tp = model_results["time_prediction"]
+        fa = model_results["fairness_assessment"]
 
-        print(f"\n  Time Prediction Results:")
+        print("\n  Time Prediction Results:")
         print(f"    Accuracy: {tp['accuracy_rate']:.1f}% ({tp['successes']}/{tp['total_tests']} correct)")
         print(f"    Structured responses: {tp['structured_rate']:.1f}%")
         print(f"    Avg latency: {tp['avg_latency']:.2f}s")
@@ -285,13 +292,15 @@ def compare_models(models: List[str]) -> Dict:
         print(f"    Bounds violations: {tp['bounds_violations']}")
         print(f"    Direction errors: {tp['direction_errors']}")
 
-        print(f"\n  Fairness Assessment Results:")
+        print("\n  Fairness Assessment Results:")
         print(f"    Complete: {fa['complete']}")
         print(f"    Valid rating: {fa['valid_rating']}")
         print(f"    Response length: {fa['response_length']} chars")
         print(f"    Latency: {fa['latency']:.2f}s")
-        print(f"    Sections present: Rating={fa['has_rating']}, Analysis={fa['has_analysis']}, "
-              f"Diagnosis={fa['has_diagnosis']}, Accuracy={fa['has_accuracy']}, Recs={fa['has_recommendations']}")
+        print(
+            f"    Sections present: Rating={fa['has_rating']}, Analysis={fa['has_analysis']}, "
+            f"Diagnosis={fa['has_diagnosis']}, Accuracy={fa['has_accuracy']}, Recs={fa['has_recommendations']}"
+        )
 
     return comparison_results
 
@@ -320,18 +329,18 @@ def generate_recommendation(results: Dict) -> str:
     model_7b = "qwen2.5:7b" if "qwen2.5:7b" in models else models[0]
     model_32b = "qwen2.5:32b" if "qwen2.5:32b" in models else models[1]
 
-    tp_7b = results[model_7b]['time_prediction']
-    tp_32b = results[model_32b]['time_prediction']
-    fa_7b = results[model_7b]['fairness_assessment']
-    fa_32b = results[model_32b]['fairness_assessment']
+    tp_7b = results[model_7b]["time_prediction"]
+    tp_32b = results[model_32b]["time_prediction"]
+    fa_7b = results[model_7b]["fairness_assessment"]
+    fa_32b = results[model_32b]["fairness_assessment"]
 
     # Compare accuracy
     report += "TIME PREDICTION ACCURACY:\n"
     report += f"  {model_7b}: {tp_7b['accuracy_rate']:.1f}% accuracy, {tp_7b['avg_latency']:.2f}s avg latency\n"
     report += f"  {model_32b}: {tp_32b['accuracy_rate']:.1f}% accuracy, {tp_32b['avg_latency']:.2f}s avg latency\n"
 
-    accuracy_winner = model_32b if tp_32b['accuracy_rate'] > tp_7b['accuracy_rate'] else model_7b
-    speed_winner = model_7b if tp_7b['avg_latency'] < tp_32b['avg_latency'] else model_32b
+    accuracy_winner = model_32b if tp_32b["accuracy_rate"] > tp_7b["accuracy_rate"] else model_7b
+    speed_winner = model_7b if tp_7b["avg_latency"] < tp_32b["avg_latency"] else model_32b
 
     report += f"\n  Winner (Accuracy): {accuracy_winner}\n"
     report += f"  Winner (Speed): {speed_winner}\n"
@@ -341,7 +350,7 @@ def generate_recommendation(results: Dict) -> str:
     report += f"  {model_7b}: Complete={fa_7b['complete']}, {fa_7b['latency']:.2f}s latency\n"
     report += f"  {model_32b}: Complete={fa_32b['complete']}, {fa_32b['latency']:.2f}s latency\n"
 
-    quality_winner = model_32b if fa_32b['complete'] else model_7b if fa_7b['complete'] else "TIE"
+    quality_winner = model_32b if fa_32b["complete"] else model_7b if fa_7b["complete"] else "TIE"
     report += f"\n  Winner (Quality): {quality_winner}\n"
 
     # Overall recommendation
@@ -353,35 +362,37 @@ def generate_recommendation(results: Dict) -> str:
     score_32b = 0
 
     # Accuracy (most important for predictions)
-    if tp_32b['accuracy_rate'] > tp_7b['accuracy_rate'] + 10:
+    if tp_32b["accuracy_rate"] > tp_7b["accuracy_rate"] + 10:
         score_32b += 3
         report += f"[OK] {model_32b} has significantly better prediction accuracy (+{tp_32b['accuracy_rate'] - tp_7b['accuracy_rate']:.1f}%)\n"
-    elif tp_7b['accuracy_rate'] > tp_32b['accuracy_rate'] + 10:
+    elif tp_7b["accuracy_rate"] > tp_32b["accuracy_rate"] + 10:
         score_7b += 3
         report += f"[OK] {model_7b} has significantly better prediction accuracy (+{tp_7b['accuracy_rate'] - tp_32b['accuracy_rate']:.1f}%)\n"
     else:
         report += f"? Prediction accuracy is similar ({abs(tp_32b['accuracy_rate'] - tp_7b['accuracy_rate']):.1f}% difference)\n"
 
     # Structured output compliance
-    if tp_32b['structured_rate'] > tp_7b['structured_rate'] + 20:
+    if tp_32b["structured_rate"] > tp_7b["structured_rate"] + 20:
         score_32b += 2
         report += f"[OK] {model_32b} follows structured output format better (+{tp_32b['structured_rate'] - tp_7b['structured_rate']:.1f}%)\n"
-    elif tp_7b['structured_rate'] > tp_32b['structured_rate'] + 20:
+    elif tp_7b["structured_rate"] > tp_32b["structured_rate"] + 20:
         score_7b += 2
         report += f"[OK] {model_7b} follows structured output format better (+{tp_7b['structured_rate'] - tp_32b['structured_rate']:.1f}%)\n"
 
     # Fairness assessment quality
-    if fa_32b['complete'] and not fa_7b['complete']:
+    if fa_32b["complete"] and not fa_7b["complete"]:
         score_32b += 2
         report += f"[OK] {model_32b} provides complete fairness assessments\n"
-    elif fa_7b['complete'] and not fa_32b['complete']:
+    elif fa_7b["complete"] and not fa_32b["complete"]:
         score_7b += 2
         report += f"[OK] {model_7b} provides complete fairness assessments\n"
 
     # Speed
-    if tp_7b['avg_latency'] < tp_32b['avg_latency'] * 0.75:
+    if tp_7b["avg_latency"] < tp_32b["avg_latency"] * 0.75:
         score_7b += 1
-        report += f"[OK] {model_7b} is significantly faster ({tp_32b['avg_latency'] / tp_7b['avg_latency']:.1f}x speedup)\n"
+        report += (
+            f"[OK] {model_7b} is significantly faster ({tp_32b['avg_latency'] / tp_7b['avg_latency']:.1f}x speedup)\n"
+        )
 
     # Final verdict
     report += "\n" + "-" * 80 + "\n"
@@ -397,7 +408,7 @@ def generate_recommendation(results: Dict) -> str:
         report += "performance. Use this model if speed and resource constraints are\n"
         report += "more important than marginal accuracy improvements.\n"
     else:
-        report += f"\n? TIE - Both models perform similarly\n\n"
+        report += "\n? TIE - Both models perform similarly\n\n"
         report += f"Consider using {model_7b} for faster responses or {model_32b} for\n"
         report += "maximum accuracy. The performance difference is minimal.\n"
 
@@ -438,7 +449,7 @@ def main():
 
         # Save results
         output_file = "test_model_comparison_results.txt"
-        with open(output_file, 'w') as f:
+        with open(output_file, "w") as f:
             f.write("WOODCHOPPING HANDICAP SYSTEM - MODEL COMPARISON TEST RESULTS\n")
             f.write("=" * 80 + "\n\n")
             f.write(f"Test Date: {time.strftime('%Y-%m-%d %H:%M:%S')}\n\n")
@@ -446,12 +457,12 @@ def main():
             for model, model_results in results.items():
                 f.write(f"\n{model}\n")
                 f.write("-" * 80 + "\n")
-                f.write(f"Time Prediction:\n")
-                for key, value in model_results['time_prediction'].items():
-                    if key != 'latencies':  # Skip raw latency list
+                f.write("Time Prediction:\n")
+                for key, value in model_results["time_prediction"].items():
+                    if key != "latencies":  # Skip raw latency list
                         f.write(f"  {key}: {value}\n")
-                f.write(f"\nFairness Assessment:\n")
-                for key, value in model_results['fairness_assessment'].items():
+                f.write("\nFairness Assessment:\n")
+                for key, value in model_results["fairness_assessment"].items():
                     f.write(f"  {key}: {value}\n")
 
             f.write(recommendation)
