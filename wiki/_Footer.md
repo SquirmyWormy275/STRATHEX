@@ -1,0 +1,1 @@
+STRATHEX is the tournament-management surface. Calculations live in [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK). Handicaps must ultimately be approved by the appointed Handicapper — see [AAA Rule 14](AAA-and-QAA-Rules-Compliance#rules-12-19--handicapping).
