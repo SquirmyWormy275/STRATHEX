@@ -16,27 +16,26 @@ woodchopping-handicap-system/
 ├── woodchopping.xlsx              # Historical results database
 ├── tournament_state.json          # Saved tournament state
 │
-├── FunctionsLibrary.py            # Legacy functions (being phased out)
-├── explanation_system_functions.py # Legacy explanations
+├── explanation_system_functions.py # Educational wizard (judge-facing how-it-works)
 │
 ├── woodchopping/                  # Main package (modular code)
-│   ├── data/                      #   Data loading & validation
-│   ├── handicaps/                 #   Handicap calculation
+│   ├── data/                      #   Data loading & validation (+ store_registry singleton)
+│   ├── handicaps/                 #   Thin wrapper -> strathmark.HandicapCalculator
 │   ├── predictions/               #   Baseline, ML, LLM predictions
-│   ├── simulation/                #   Monte Carlo fairness
-│   └── ui/                        #   User interface
-│
-├── STRATHMARK/                    # Pip-installable handicap engine (own git repo)
-│   ├── strathmark/                #   Pure calculation core (no UI, no Excel)
-│   ├── tests/                     #   28 unit tests (all passing)
-│   ├── pyproject.toml
-│   └── README.md
+│   ├── simulation/                #   Monte Carlo fairness (thin proxy to strathmark)
+│   ├── ui/                        #   User interface modules
+│   └── strathmark_adapter.py      #   Only file that imports strathmark (V6.0 bridge)
 │
 ├── docs/                          # All documentation (organized!)
 │   └── solutions/                 #   Documented solutions to past problems (ce:compound)
 ├── wiki/                          # Versioned GitHub Wiki source + publish.sh sync script
 └── tests/                         # Test scripts + conftest.py (collection rules, ollama/strathmark markers)
 ```
+
+> **STRATHMARK (sibling repo, not in this tree):** the handicap calculation engine lives at
+> [github.com/SquirmyWormy275/STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK) and is
+> installed as a git dependency by `pip install -e .`. See
+> [solutions/architecture-decisions/strathmark-extraction-v6.md](solutions/architecture-decisions/strathmark-extraction-v6.md).
 
 ---
 
@@ -45,7 +44,8 @@ woodchopping-handicap-system/
 ### Want to USE the program?
 ```
 1. Open: MainProgramV5_2.py
-2. Read: docs/ReadMe.md (user manual)
+2. Read: README.md (getting started)
+3. Browse: wiki/Quick-Start.md, wiki/Tournament-Workflow.md (judge-facing guides)
 ```
 
 ### Want to UNDERSTAND the system?
@@ -76,14 +76,17 @@ All documentation now in `docs/`:
 ### Essential Reading
 - **INDEX.md** - Documentation index (start here!)
 - **SYSTEM_STATUS.md** - Current system capabilities
-- **ReadMe.md** - User manual & function reference
+- **../README.md** (root) - User-facing getting-started guide
 
 ### Technical Documentation
 - **ML_AUDIT_REPORT.md** - ML model audit & validation
 - **HANDICAP_SYSTEM_EXPLAINED.md** - How handicaps work
-- **NewFeatures.md** - Planned enhancements
 - **CHECK_MY_WORK_FEATURE.md** - Check My Work validation system
-- **QAA_INTERPOLATION_IMPLEMENTATION.md** - Quality/Age/Axe interpolation
+- **QAA_INTERPOLATION_IMPLEMENTATION.md** - Quality/Age/Axe interpolation (historical; see `solutions/architecture-decisions/qaa-scaling-removal.md` for current state)
+- **PROMPT_ENGINEERING_GUIDELINES.md** / **PROMPT_CHANGELOG.md** - LLM prompt discipline and version history
+
+### Past Solutions
+- **solutions/** - Documented solutions to past problems (`/ce:compound` workflow). See `solutions/README.md` for the full index.
 
 ---
 
@@ -161,7 +164,6 @@ woodchopping/
 - `README.md` - Main project overview (all caps)
 - `CLAUDE.md` - AI assistant instructions (all caps)
 - `FEATURE_NAME.md` - Feature docs (all caps)
-- `ReadMe.md` - User manual (legacy CamelCase)
 
 ---
 

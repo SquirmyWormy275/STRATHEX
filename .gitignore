@@ -21,6 +21,9 @@ ENV/
 *.swo
 *~
 
+# Claude Code per-project settings (machine-local; may contain absolute paths)
+.claude/
+
 # OS
 .DS_Store
 Thumbs.db
