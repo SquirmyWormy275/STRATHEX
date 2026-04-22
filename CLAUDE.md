@@ -88,6 +88,7 @@ Whenever you make ANY change to the program code, you MUST update the relevant d
 - `docs/SYSTEM_STATUS.md` - Current capabilities
 - `docs/ML_AUDIT_REPORT.md` - ML model documentation
 - `README.md` - User-facing guide
+- `wiki/*.md` - Judge-facing GitHub Wiki pages (17 content pages). Edit in `wiki/`, then publish with `bash wiki/publish.sh`
 
 ### 5. Why This Matters:
 **Trust = Understanding**
@@ -502,3 +503,7 @@ All competitors should theoretically finish simultaneously in perfect system.
 
 **Project Origin:**
 Academic project for woodchopping competition management. Currently being considered for use at Missoula Pro-Am and Mason County Western Qualifier. Tested against Australian handicapping data (150+ years institutional knowledge).
+
+## Documented Solutions
+
+`docs/solutions/` — documented solutions to past problems (bugs, best practices, workflow improvements), organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Relevant when implementing or debugging in documented areas.

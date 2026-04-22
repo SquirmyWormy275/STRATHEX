@@ -23,7 +23,9 @@ woodchopping-handicap-system/
 │   ├── results/                # CSV results, analysis outputs
 │   └── backups/                # Excel backups
 ├── docs/                       # Documentation (you are here)
+│   ├── solutions/              # Documented past solutions (bugs, best practices, workflows)
 │   └── archive/                # Historical implementation reports
+├── wiki/                       # Versioned source for the GitHub Wiki (publish via wiki/publish.sh)
 ├── reference/                  # Competition rules, QAA PDFs
 └── saves/                      # Tournament state files (not tracked in git)
 ```
@@ -75,6 +77,28 @@ LLM prompt changes, rationale, versioning
 
 ---
 
+## GitHub Wiki
+
+The wiki is version-controlled in [wiki/](../wiki/) and published via `bash wiki/publish.sh`. 17 content pages covering the handicap pipeline, prediction methods, Monte Carlo fairness, tournament workflows, AAA/QAA rule compliance, data model, FAQ, and version history. Edit pages in `wiki/`, commit to the main repo, then run the publish script to sync to GitHub.
+
+---
+
+## Past Solutions
+
+[solutions/](solutions/) — documented solutions to past problems, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Written by the `/ce:compound` workflow; relevant when implementing or debugging in documented areas. See [solutions/README.md](solutions/README.md) for the full index and reading order for new contributors.
+
+### Quick links
+
+- **Architecture** — [STRATHMARK extraction (V6.0)](solutions/architecture-decisions/strathmark-extraction-v6.md), [QAA scaling removal](solutions/architecture-decisions/qaa-scaling-removal.md)
+- **Best practices** — [prompt/feature parity discipline](solutions/best-practices/prompt-feature-parity.md), [judge UI simplicity](solutions/best-practices/judge-ui-simplicity-principle.md)
+- **Data integrity** — [wood quality scale](solutions/data-integrity/wood-quality-scale-inversion.md), [sparse competitor data](solutions/data-integrity/sparse-competitor-data-fallback.md), [Excel Results schema](solutions/data-integrity/excel-results-schema-column-mismatch.md)
+- **Runtime errors** — [Windows UNICODE/ASCII](solutions/runtime-errors/unicode-ascii-windows-terminal.md), [numpy polyfit DLASCLS](solutions/runtime-errors/numpy-polyfit-dlascls-sparse-data.md)
+- **Test failures** — [pytest Ollama markers](solutions/test-failures/pytest-collection-ollama-markers-2026-04-06.md), [ML feature count mismatch](solutions/test-failures/ml-feature-count-mismatch.md)
+- **Build errors** — [hatch direct-ref for strathmark](solutions/build-errors/hatch-allow-direct-references-2026-04-06.md)
+- **Workflow issues** — [versioned wiki source](solutions/workflow-issues/versioned-wiki-source-2026-04-21.md)
+
+---
+
 ## Archived Documentation
 
 Historical implementation reports are in [archive/](archive/):
@@ -119,4 +143,4 @@ When adding new documentation:
 
 **Maintained by**: Alex Kaper
 **AI Assistant**: Claude (Anthropic)
-**Last Updated**: January 2026
+**Last Updated**: April 2026

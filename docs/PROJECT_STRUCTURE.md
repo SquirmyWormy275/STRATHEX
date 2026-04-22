@@ -1,6 +1,6 @@
 # Project Structure - Quick Reference
 
-**Last Updated**: March 9, 2026
+**Last Updated**: April 21, 2026
 
 ---
 
@@ -33,7 +33,9 @@ woodchopping-handicap-system/
 │   └── README.md
 │
 ├── docs/                          # All documentation (organized!)
-└── tests/                         # Test scripts
+│   └── solutions/                 #   Documented solutions to past problems (ce:compound)
+├── wiki/                          # Versioned GitHub Wiki source + publish.sh sync script
+└── tests/                         # Test scripts + conftest.py (collection rules, ollama/strathmark markers)
 ```
 
 ---
@@ -90,13 +92,24 @@ All documentation now in `docs/`:
 All tests now in `tests/`:
 
 ### Main Tests
-- **test_both_events.py** - Comprehensive SB & UH validation
-- **test_uh_predictions.py** - UH-specific prediction tests
+- **conftest.py** - Collection rules: skips script-style files pytest can't inject, and skips data-dependent tests in `test_baseline_hybrid.py` when `woodchopping.xlsx` is absent (CI does not ship the production database)
+- **test_baseline_hybrid.py** - Unit tests for the baseline/hybrid predictor
+- **test_both_events.py** - Comprehensive SB & UH validation (script-style, not collected by pytest)
+- **test_uh_predictions.py** - UH-specific prediction tests (script-style, not collected by pytest)
+- **validation/test_model_comparison.py** - LLM model comparison (marked `pytest.mark.ollama`, skipped in CI)
 
-**Run tests**:
+### Registered markers (see `pyproject.toml`)
+- `ollama` — tests that require a local Ollama instance (CI runs with `-m "not ollama"`)
+- `strathmark` — tests that exercise the strathmark engine directly
+
+**Run tests (CI-equivalent)**:
 ```bash
-cd tests
-python test_both_events.py
+pytest tests/ -v -m "not ollama"
+```
+
+**Run a single benchmark script**:
+```bash
+python tests/test_both_events.py
 ```
 
 ---
