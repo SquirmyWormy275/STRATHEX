@@ -58,7 +58,7 @@ STRATHEX is one of several woodchopping tools that share a single calculation co
 
 **Audience:** Other tournament managers, scoring apps, analysis tools, research projects.
 
-Install standalone: `pip install strathmark`.
+Install standalone: `pip install git+https://github.com/SquirmyWormy275/STRATHMARK.git` (PyPI publication pending v1.0.0; once released, `pip install strathmark` will work).
 
 ### Downstream tournament managers *(sibling integrations)*
 

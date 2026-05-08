@@ -156,7 +156,7 @@ STRATHEX doesn't currently publish to PyPI — it's install-from-source. The ver
 - **Minor (V6.1)** — new tournament formats, significant feature additions
 - **Patch (V6.1.2)** — bug fixes, small improvements
 
-STRATHMARK *does* publish to PyPI via `publish.yml`. STRATHEX's `pyproject.toml` pins STRATHMARK's `main` branch directly, so updates flow automatically.
+STRATHMARK is not yet on PyPI. PyPI publication is pending STRATHMARK's v1.0.0 stabilization. Until then, STRATHEX's `pyproject.toml` pins STRATHMARK to a stable commit SHA, so dependency upgrades happen via explicit pin bumps rather than auto-tracking. Once STRATHMARK is published, the pin will switch to a versioned PyPI dependency (`strathmark>=1.0.0,<2.0.0`).
 
 Release checklist:
 1. All CI green on a release candidate branch

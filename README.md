@@ -51,7 +51,7 @@ STRATHEX (this repo)                     STRATHMARK (sister repo)
 
 Full module map and design-decision rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [wiki/Architecture](wiki/Architecture.md).
 
-The clean adapter boundary means STRATHMARK has zero imports from STRATHEX. Anyone can `pip install strathmark` and use the engine in their own tournament software, with or without STRATHEX.
+The clean adapter boundary means STRATHMARK has zero imports from STRATHEX. The library is Apache 2.0 licensed, and other tournament software can install it directly from GitHub today (`pip install git+https://github.com/SquirmyWormy275/STRATHMARK.git`); PyPI publication is pending the v1.0.0 release, after which the standard `pip install strathmark` form will work.
 
 ## Quickstart
 
