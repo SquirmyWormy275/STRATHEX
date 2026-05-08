@@ -35,10 +35,10 @@ If a change affects how a prediction is computed, at least one of the three prom
 - `woodchopping/simulation/fairness.py::get_championship_race_analysis()` — commentary on championship-race predictions. Any change to what the championship simulator surfaces must update this prompt
 
 ### 2. Updates ship in the same commit as the feature
-Not "in the next release," not "before the demo" — in the same commit. The standing order in [CLAUDE.md "LLM PROMPT MAINTENANCE"](../../../CLAUDE.md) makes this explicit. Reviews should block on it.
+Not "in the next release," not "before the demo" — in the same commit. This is a standing order for the project. Reviews should block on it.
 
 ### 3. Updates follow the checklist
-From CLAUDE.md, repeated here because the failure modes are real:
+The failure modes are real, so the checklist is mandatory:
 
 - [ ] **Identify affected prompts** — which of the three sites reason about this feature?
 - [ ] **Add system context** — one paragraph explaining the new capability to the LLM, in plain language
@@ -100,7 +100,6 @@ Adjust the baseline for wood quality. Return the adjusted time.
 The conditional block is the key structural element. When the system *is* using tournament weighting, the prompt surfaces it. When it isn't, the prompt reverts to the simple case. The LLM no longer has to guess.
 
 ## Related
-- [CLAUDE.md "CRITICAL DEVELOPMENT RULE - LLM PROMPT MAINTENANCE"](../../../CLAUDE.md) — the standing order
 - [docs/PROMPT_CHANGELOG.md](../../PROMPT_CHANGELOG.md) — version history of prompt updates
 - [docs/PROMPT_ENGINEERING_GUIDELINES.md](../../PROMPT_ENGINEERING_GUIDELINES.md) — broader prompt patterns, principles, pitfalls
 - [woodchopping/predictions/ai_predictor.py](../../../woodchopping/predictions/ai_predictor.py) — the time-prediction prompt site

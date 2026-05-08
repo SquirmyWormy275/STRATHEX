@@ -23,7 +23,7 @@ STRATHEX's job is **predicting the time** as accurately as possible. Everything 
 ### Getting started
 - [Quick Start](Quick-Start) — Install, prerequisites, first tournament
 - [Architecture](Architecture) — STRATHEX + STRATHMARK layout
-- [Ecosystem](Ecosystem) — How this fits with STRATHMARK and Missoula-Pro-Am-Manager
+- [Ecosystem](Ecosystem) — How this fits with STRATHMARK and downstream tournament tools
 
 ### How it works
 - [Handicap System Explained](Handicap-System-Explained) — The full pipeline, in plain English
@@ -48,13 +48,8 @@ STRATHEX's job is **predicting the time** as accurately as possible. Everything 
 
 ## Production use
 
-STRATHEX is being considered for use at:
-- **[Missoula Pro-Am](https://www.missoulaxe.com/)** (Missoula, MT)
-- **Mason County Western Qualifier** (Mason County, WA)
-- Any AAA-sanctioned chopping carnival
-
-The engine is tested against 150+ years of Australian handicapping data via the [Queensland Axemen's Association](http://www.qaa.org.au/) empirical scaling tables.
+STRATHEX targets AAA-sanctioned chopping carnivals — particularly events with mixed pro/amateur fields where the standard QAA Handicap Book bands don't apply. The engine is tested against 150+ years of Australian handicapping data via the [Queensland Axemen's Association](http://www.qaa.org.au/) empirical scaling tables.
 
 ---
 
-**License:** Academic project · **Author:** Alex Kaper · **AI assistance:** Claude (Anthropic)
+**License:** MIT · **Author:** Alex Kaper

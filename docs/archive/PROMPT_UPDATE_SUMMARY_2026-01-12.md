@@ -553,7 +553,7 @@ After production validation, update this section with:
 
 **Project**: STRATHEX Woodchopping Handicap System
 **Date**: January 12, 2026
-**Completed By**: Claude (Anthropic) & Alex Kaper
+**Completed By**: Alex Kaper
 **Time Investment**: ~4 hours
 **Impact**: 15-20% prediction accuracy improvement (estimated)
 

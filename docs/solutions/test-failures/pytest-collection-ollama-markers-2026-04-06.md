@@ -108,8 +108,6 @@ Pytest offers three layers of test exclusion, and each problem needs the right o
 
 ## Related Issues
 - [README.md CI/CD section](../../../README.md) — documents the `-m "not ollama"` filter
-- [CLAUDE.md](../../../CLAUDE.md) — "Tests that need a local Ollama instance must be marked `@pytest.mark.ollama`" (standing rule)
-- Global CLAUDE.md "Test Isolation" rule — "Tests MUST NEVER write to or pollute the production database" (justifies the `woodchopping.xlsx`-absent skip)
 - [.github/workflows/ci.yml](../../../.github/workflows/ci.yml) — consumer of the `ollama` marker
 - [docs/PROJECT_STRUCTURE.md](../PROJECT_STRUCTURE.md) — may need refresh to mention the new `tests/conftest.py` and marker strategy
 - Commit 9ee59c8 — the conftest + marker changes

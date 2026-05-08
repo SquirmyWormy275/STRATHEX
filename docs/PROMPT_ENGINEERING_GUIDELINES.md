@@ -608,17 +608,12 @@ TEST_CASES = [
    - Explain WHY changes were made
    - Document impact and testing results
 
-3. **CLAUDE.md** (Main project guide)
-   - Update "AI Integration" section
-   - Note any new prompt capabilities
-   - Update model version if changed
-
-4. **explanation_system_functions.py** (Judge-facing docs)
+3. **explanation_system_functions.py** (Judge-facing docs)
    - Update if prediction methodology changes
    - Explain new features in user-friendly terms
    - Add examples showing new behavior
 
-5. **SYSTEM_STATUS.md**
+4. **SYSTEM_STATUS.md**
    - Update "Recent Improvements" section
    - Note prompt version in system capabilities
    - Document any performance improvements
@@ -774,7 +769,7 @@ RESPONSE REQUIREMENT
 **Problem**: Code evolves but prompts don't
 
 **Prevention**:
-- Add prompt update checklist to CLAUDE.md (DONE ✓)
+- Maintain a prompt update checklist alongside the code
 - Link code changes to prompt impacts in PR descriptions
 - Periodic prompt audits (quarterly)
 - Automated tests that fail if prompts are stale
@@ -1001,7 +996,6 @@ Use this checklist whenever adding features that affect predictions:
 
 - [ ] **Update Documentation**
   - PROMPT_ENGINEERING_GUIDELINES.md (this file)
-  - CLAUDE.md (system architecture)
   - explanation_system_functions.py (user-facing docs)
   - SYSTEM_STATUS.md (capabilities list)
 

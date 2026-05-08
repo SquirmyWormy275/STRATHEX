@@ -10,7 +10,6 @@
 woodchopping-handicap-system/
 │
 ├── README.md                      # ← START HERE: Project overview
-├── CLAUDE.md                      # AI assistant & architecture guide
 ├── MainProgramV5_2.py             # ← RUN THIS: Main program
 ├── config.py                      # System configuration
 ├── woodchopping.xlsx              # Historical results database
@@ -63,7 +62,7 @@ woodchopping-handicap-system/
 
 ### Want to MODIFY the code?
 ```
-1. Read: CLAUDE.md (architecture)
+1. Read: docs/ARCHITECTURE.md (architecture)
 2. Explore: woodchopping/ package
 ```
 
@@ -86,7 +85,7 @@ All documentation now in `docs/`:
 - **PROMPT_ENGINEERING_GUIDELINES.md** / **PROMPT_CHANGELOG.md** - LLM prompt discipline and version history
 
 ### Past Solutions
-- **solutions/** - Documented solutions to past problems (`/ce:compound` workflow). See `solutions/README.md` for the full index.
+- **solutions/** - Documented solutions to past problems. See `solutions/README.md` for the full index.
 
 ---
 
@@ -162,7 +161,6 @@ woodchopping/
 
 ### Documentation Files
 - `README.md` - Main project overview (all caps)
-- `CLAUDE.md` - AI assistant instructions (all caps)
 - `FEATURE_NAME.md` - Feature docs (all caps)
 
 ---

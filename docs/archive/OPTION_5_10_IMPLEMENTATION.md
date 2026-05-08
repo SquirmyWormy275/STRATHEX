@@ -75,7 +75,7 @@ Submenu:
 ╔════════════════════════════════════════════════════════════════╗
 ║                   TOURNAMENT FINANCES                          ║
 ╠════════════════════════════════════════════════════════════════╣
-║  Tournament: Mason County Western Qualifier                   ║
+║  Tournament: Spring Open                                       ║
 ║  Entry Fee Tracking: ENABLED                                   ║
 ╠════════════════════════════════════════════════════════════════╣
 ║  1. View Entry Fee Status                                      ║
@@ -187,7 +187,7 @@ Accidentally scratched wrong person? Restore them:
 ╔════════════════════════════════════════════════════════════════╗
 ║           SCRATCH/WITHDRAWAL MANAGEMENT                        ║
 ╠════════════════════════════════════════════════════════════════╣
-║  Tournament: Mason County Western Qualifier                   ║
+║  Tournament: Spring Open                                       ║
 ║  Total competitors: 23                                         ║
 ║  Scratched: 2                                                  ║
 ╠════════════════════════════════════════════════════════════════╣
@@ -242,7 +242,7 @@ Currently shows note: "Please regenerate heats manually if needed"
 Both features integrated into real-time status display:
 ```
 ╔════════════════════════════════════════════════════════════════╗
-║              Mason County Western Qualifier 2026               ║
+║                       Spring Open 2026                         ║
 ║                      June 15, 2026                             ║
 ╠════════════════════════════════════════════════════════════════╣
 ║  TOURNAMENT STATUS                                             ║

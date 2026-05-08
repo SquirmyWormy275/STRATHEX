@@ -1477,7 +1477,7 @@ SOLUTION:
     - Easy to switch models system-wide by changing one config value
 
   BUG FIX #4: Documentation sync
-    - Updated CLAUDE.md to specify qwen2.5:32b (not 7b)
+    - Documentation updated to specify qwen2.5:32b (not 7b)
     - Matches actual config values
     - Prevents setup confusion for new users
 
@@ -1990,7 +1990,7 @@ def show_statistical_glossary():
         },
         {
             "term": "LLM (LARGE LANGUAGE MODEL)",
-            "definition": "An AI system trained on massive text data that can understand context and make intelligent predictions. Like ChatGPT but specialized.",
+            "definition": "An AI system trained on massive text data that can understand context and make intelligent predictions. Domain-specialized for woodchopping reasoning.",
             "example": "qwen2.5:7b model (7 billion parameters) running on Ollama. Optimized for mathematical reasoning tasks.",
             "relevance": "LLM prediction method uses AI to consider subtle factors like wood quality, recent form, and species characteristics that formulas might miss.",
             "where_seen": 'Prediction methods display shows "LLM Model: 31.2s" when LLM prediction is available',

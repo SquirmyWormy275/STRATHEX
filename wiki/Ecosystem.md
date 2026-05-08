@@ -8,9 +8,9 @@ STRATHEX is one of several woodchopping tools that share a single calculation co
 ┌──────────────────────────────────────────────────────────────────┐
 │  Tournament management layer                                     │
 │                                                                  │
-│  STRATHEX            Missoula-Pro-Am-Manager   Future tools      │
-│  (full CLI,          (event-specific,          (web apps,        │
-│  multi-event,        lightweight)              mobile scoring)   │
+│  STRATHEX            Downstream consumers      Future tools      │
+│  (full CLI,          (event-specific           (web apps,        │
+│  multi-event,        managers, lightweight)    mobile scoring)   │
 │  Excel workflow)                                                 │
 │        │                      │                    │             │
 │        └──────────────────────┼────────────────────┘             │
@@ -60,15 +60,15 @@ STRATHEX is one of several woodchopping tools that share a single calculation co
 
 Install standalone: `pip install strathmark`.
 
-### Missoula-Pro-Am-Manager *(sibling project)*
+### Downstream tournament managers *(sibling integrations)*
 
-**Role:** Purpose-built manager for the Missoula Pro-Am. Lighter surface area than STRATHEX.
+**Role:** Event-specific managers built directly on STRATHMARK with lighter surface area than STRATHEX.
 
 - Event-day-specific workflow (no full roster management)
-- Also depends on STRATHMARK as its handicap core
-- Designed for a single laptop at a tent in a sawdust pile
+- Also depend on STRATHMARK as their handicap core
+- Designed for a single laptop on tournament day
 
-## Why three repos instead of one?
+## Why a separate engine?
 
 Tournament software lives and dies by trust. A pro-am handicapper has to be able to look at a mark and know *exactly* where it came from. That's easier when:
 

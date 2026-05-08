@@ -37,7 +37,7 @@ Two related issues surfaced in January 2026 while auditing baseline accuracy:
 - Adding a second "hardness" field alongside quality. Creates a schema bifurcation and leaves the sign error hidden under a rename
 
 ## Solution
-**Standardize on 1 = softest, 10 = hardest across the entire stack** (code, prompts, UI, docs). The authoritative definition is documented in [CLAUDE.md "Wood Quality Scale"](../../../CLAUDE.md):
+**Standardize on 1 = softest, 10 = hardest across the entire stack** (code, prompts, UI, docs). The authoritative definition:
 
 ```
 0-3:  Soft/rotten wood   (faster times)
@@ -67,7 +67,6 @@ Every quality adjustment must bias predictions *slower* as quality rises. In the
 - New dataset entries must record actual quality at the time of competition. The judge's quality assessment is the ground-truth signal — without it, future ML features will never learn the relationship
 
 ## Related Issues
-- [CLAUDE.md "Wood Quality Scale"](../../../CLAUDE.md) — canonical definition
 - [wiki/Data-Model.md](../../../wiki/Data-Model.md) — judge-facing description of the Results sheet
 - [woodchopping/predictions/ai_predictor.py](../../../woodchopping/predictions/ai_predictor.py) — LLM prompt that must keep the direction explicit
 - [woodchopping/predictions/baseline.py](../../../woodchopping/predictions/baseline.py) — baseline normalization using quality

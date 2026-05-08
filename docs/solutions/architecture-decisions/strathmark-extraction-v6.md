@@ -9,7 +9,7 @@ severity: high
 applies_when:
   - Adding new handicap-calculation features — decide which repo owns them
   - Considering reimplementing calculation logic inside STRATHEX
-  - Designing new integrations (Missoula Pro-Am Manager, future clients)
+  - Designing new integrations (downstream tournament managers, future clients)
   - Evaluating whether a change should live in the adapter or in the engine
 related_components:
   - development_workflow
@@ -28,7 +28,7 @@ This was not a refactor for its own sake. It was a business-driven architectural
 **Two distinct buyer types justify the separation:**
 
 1. **Event organizers** — use STRATHEX directly as a standalone CLI tool. Retro aesthetic is intentional; they want a Windows-native Python app that runs on modest hardware and reads an Excel file. No integration work required.
-2. **Developer integrators** — build their own tournament-management systems and want only the calculation engine. STRATHMARK as a pip package serves this need. The first real integration was the Missoula Pro-Am Manager repo (April 2026).
+2. **Developer integrators** — build their own tournament-management systems and want only the calculation engine. STRATHMARK as a pip package serves this need. The first downstream integration was a separate tournament-day manager (April 2026).
 
 **Where each concern lives:**
 
@@ -93,7 +93,6 @@ marks = strathmark.HandicapCalculator().calculate(...)
 ```
 
 ## Related
-- [CLAUDE.md](../../../CLAUDE.md) — V6.0 architecture block at the top of the file
 - [woodchopping/strathmark_adapter.py](../../../woodchopping/strathmark_adapter.py) — the only STRATHEX file importing `strathmark`
 - [wiki/Architecture.md](../../../wiki/Architecture.md) — judge-facing explanation of the split
 - [wiki/Ecosystem.md](../../../wiki/Ecosystem.md) — describes both repos and their relationship

@@ -13,7 +13,6 @@ woodchopping-handicap-system/
 ├── explanation_system_functions.py  # Judge education wizard
 ├── woodchopping.xlsx           # Main data file
 ├── README.md                   # User guide
-├── CLAUDE.md                   # Development guidelines
 │
 ├── woodchopping/               # Core package (predictions, handicaps, simulation, ui)
 ├── tests/                      # Test suite
@@ -41,10 +40,6 @@ woodchopping-handicap-system/
 ### 2. **[../README.md](../README.md)** - User Guide (Root Directory)
 **What**: User manual and quick start guide
 **When to Read**: Learning how to use the program
-
-### 3. **[../CLAUDE.md](../CLAUDE.md)** - Project Architecture (Root Directory)
-**What**: AI assistant guidelines and project architecture
-**When to Read**: Understanding codebase structure, contributing to the project
 
 ---
 
@@ -85,7 +80,7 @@ The wiki is version-controlled in [wiki/](../wiki/) and published via `bash wiki
 
 ## Past Solutions
 
-[solutions/](solutions/) — documented solutions to past problems, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Written by the `/ce:compound` workflow; relevant when implementing or debugging in documented areas. See [solutions/README.md](solutions/README.md) for the full index and reading order for new contributors.
+[solutions/](solutions/) — documented solutions to past problems, organized by category with YAML frontmatter (`module`, `tags`, `problem_type`). Written after problems are solved; relevant when implementing or debugging in documented areas. See [solutions/README.md](solutions/README.md) for the full index and reading order for new contributors.
 
 ### Quick links
 
@@ -142,5 +137,4 @@ When adding new documentation:
 ---
 
 **Maintained by**: Alex Kaper
-**AI Assistant**: Claude (Anthropic)
 **Last Updated**: April 2026

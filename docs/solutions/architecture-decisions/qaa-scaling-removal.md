@@ -88,7 +88,6 @@ for (comp_id, event), group in df.groupby(["CompetitorID", "Event"]):
 ```
 
 ## Related
-- [CLAUDE.md](../../../CLAUDE.md) — no longer references QAA in the prediction path
 - [wiki/Prediction-Methods.md](../../../wiki/Prediction-Methods.md) — describes the current power-law approach
 - [wiki/AAA-and-QAA-Rules-Compliance.md](../../../wiki/AAA-and-QAA-Rules-Compliance.md) — QAA's legitimate use (rule compliance), not prediction
 - [docs/QAA_INTERPOLATION_IMPLEMENTATION.md](../../QAA_INTERPOLATION_IMPLEMENTATION.md) — historical doc from the pre-purge era. Treat as archival, not current behavior

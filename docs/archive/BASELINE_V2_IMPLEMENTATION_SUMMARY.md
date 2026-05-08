@@ -207,12 +207,12 @@ pytest tests/test_baseline_hybrid.py -v
 **Expected Breakdown** (Hybrid Innovations):
 | Innovation | Source | MAE Reduction |
 |------------|--------|---------------|
-| Log-space modeling + hierarchical regression | ChatGPT | -0.8s |
-| Selection bias correction (median diameter) | Claude | -1.2s |
-| Wood hardness index (6 properties) | ChatGPT | -0.5s |
-| Adaptive time-decay weighting | Claude | -0.5s |
-| Competitor-specific variance | Claude | -0.3s |
-| **Convergence calibration layer** | ChatGPT | **-0.7s** |
+| Log-space modeling + hierarchical regression | External review | -0.8s |
+| Selection bias correction (median diameter) | Internal analysis | -1.2s |
+| Wood hardness index (6 properties) | External review | -0.5s |
+| Adaptive time-decay weighting | Internal analysis | -0.5s |
+| Competitor-specific variance | Internal analysis | -0.3s |
+| **Convergence calibration layer** | External review | **-0.7s** |
 | **TOTAL** | **Hybrid** | **-4.0s** |
 
 ---
@@ -264,8 +264,8 @@ pytest tests/test_baseline_hybrid.py -v
 ## Key Technical Decisions
 
 ### 1. Hybrid Approach
-**Decision**: Combine ChatGPT's statistical rigor with Claude's data-driven insights
-**Rationale**: Each AI contributed complementary strengths - ChatGPT excels at statistical frameworks, Claude excels at pattern discovery
+**Decision**: Combine external statistical-review proposals with the project's own data-driven insights
+**Rationale**: External review surfaced statistical-framework proposals that complemented the project's own pattern-discovery work
 
 ### 2. Log-Space Modeling
 **Decision**: Model `log(time)` instead of raw time

@@ -50,7 +50,7 @@ Windows equivalent:
 Get-ChildItem -Path . -Filter __pycache__ -Recurse -Force | Remove-Item -Recurse -Force
 ```
 
-This is listed in the global CLAUDE.md as a standing rule — run it as a first diagnostic for unexplained behavior.
+This is a global development standing rule — run it as a first diagnostic for unexplained behavior.
 
 ---
 

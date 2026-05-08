@@ -179,7 +179,7 @@ tournament_state = {
 
 # Multi-Event Tournament State - NEW for V5.0
 multi_event_tournament_state = {
-    "tournament_name": None,  # e.g., "Mason County Western Qualifier 2025"
+    "tournament_name": None,  # e.g., "Spring Open 2026"
     "date": None,  # Tournament date
     "location": None,  # Venue name
     "events": [],  # List of event objects (each contains tournament_state)

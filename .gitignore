@@ -21,8 +21,12 @@ ENV/
 *.swo
 *~
 
-# Claude Code per-project settings (machine-local; may contain absolute paths)
+# AI tooling artifacts (machine-local instructions, may contain absolute paths)
 .claude/
+CLAUDE.md
+AGENTS.md
+.cursor/
+.aider*
 
 # OS
 .DS_Store

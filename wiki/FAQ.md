@@ -180,7 +180,7 @@ STRATHEX is decision-support — the appointed Handicapper still signs off on ev
 
 ### What's the relationship to STRATHMARK?
 
-STRATHMARK is the calculation engine. STRATHEX is the tournament manager. They live in separate repos so that other tournament software (Missoula-Pro-Am-Manager, future projects) can depend on STRATHMARK without pulling in STRATHEX's UI. See [Ecosystem](Ecosystem).
+STRATHMARK is the calculation engine. STRATHEX is the tournament manager. They live in separate repos so that other tournament software (downstream event-day managers, future projects) can depend on STRATHMARK without pulling in STRATHEX's UI. See [Ecosystem](Ecosystem).
 
 ### Can I just use STRATHMARK directly?
 

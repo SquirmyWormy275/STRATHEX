@@ -532,7 +532,7 @@ Spread = 22.5 - 18.7 = 3.8% (rates as "Very Good")
 
 #### LLM (Large Language Model)
 
-**Definition:** An AI system trained on massive text data that can understand context and make intelligent predictions. Like ChatGPT but specialized.
+**Definition:** An AI system trained on massive text data that can understand context and make intelligent predictions. Domain-specialized for woodchopping reasoning.
 
 **Example:** qwen2.5:7b model (7 billion parameters) running on Ollama. Optimized for mathematical reasoning tasks.
 
