@@ -2,7 +2,7 @@
 
 This directory is the searchable knowledge store for past STRATHEX problems — bugs, architectural decisions, development practices, and workflow patterns. Each document has YAML frontmatter (`module`, `tags`, `problem_type`, `severity`) so agents can search by field.
 
-**Relevant when:** implementing features, debugging issues, or making decisions in a documented area. Written by [`/ce:compound`](https://docs.claude.com/) after problems are solved and verified.
+**Relevant when:** implementing features, debugging issues, or making decisions in a documented area. Written after problems are solved and verified.
 
 ---
 
@@ -108,13 +108,11 @@ When a topic is owned by STRATHMARK, STRATHEX's docs link across rather than dup
 
 ## Adding new docs
 
-New entries are written by `/ce:compound` after a problem is solved. The workflow is:
+New entries are written after a problem is solved. The workflow is:
 
 1. Solve the problem (fix the bug, land the refactor, ship the feature)
-2. Run `/ce:compound` to capture the solution while context is fresh
-3. The skill writes a properly-frontmattered doc under the matching category
+2. Capture the solution while context is fresh
+3. Add a properly-frontmattered doc under the matching category
 4. Update this README's category tables if a new doc adds rows
 
-Don't write solution docs by hand — use the skill so the frontmatter and section structure stay consistent with the knowledge store as a whole.
-
-For maintenance (refreshing stale entries, consolidating overlapping docs, deleting obsolete guidance), use `/ce:compound-refresh`.
+Keep the frontmatter and section structure consistent with the rest of the knowledge store so other contributors can grep and filter cleanly.

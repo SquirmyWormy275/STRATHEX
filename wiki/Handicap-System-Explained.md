@@ -47,7 +47,7 @@ mark = min(mark, 183)                  # hard ceiling
 
 It's the system ceiling: **180-second time limit** ([AAA Rule 91b](AAA-and-QAA-Rules-Compliance#rule-91--time-limits): "the Judge may direct a Competitor to cease chopping after 3 minutes") plus the 3-second floor. A competitor assigned Mark 183 would start as the 180-second cut-off bell rings — effectively a theoretical boundary. In practice, real-world open handicaps top out well below this.
 
-> **QAA deviation.** QAA bylaws cap the Open Underhand / Standing Block back mark at **43 seconds** for a 300mm block. STRATHEX's 183s ceiling is more permissive — it's designed for the wide skill spread of amateur and novelty events (Missoula Pro-Am, Mason County Qualifier) where QAA's tight-band pro handicaps don't apply.
+> **QAA deviation.** QAA bylaws cap the Open Underhand / Standing Block back mark at **43 seconds** for a 300mm block. STRATHEX's 183s ceiling is more permissive — it's designed for the wide skill spread of amateur and novelty events at AAA-sanctioned shows where QAA's tight-band pro handicaps don't apply.
 
 ## The end-to-end pipeline
 

@@ -464,6 +464,5 @@ python tests/test_both_events.py
 
 ---
 
-**Audited by:** Claude (AI Assistant)
 **Approved for use:** Pending user review
 **Next audit:** After collecting more competition results

@@ -135,7 +135,7 @@ These tables encode 150+ years of Australian competition data and are more relia
 
 Why the gap?
 - QAA's 43s cap works because QAA handicaps a tight pro-level competitor pool. Everyone's on the green book; everyone's been refined through the penalty/award system; the spread is narrow.
-- STRATHEX is used for AAA-sanctioned events with much wider skill spreads (pro, novice, amateur, exhibition). Missoula Pro-Am's field includes world-class pros alongside skilled amateurs whose times genuinely vary by 30+ seconds. Capping at 43s would force artificial compression and break the fairness model.
+- STRATHEX is used for AAA-sanctioned events with much wider skill spreads (pro, novice, amateur, exhibition). A mixed AAA field includes world-class pros alongside skilled amateurs whose times genuinely vary by 30+ seconds. Capping at 43s would force artificial compression and break the fairness model.
 - AAA Rule 91(b)'s 3-minute time limit gives the theoretical ceiling (180s + 3s floor = 183s).
 
 **If you need QAA-style compression:** the STRATHMARK `config.py` exposes `MARK_CEILING` as a frozen dataclass field. Override it per-tournament via STRATHMARK's config API.

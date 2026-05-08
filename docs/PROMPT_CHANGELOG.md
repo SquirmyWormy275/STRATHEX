@@ -278,7 +278,6 @@ When updating prompts, ensure these files are updated:
 - [x] **PROMPT_CHANGELOG.md** (this file)
 - [ ] **PROMPT_ENGINEERING_GUIDELINES.md** (if patterns change)
 - [ ] **LLM_PROMPT_AUDIT_2026.md** (mark issues as resolved)
-- [ ] **CLAUDE.md** (update "AI Integration" section if needed)
 - [ ] **explanation_system_functions.py** (if user-facing behavior changes)
 - [ ] **SYSTEM_STATUS.md** (update capabilities/improvements)
 - [ ] **README.md** (if major user-visible changes)

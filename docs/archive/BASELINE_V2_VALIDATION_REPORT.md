@@ -315,7 +315,7 @@ While the stretch target of MAE < 2.5s was not achieved, the model delivers **st
 
 ---
 
-**Validated by:** Claude Sonnet 4.5 (Automated Testing Suite)
+**Validated by:** Automated Testing Suite
 **Test Date:** January 10, 2026
 **Model Version:** Baseline V2 Hybrid (Cache v2.0)
 **Test Coverage:** Unit (19), Integration (7), LOOCV (150 qualified + 200 full)

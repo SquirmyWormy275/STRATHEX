@@ -77,8 +77,6 @@ Separating these two concerns — "is this competitor eligible" vs. "what do we 
 - Audit the roster periodically: competitors with persistent empty SB or UH records are unlikely to become active and can be soft-archived from the selection pool to reduce clutter
 
 ## Related Issues
-- [CLAUDE.md](../../../CLAUDE.md) — "Minimum 3 historical times required for new competitors"
-- [CLAUDE.md "Cascading Fallback Logic for Predictions"](../../../CLAUDE.md) — describes the 3-level fallback for competitors who pass the eligibility filter
 - [wiki/Data-Model.md](../../../wiki/Data-Model.md) — data requirements, judge-facing
 - [woodchopping/predictions/baseline.py](../../../woodchopping/predictions/baseline.py) — `get_competitor_historical_times_flexible()` and `get_event_baseline_flexible()`
 - [woodchopping/ui/competitor_ui.py](../../../woodchopping/ui/competitor_ui.py) — eligibility UI

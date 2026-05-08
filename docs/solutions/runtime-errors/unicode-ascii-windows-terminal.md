@@ -57,7 +57,7 @@ This sets the console code page to 65001 (UTF-8) and reconfigures Python's stdou
 
 ### 2. ASCII-only for functional text, box-drawing only in approved banners
 - **Functional text** — competitor names, results, menu items, errors: plain ASCII only. `ADVANCES`, not `→ ADVANCES 🥇`. `OK`, not `✓`. `ERROR:`, not `❌`.
-- **Box-drawing** (`╔═╗║╚╝`) — allowed only in the approved 70-char banner pattern documented in [CLAUDE.md "ASCII Art Alignment"](../../../CLAUDE.md). Every banner must use `.center(68)` for centering, never manual spaces. New banners must be reviewed against the approved examples:
+- **Box-drawing** (`╔═╗║╚╝`) — allowed only in the approved 70-char banner pattern: total width exactly 70 characters per line (border + 68 chars of internal content). Every banner must use `.center(68)` for centering, never manual spaces. New banners must be reviewed against the approved examples:
   - [MainProgramV5_2.py single-event menu](../../../MainProgramV5_2.py) (lines 194–205, "HANDICAP CALCULATION SYSTEM")
   - [MainProgramV5_2.py multi-event menu](../../../MainProgramV5_2.py) (lines 745–753, "TOURNAMENT CONTROL SYSTEM")
 - **Arrows, emojis, checkmarks, medals** — forbidden anywhere in program output
@@ -76,14 +76,13 @@ The recurrence pattern in git history (V5.2.1, then V5.2.1 follow-up, then Apr 2
 ## Prevention
 - Keep the `chcp 65001` + stdout reconfigure block at the top of `MainProgramV5_2.py`. Do not remove it for "cleanliness" — it is a defensive runtime fix
 - When adding new UI code, grep for non-ASCII characters before committing: a non-ASCII search over your diff should return either (a) approved banner characters in an approved banner, or (b) nothing
-- New banners get added to CLAUDE.md's approved-examples list in the same commit, with line numbers. If it isn't approved, it isn't allowed
+- New banners get added to the approved-examples list in this document in the same commit, with line numbers. If it isn't approved, it isn't allowed
 - Code review checklist should include: "any new non-ASCII character in output?" and "is it in an approved banner?"
 - Run the program on a fresh, unconfigured Windows PowerShell at least once before shipping a UI change. Windows Terminal hides the bug; PowerShell reveals it
 - When ruff or other formatters rearrange string literals that contain box-drawing characters, visually verify the banner still aligns. Ruff has reordered string concatenations in the past and broken alignment
 - If a banner needs visual distinction that plain ASCII cannot provide, extend the approved banner list rather than introducing new glyphs ad-hoc
 
 ## Related Issues
-- [CLAUDE.md "CRITICAL DEVELOPMENT RULE - ASCII ART ALIGNMENT"](../../../CLAUDE.md)
 - [MainProgramV5_2.py](../../../MainProgramV5_2.py) — the `chcp 65001` + reconfigure block at file top
 - Commits `18292c5`, `4cb372b` — the two V5.2.1 cleanup passes
 - Commit `45accff` — ruff adoption (verify no banners were broken in that pass)

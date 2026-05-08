@@ -1,6 +1,6 @@
 # Multi-Event Tournaments
 
-A tournament **day** — multiple independent events, each with their own wood, competitors, format, and rounds. This is what Missoula Pro-Am and Mason County Qualifier look like: five or six distinct events running sequentially on the same program.
+A tournament **day** — multiple independent events, each with their own wood, competitors, format, and rounds. This is what a typical AAA-sanctioned chopping carnival looks like: five or six distinct events running sequentially on the same program.
 
 Main Menu → **Option 2 (Design a Tournament)**.
 
@@ -104,7 +104,7 @@ This keeps cross-event analytics clean: you can pull all `UH-300MM-*` records an
 ```python
 {
     'tournament_mode': 'multi_event',
-    'tournament_name': 'Missoula Pro-Am 2026',
+    'tournament_name': 'Spring Open 2026',
     'tournament_date': '2026-07-04',
     'total_events': 5,
     'events_completed': 2,
@@ -175,7 +175,7 @@ This is the key UX improvement over managing five separate single-event tourname
 After the last event:
 
 ```
-TOURNAMENT SUMMARY — Missoula Pro-Am 2026 (July 4, 2026)
+TOURNAMENT SUMMARY — Spring Open 2026 (July 4, 2026)
 
 ┌───────────────────────────────────────────────────────────────────┐
 │ EVENT 1: 225mm SB (Open Handicap)                                 │

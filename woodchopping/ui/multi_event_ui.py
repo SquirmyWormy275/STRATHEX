@@ -50,7 +50,7 @@ def create_multi_event_tournament() -> Dict:
     print(f"{'=' * 70}")
 
     # Prompt for tournament name
-    tournament_name = input("\nTournament name (e.g., 'Missoula Pro-Am 2026'): ").strip()
+    tournament_name = input("\nTournament name (e.g., 'Spring Open 2026'): ").strip()
     if not tournament_name:
         tournament_name = "Unnamed Tournament"
 

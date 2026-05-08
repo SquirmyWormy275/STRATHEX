@@ -59,7 +59,7 @@ All four checks (lint, test, build, import) run in CI on every push. Match them 
 - Ruff for lint + format. Config in [`pyproject.toml`](https://github.com/SquirmyWormy275/STRATHEX/blob/main/pyproject.toml).
 - Snake_case functions. Type hints where practical (not enforced on legacy code).
 - No emojis in source code or user-visible CLI output. Plain ASCII only.
-- Box-drawing characters (╔╗╚╝║═) for CLI banners — see the ASCII Art Alignment standing rule in [`CLAUDE.md`](https://github.com/SquirmyWormy275/STRATHEX/blob/main/CLAUDE.md).
+- Box-drawing characters (╔╗╚╝║═) for CLI banners — 70-character total width using Python's `.center(68)` for alignment.
 - 70-character banner width. Use Python's `.center(68)` for alignment.
 
 ### Architecture
@@ -78,7 +78,7 @@ All four checks (lint, test, build, import) run in CI on every push. Match them 
 
 ### Documentation
 
-- Every code change that affects functionality must update the relevant docs (standing rule from CLAUDE.md).
+- Every code change that affects functionality must update the relevant docs.
 - Prediction-engine changes specifically must update [`explanation_system_functions.py`](https://github.com/SquirmyWormy275/STRATHEX/blob/main/explanation_system_functions.py) — that's the in-app educational wizard judges read.
 - Prompt changes must be logged in [`docs/PROMPT_CHANGELOG.md`](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/PROMPT_CHANGELOG.md).
 
@@ -211,5 +211,4 @@ Same seed → same output, every time. Great for reproducing "why did this win r
 
 - [Architecture](Architecture) — module map and data flow
 - [Prediction Methods](Prediction-Methods) — engine internals
-- [CLAUDE.md](https://github.com/SquirmyWormy275/STRATHEX/blob/main/CLAUDE.md) — standing rules for code changes
 - [STRATHMARK CONTRIBUTING.md](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/CONTRIBUTING.md) — engine contribution guide

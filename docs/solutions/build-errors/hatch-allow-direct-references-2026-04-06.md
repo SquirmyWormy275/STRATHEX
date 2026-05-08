@@ -52,6 +52,6 @@ PEP 440 direct references (`name @ url`) let packages depend on arbitrary URLs, 
 
 ## Related Issues
 - [README.md "CI/CD" section](../../../README.md) — documents the install flow this unblocks
-- [CLAUDE.md "Dependency and Tooling Source of Truth"](../../../CLAUDE.md) — canonical rule that `pyproject.toml` is authoritative (no `requirements.txt`)
+- [pyproject.toml](../../../pyproject.toml) — canonical source of dependencies and tool config (no `requirements.txt`)
 - [wiki/Ecosystem.md](../../../wiki/Ecosystem.md) — explains why strathmark is a git dependency rather than a PyPI release
 - Commit e907e70 — the 4-line fix

@@ -86,7 +86,7 @@ Excel: woodchopping.xlsx                      SQLite: ~/.strathmark/results.db
 
 ### Why a split?
 
-Tournament managers come and go — Missoula-Pro-Am-Manager and future tools all want the same handicap logic without inheriting STRATHEX's CLI, Excel I/O, or roster management. Keeping the engine in a separate pip package means:
+Tournament managers come and go — downstream event-day managers and future tools all want the same handicap logic without inheriting STRATHEX's CLI, Excel I/O, or roster management. Keeping the engine in a separate pip package means:
 
 - One source of truth for mark math. A bug fix in STRATHMARK is live everywhere instantly.
 - Downstream tools pin a version. STRATHEX can ship at its own cadence.
@@ -110,5 +110,4 @@ STRATHEX is DataFrame-native (historical reasons — pandas was the tool at hand
 ## Related repos
 
 - [**STRATHMARK**](https://github.com/SquirmyWormy275/STRATHMARK) — the engine. Pip-installable. Ships its own CI, wiki, tests.
-- [**Missoula-Pro-Am-Manager**](https://github.com/SquirmyWormy275) *(sibling, future)* — a lighter-weight tournament manager for the Missoula event. Will depend on STRATHMARK directly.
-- See [Ecosystem](Ecosystem) for the full picture.
+- See [Ecosystem](Ecosystem) for the full picture, including downstream consumers built on STRATHMARK.

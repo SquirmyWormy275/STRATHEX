@@ -40,7 +40,7 @@ Feedback that appears *in the flow* — "3 of 8 competitors selected" updating a
 ## Why This Matters
 **Tournament-day cost compounds.** A feature that saves 2 seconds per interaction *and* adds 5 seconds to the first-time interaction loses on opening-day tournaments. A feature that saves 2 seconds per interaction *and* doesn't change first-time interactions wins from day one. Every UI decision must be evaluated against this asymmetry.
 
-**The system is being considered for Missoula Pro-Am (April 24-25, 2026) and Mason County Western Qualifier.** These are real competitions with entry fees, prize money, and judges who will be evaluated by the event organizers. A UI that slows the tournament down reflects badly on the system regardless of how clever its features are.
+**The system targets AAA-sanctioned competitions with entry fees, prize money, and judges who will be evaluated by the event organizers.** A UI that slows the tournament down reflects badly on the system regardless of how clever its features are.
 
 **Strategic context: STRATHEX has two roles simultaneously.** It is a demo platform that sells the STRATHMARK engine to developer integrators *and* a standalone tool for event organizers who don't have their own software. The retro CLI aesthetic is intentional, not a limitation — it signals "field-ready, low-friction, minimal infrastructure required" to the target buyer. Changes should be evaluated against both roles: does this improve demo impact *and* tournament usability?
 
@@ -76,7 +76,7 @@ The idea was to show recently-used competitors at the top of the selection list 
 A user asked whether the Championship Simulator could be tuned for betting-profit optimization (traditional format and Calcutta). The AI assistant refused the gambling framing. The request was reframed as *accuracy improvement* and *"what-if" matchup analysis* — which served the same underlying need (understanding who's likely to win) without the betting framing. Era normalization (adjusting historical times to a reference year) and wood-swap sensitivity analysis (showing how the podium shifts as species/quality/size change) were added as the legitimate replacements.
 
 ## Related
-- [CLAUDE.md "Typical Judge Workflow"](../../../CLAUDE.md) — canonical 9-step workflow
+- [docs/ARCHITECTURE.md](../../../docs/ARCHITECTURE.md) — system architecture and judge workflow context
 - [wiki/Tournament-Workflow.md](../../../wiki/Tournament-Workflow.md) — judge-facing workflow explanation
 - [woodchopping/ui/error_display.py](../../../woodchopping/ui/error_display.py) — actionable-error implementation
 - [woodchopping/ui/tournament_status.py](../../../woodchopping/ui/tournament_status.py) — live progress tracker

@@ -14,15 +14,15 @@
 * Please optimize the entire Tournament Management (multi-event) system and menus for a human judge. Think about all of the ways you can streamline the workflow to make it easy and painless for a judge, showrunner, or even volunteer to take an individual entry form and use it to create the tournament. ALWAYS optimize for ease of use without eliminating the features or intent.
 
 
-CLAUDE: PREPARE FOR COMMIT
+PREPARE FOR COMMIT — standing checklist
 
-Claude, I want a standing tasking that I can run that does the following to prepare for a commit:
+A standing checklist to run before each commit:
 -Audit and update ALL documentation that needs to be altered to reflect changes made since last commit
--Audit and update documentation to reflect what is in the code, not just what previous documentation says!
+-Audit and update documentation to reflect what is in the code, not just what previous documentation says
 -Organize all new RELEVANT documentation
 -Audit and update the "How this systems works" md that is accessible through the program to ensure that judges can access an accurate guide to understanding the project
 -Clean/Scrub/eliminate erroneous, duplicative, and irrelevant documentation
 -Clean/Scrub/eliminate erroneous, duplicative, and irrelevant development artifacts
 -Update the Version Number across all files, filenames, other documentation, banners/ASCII art and remove all old version numbers
--Provide me with a profesional commit message that reflects the project updates
--Any other previously discussed standing taskings/preferences/context that best prepare for a clean, professional, version commit. I know we talked about 'Update documentation' as a standing order, so please roll all preferences and instructions from that into this command. There is now no need to update the documentation whenever a change is made. To save context/tokens, I want it all done at once under the Prepare for Commit command. 
+-Produce a professional commit message that reflects the project updates
+-Roll any previously-agreed standing tasks (e.g., the older "Update documentation" rule) into this single Prepare for Commit pass so docs are updated once per commit rather than on every change.

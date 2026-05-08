@@ -67,7 +67,6 @@ Column 8: Date
 - Add a CI test (or at least a manual audit) that reads a sample fixture sheet and asserts the expected columns exist in the expected positions. This would have caught the original bug in seconds
 
 ## Related Issues
-- [CLAUDE.md "Excel operations should use openpyxl, not pandas to_excel"](../../../CLAUDE.md)
 - [woodchopping/data/excel_io.py](../../../woodchopping/data/excel_io.py) — current writer and detector
 - [wiki/Data-Model.md](../../../wiki/Data-Model.md) — judge-facing description of the Results sheet columns
 - [docs/SYSTEM_STATUS.md](../../SYSTEM_STATUS.md) — data model summary

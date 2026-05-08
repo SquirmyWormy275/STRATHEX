@@ -28,7 +28,7 @@ View-only. Nothing gets saved. Nothing gets handicapped. It's a pure *analysis* 
 
 ## Why it exists
 
-Because real championship-format events (Missoula Pro-Am's championship final, exhibition races at Royal Shows) are fundamentally different from handicap races:
+Because real championship-format events (regional championship finals, exhibition races at AAA-sanctioned shows) are fundamentally different from handicap races:
 
 - Everyone starts at the same time
 - Fastest raw cut wins

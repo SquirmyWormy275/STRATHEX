@@ -768,7 +768,7 @@ data in the current `woodchopping.xlsx`.
 - **Tables**: Separate scaling for Hardwood, Medium wood, and Softwood
 - **Result**: More reliable scaling based on actual competition results, not theoretical physics
 - **Activation**: Automatic in baseline predictions when historical diameter ≠ target
-- **See**: [qaa_scaling.py](qaa_scaling.py) and QAA.pdf in `.claude/` directory
+- **See**: [qaa_scaling.py](qaa_scaling.py) and `reference/QAA.pdf`
 
 ### 2. Tournament Result Weighting (Dec 28, 2025)
 - **Issue**: Semis/finals used historical data, ignoring recent heat/semi results on SAME wood
@@ -902,10 +902,7 @@ Results saved: Excel (primary) + SQLite ResultStore (dual-write, V6.0)
 
 **Production Status**: READY FOR DEPLOYMENT
 
-**Recommended Usage**:
-- Missoula Pro-Am
-- Mason County Western Qualifier
-- Any AAA-sanctioned woodchopping event
+**Recommended Usage**: Any AAA-sanctioned woodchopping event with a mixed pro/amateur field.
 
 ---
 
@@ -936,15 +933,13 @@ Results saved: Excel (primary) + SQLite ResultStore (dual-write, V6.0)
 - **SCALING_IMPROVEMENTS.md**: Diameter scaling before/after comparison
 - **UH_PREDICTION_ISSUES.md**: Original problem diagnosis
 - **DIAGNOSIS.md**: Initial investigation notes
-- **CLAUDE.md**: Project overview and architecture guide
 - **ReadMe.md**: User manual and function reference
 
 ---
 
 ## Support and Maintenance
 
-**Primary Maintainer**: User (Alex Kaper)
-**AI Assistant**: Claude (Anthropic)
+**Primary Maintainer**: Alex Kaper
 **Last Updated**: December 28, 2025
 **Next Review**: After collecting 2026 competition season results
 
