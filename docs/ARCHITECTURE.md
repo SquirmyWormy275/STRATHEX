@@ -26,6 +26,16 @@ STRATHEX is a Python 3.13 CLI application that manages multi-round and multi-eve
 
 The `woodchopping/handicaps/calculator.py` and `woodchopping/simulation/*` modules are deliberately thin: they validate inputs, call STRATHMARK, and translate the result. This keeps the boundary stable and lets STRATHMARK be reused in other tournament software, including [downstream event-day managers](../wiki/Ecosystem.md), without dragging in STRATHEX's CLI or Excel dependencies. Independence is verifiable: STRATHMARK has zero imports from `woodchopping.*`.
 
+## Library separation: STRATHMARK
+
+The handicap calculation core is implemented in [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK), a separately-versioned Python library released under the Apache License 2.0. STRATHEX consumes STRATHMARK as a runtime dependency rather than embedding the calculation logic directly. (PyPI publication is pending STRATHMARK's v1.0.0 stabilization; today the library is installed via `pip install git+https://github.com/SquirmyWormy275/STRATHMARK.git`.)
+
+This separation is intentional. STRATHMARK's calculation logic is designed to power multiple consumers beyond STRATHEX (downstream tournament-day managers and future timbersports applications), and embedding the logic inside STRATHEX would either duplicate it across consumers or force consumers to inherit STRATHEX's full runtime footprint (XGBoost, Ollama, Monte Carlo simulation engine). The separate library lets consumers import only the calculation primitives they need, while STRATHEX retains the application-layer logic that composes those primitives into tournament management, simulation, and prediction.
+
+AAA rules compliance is enforced at the STRATHMARK boundary, not at the STRATHEX consumer layer. This means STRATHEX cannot produce non-compliant marks even if a bug in the application layer attempted to do so, because STRATHMARK refuses to return non-compliant calculations. This is a deliberate choice to centralize compliance authority in the library, where it can be tested in isolation, rather than scattering compliance checks across consumer applications.
+
+The cross-reference between STRATHEX modules and their STRATHMARK origins is documented in [the STRATHMARK architecture document](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/ARCHITECTURE.md), which serves as the authoritative source for the module mapping.
+
 ## Data model
 
 Two persistent stores exist by design.

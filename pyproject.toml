@@ -19,7 +19,12 @@ dependencies = [
     "lightgbm",
     "matplotlib",
     "requests",
-    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@main",
+    # STRATHMARK is the handicap calculation engine, released under the Apache License 2.0.
+    # License compatibility: STRATHEX is MIT and Apache 2.0 is a compatible permissive license.
+    # Pinned to STRATHMARK's portfolio-polish snapshot (commit 47bb143) for stability.
+    # Once STRATHMARK is published to PyPI at v1.0.0, switch this to:
+    #   "strathmark>=1.0.0,<2.0.0"
+    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@47bb143",
 ]
 
 [project.optional-dependencies]

@@ -184,7 +184,7 @@ STRATHMARK is the calculation engine. STRATHEX is the tournament manager. They l
 
 ### Can I just use STRATHMARK directly?
 
-Yes — `pip install strathmark`. The Python API is small and the HTTP REST API exposes the same functionality. STRATHEX is optional if you have your own UI/manager.
+Yes. Install with `pip install git+https://github.com/SquirmyWormy275/STRATHMARK.git` until STRATHMARK reaches v1.0.0 on PyPI, after which `pip install strathmark` will work. The Python API is small and the HTTP REST API exposes the same functionality. STRATHEX is optional if you have your own UI/manager.
 
 ### I found a bug in the math. Where do I report it?
 
