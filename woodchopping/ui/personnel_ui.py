@@ -9,10 +9,11 @@ This module handles roster management operations including:
 from datetime import datetime
 
 import pandas as pd
-from openpyxl import Workbook, load_workbook
+from openpyxl import load_workbook
 
 from config import paths
 from woodchopping.data import (
+    ensure_workbook,
     load_competitors_df,
     save_time_to_results,
 )
@@ -108,13 +109,10 @@ def add_competitor_with_times() -> pd.DataFrame:
         state = input("Enter state/province (optional): ").strip()
         gender = input("Enter gender (M/F, optional): ").strip().upper()
 
-        # Add to competitors sheet
-        try:
-            wb = load_workbook(COMPETITOR_FILE)
-        except FileNotFoundError:
-            wb = Workbook()
-            if "Sheet" in wb.sheetnames:
-                wb.remove(wb["Sheet"])
+        # Add to competitors sheet. Guarantee the workbook exists with its FULL
+        # schema first — never mint a partial (Competitor-only) workbook here.
+        ensure_workbook(COMPETITOR_FILE)
+        wb = load_workbook(COMPETITOR_FILE)
 
         if COMPETITOR_SHEET not in wb.sheetnames:
             ws = wb.create_sheet(COMPETITOR_SHEET)

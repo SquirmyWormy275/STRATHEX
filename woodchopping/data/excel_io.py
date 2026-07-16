@@ -1,17 +1,40 @@
 """Excel I/O functions for loading and saving woodchopping competition data."""
 
 import os
+import shutil
 
 # Import config
 import sys
 from datetime import datetime
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import pandas as pd
 from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from config import paths
+
+# Canonical, git-tracked seed workbook. Used to restore a missing production
+# workbook with its FULL schema instead of a partial stub.
+_CANONICAL_SEED_FILENAME = "woodchopping_clean.xlsx"
+
+# Header rows for auto-created sheets. Centralized so no code path can mint a
+# workbook with the wrong (or a partial) schema. Results headers live with
+# detect_results_sheet(), the single source of truth for that sheet.
+COMPETITOR_HEADERS = ["CompetitorID", "Name", "Country", "State/Province", "Gender"]
+WOOD_HEADERS = [
+    "Scientific Name",
+    "species",
+    "speciesID",
+    "country",
+    "region",
+    "janka_hard",
+    "spec_gravity",
+    "crush_strength",
+    "shear",
+    "MOR",
+    "MOE",
+]
 
 
 def _resolve_sheet_name(excel_path: str, desired_name: str) -> str:
@@ -24,6 +47,51 @@ def _resolve_sheet_name(excel_path: str, desired_name: str) -> str:
     except Exception:
         pass
     return desired_name
+
+
+def ensure_workbook(excel_path: Optional[str] = None) -> str:
+    """Ensure the production workbook exists with its FULL schema.
+
+    A missing workbook is restored from the canonical, git-tracked
+    ``woodchopping_clean.xlsx`` when available; otherwise a complete workbook
+    with all required sheets (Wood, Competitor, Results) and correct headers is
+    created. This NEVER produces a partial (e.g. Competitor-only) workbook, which
+    would shadow the real data and break wood-species / results lookups.
+
+    Intended for explicit write paths (e.g. adding a competitor). Read paths must
+    not call this — a read should never create files.
+
+    Args:
+        excel_path: Target workbook path. Defaults to ``paths.EXCEL_FILE``.
+
+    Returns:
+        The resolved workbook path.
+    """
+    path = excel_path or paths.EXCEL_FILE
+    if os.path.exists(path):
+        return path
+
+    seed = os.path.join(os.path.dirname(os.path.abspath(path)), _CANONICAL_SEED_FILENAME)
+    if os.path.exists(seed):
+        shutil.copyfile(seed, path)
+        print(f"'{os.path.basename(path)}' was missing - restored full schema from '{_CANONICAL_SEED_FILENAME}'.")
+        return path
+
+    # No canonical seed available: build a COMPLETE, empty skeleton so no other
+    # code path ever falls back to minting a partial workbook.
+    wb = Workbook()
+    if "Sheet" in wb.sheetnames:
+        wb.remove(wb["Sheet"])
+    wb.create_sheet(paths.WOOD_SHEET).append(WOOD_HEADERS)
+    wb.create_sheet(paths.COMPETITOR_SHEET).append(COMPETITOR_HEADERS)
+    detect_results_sheet(wb)  # single source of truth for Results headers
+    wb.save(path)
+    wb.close()
+    print(
+        f"'{os.path.basename(path)}' and '{_CANONICAL_SEED_FILENAME}' both missing - "
+        "created an empty workbook with full schema (Wood/Competitor/Results)."
+    )
+    return path
 
 
 def get_competitor_id_name_mapping() -> Tuple[Dict[str, str], Dict[str, str]]:
@@ -87,15 +155,14 @@ def load_competitors_df() -> pd.DataFrame:
         return df
 
     except FileNotFoundError:
-        print(f"Excel file '{paths.EXCEL_FILE}' not found. Creating new file.")
-        # Create the Excel file with proper sheets
-        wb = Workbook()
-        if "Sheet" in wb.sheetnames:
-            wb.remove(wb["Sheet"])
-        ws = wb.create_sheet(paths.COMPETITOR_SHEET)
-        ws.append(["CompetitorID", "Name", "Country", "State/Province", "Gender"])
-        wb.save(paths.EXCEL_FILE)
-        wb.close()
+        # A read must NEVER create the workbook. The old behavior silently minted
+        # a partial Competitor-only stub here, which shadowed the real data and
+        # broke wood-species / results lookups. Fail loudly with a restore hint;
+        # explicit write paths use ensure_workbook() to (re)create it correctly.
+        print(
+            f"Excel workbook '{paths.EXCEL_FILE}' not found. "
+            f"Restore it (e.g. copy from '{_CANONICAL_SEED_FILENAME}') or add a competitor to create it."
+        )
         return pd.DataFrame(columns=["competitor_name", "competitor_country"])
     except Exception as e:
         print(f"Error loading roster from Excel: {e}")
