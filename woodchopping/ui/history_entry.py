@@ -103,7 +103,12 @@ def prompt_add_competitor_times(competitor_name: str, event_code: str, wood_info
 
         date_input = input("  Date (YYYY-MM-DD) or blank for today: ").strip()
         if date_input:
-            timestamp = date_input
+            try:
+                datetime.strptime(date_input, "%Y-%m-%d")
+                timestamp = date_input
+            except ValueError:
+                print("  Invalid date format (expected YYYY-MM-DD); using today.")
+                timestamp = datetime.now().isoformat(timespec="seconds")
         else:
             timestamp = datetime.now().isoformat(timespec="seconds")
 

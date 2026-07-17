@@ -277,8 +277,13 @@ def engineer_features_for_ml(
         # Sort by date to calculate days since last comp
         df = df.sort_values(["competitor_name", "event", "date"])
         df["days_since_last"] = df.groupby(["competitor_name", "event"])["date"].diff().dt.days
-        # First competition for each competitor has NaN - fill with median
-        df["recency_score"] = df["days_since_last"].fillna(df["days_since_last"].median())
+        # First competition for each competitor has NaN - fill with median.
+        # When every group has a single row the median itself is NaN; fall back to
+        # a concrete default (mirrors the no-date branch) so no NaN leaks downstream.
+        median_days = df["days_since_last"].median()
+        if pd.isna(median_days):
+            median_days = 365.0
+        df["recency_score"] = df["days_since_last"].fillna(median_days)
         # Cap at 1000 days to prevent extreme values
         df["recency_score"] = df["recency_score"].clip(0, 1000)
     else:

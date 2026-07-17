@@ -122,19 +122,25 @@ def add_competitor_with_times() -> pd.DataFrame:
             if ws.max_row < 1:
                 ws.append(["CompetitorID", "Name", "Country", "State/Province", "Gender"])
 
-        # Check for duplicate
+        # Check for duplicate, and track the max existing ID suffix in the same pass.
         existing_names = set()
+        max_suffix = 0
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row and len(row) > 1 and row[1]:  # Name is in column 2 (index 1)
                 existing_names.add(str(row[1]).strip().lower())
+            if row and row[0]:  # CompetitorID is column 1 (index 0)
+                digits = "".join(ch for ch in str(row[0]) if ch.isdigit())
+                if digits:
+                    max_suffix = max(max_suffix, int(digits))
 
         if name.lower() in existing_names:
             print("Competitor already exists in roster.")
             wb.close()
             return load_competitors_df()
 
-        # Generate new CompetitorID
-        new_id = f"C{str(ws.max_row).zfill(3)}"
+        # Generate new CompetitorID from the max existing suffix + 1. (ws.max_row is
+        # unreliable once rows have been deleted directly in Excel -> ID collisions.)
+        new_id = f"C{str(max_suffix + 1).zfill(3)}"
 
         # Add competitor to sheet
         ws.append([new_id, name, country, state, gender])

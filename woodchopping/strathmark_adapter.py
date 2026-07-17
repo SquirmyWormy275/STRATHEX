@@ -91,8 +91,10 @@ def build_competitor_records(
                     continue
                 event_code = str(row.get("event", "SB")).strip().upper()
                 species = str(row.get("species", "Unknown")).strip()
-                size_mm = float(row.get("size_mm", 300))
-                quality = int(float(row.get("quality", 5))) if not pd.isna(row.get("quality", 5)) else 5
+                size_val = row.get("size_mm", 300)
+                size_mm = float(size_val) if not pd.isna(size_val) else 300.0
+                quality_val = row.get("quality", 5)
+                quality = int(float(quality_val)) if not pd.isna(quality_val) else 5
 
                 # Parse date. pd.isna() handles None, float NaN, AND pandas NaT
                 # uniformly -- NaT is NOT None, and NaT.date() returns NaT, which

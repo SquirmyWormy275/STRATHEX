@@ -551,7 +551,8 @@ The prediction methods show {"strong" if avg_ml_llm_diff < 2 else "moderate" if 
     if high_discrepancy_competitors:
         report += "\nThe following competitors show significant differences between prediction methods (>20% or >5 seconds):\n"
         for name, baseline, ml, llm, diff in high_discrepancy_competitors[:5]:
-            report += f"\n- {name}: Baseline={baseline:.1f}s, ML={ml:.1f}s, LLM={llm:.1f}s (diff={diff:.1f}s)"
+            base_str = f"{baseline:.1f}s" if baseline is not None else "N/A"
+            report += f"\n- {name}: Baseline={base_str}, ML={ml:.1f}s, LLM={llm:.1f}s (diff={diff:.1f}s)"
             if ml and llm:
                 pct_diff = (diff / max(ml, llm)) * 100
                 report += f" ({pct_diff:.0f}% difference)"
@@ -620,16 +621,17 @@ def generate_prediction_analysis_llm(all_competitors_predictions: List[Dict], wo
         baseline = comp_pred["predictions"]["baseline"]["time"]
         ml = comp_pred["predictions"]["ml"]["time"]
         llm = comp_pred["predictions"]["llm"]["time"]
+        base_str = f"{baseline:.1f}s" if baseline is not None else "N/A"
 
         if ml and llm:
             ml_llm_diff = ml - llm
             summary_lines.append(
-                f"{name}: Baseline={baseline:.1f}s, ML={ml:.1f}s, LLM={llm:.1f}s (diff={ml_llm_diff:+.1f}s)"
+                f"{name}: Baseline={base_str}, ML={ml:.1f}s, LLM={llm:.1f}s (diff={ml_llm_diff:+.1f}s)"
             )
         elif ml:
-            summary_lines.append(f"{name}: Baseline={baseline:.1f}s, ML={ml:.1f}s, LLM=N/A")
+            summary_lines.append(f"{name}: Baseline={base_str}, ML={ml:.1f}s, LLM=N/A")
         elif llm:
-            summary_lines.append(f"{name}: Baseline={baseline:.1f}s, ML=N/A, LLM={llm:.1f}s")
+            summary_lines.append(f"{name}: Baseline={base_str}, ML=N/A, LLM={llm:.1f}s")
 
     summary_text = "\n".join(summary_lines)
 

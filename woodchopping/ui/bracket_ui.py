@@ -1455,8 +1455,8 @@ def render_match_box_compact(match: Dict) -> None:
     match_id = match["match_id"]
     status = match["status"]
 
-    comp1 = match.get("competitor1", "TBD")
-    comp2 = match.get("competitor2", "TBD")
+    comp1 = match.get("competitor1") or "TBD"
+    comp2 = match.get("competitor2") or "TBD"
     seed1 = match.get("seed1", "")
     seed2 = match.get("seed2", "")
     time1 = match.get("time1")

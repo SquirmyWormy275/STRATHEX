@@ -152,6 +152,8 @@ def edit_event_entries(tournament_state: Dict) -> Dict:
 
             try:
                 comp_idx = int(input("\nSelect competitor number: ").strip()) - 1
+                if not (0 <= comp_idx < len(roster)):
+                    raise IndexError
                 comp = roster[comp_idx]
             except (ValueError, IndexError):
                 print("[WARN] Invalid selection")
@@ -165,6 +167,8 @@ def edit_event_entries(tournament_state: Dict) -> Dict:
 
             try:
                 event_idx = int(input("\nSelect event number: ").strip()) - 1
+                if not (0 <= event_idx < len(events)):
+                    raise IndexError
                 event = events[event_idx]
             except (ValueError, IndexError):
                 print("[WARN] Invalid selection")
@@ -218,6 +222,8 @@ def edit_event_entries(tournament_state: Dict) -> Dict:
 
             try:
                 comp_idx = int(input("\nSelect competitor number: ").strip()) - 1
+                if not (0 <= comp_idx < len(roster)):
+                    raise IndexError
                 comp = roster[comp_idx]
             except (ValueError, IndexError):
                 print("[WARN] Invalid selection")
@@ -235,6 +241,8 @@ def edit_event_entries(tournament_state: Dict) -> Dict:
 
             try:
                 event_idx = int(input("\nSelect event number to remove from: ").strip()) - 1
+                if not (0 <= event_idx < len(comp_events)):
+                    raise IndexError
                 event = comp_events[event_idx]
             except (ValueError, IndexError):
                 print("[WARN] Invalid selection")
@@ -303,6 +311,8 @@ def edit_event_entries(tournament_state: Dict) -> Dict:
 
             try:
                 comp_idx = int(input("\nSelect competitor number: ").strip()) - 1
+                if not (0 <= comp_idx < len(unpaid_comps)):
+                    raise IndexError
                 comp, unpaid_events = unpaid_comps[comp_idx]
             except (ValueError, IndexError):
                 print("[WARN] Invalid selection")
@@ -316,6 +326,8 @@ def edit_event_entries(tournament_state: Dict) -> Dict:
 
             try:
                 event_idx = int(input("\nSelect event number to mark as paid: ").strip()) - 1
+                if not (0 <= event_idx < len(unpaid_event_objs)):
+                    raise IndexError
                 event = unpaid_event_objs[event_idx]
             except (ValueError, IndexError):
                 print("[WARN] Invalid selection")
@@ -392,6 +404,8 @@ def manage_scratches(tournament_state: Dict) -> Dict:
 
     try:
         idx = int(selection) - 1
+        if not (0 <= idx < len(active_assignments)):
+            raise IndexError
         comp, event = active_assignments[idx]
     except (ValueError, IndexError):
         print("[WARN] Invalid selection")

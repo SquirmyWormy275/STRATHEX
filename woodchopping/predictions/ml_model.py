@@ -480,12 +480,20 @@ def predict_time_ml(
     if wood_df is not None and not wood_df.empty:
         wood_row = wood_df[wood_df["species"] == species]
         if not wood_row.empty:
-            wood_janka = wood_row.iloc[0].get("janka_hard", 500)
-            wood_spec_grav = wood_row.iloc[0].get("spec_gravity", 0.5)
-            wood_shear = wood_row.iloc[0].get("shear", 1000)
-            wood_crush = wood_row.iloc[0].get("crush_strength", 4000)
-            wood_mor = wood_row.iloc[0].get("MOR", 8000)
-            wood_moe = wood_row.iloc[0].get("MOE", 1000000)
+            _row0 = wood_row.iloc[0]
+
+            def _wv(col, default):
+                # .get() only applies the default when the label is ABSENT; a stored
+                # NaN would slip through and poison the feature vector. Coerce + guard.
+                val = pd.to_numeric(_row0.get(col, default), errors="coerce")
+                return float(val) if pd.notna(val) else float(default)
+
+            wood_janka = _wv("janka_hard", 500)
+            wood_spec_grav = _wv("spec_gravity", 0.5)
+            wood_shear = _wv("shear", 1000)
+            wood_crush = _wv("crush_strength", 4000)
+            wood_mor = _wv("MOR", 8000)
+            wood_moe = _wv("MOE", 1000000)
 
     def _compute_trend_estimate(comp_data: pd.DataFrame) -> Tuple[Optional[float], float, float]:
         if "date" not in comp_data.columns:

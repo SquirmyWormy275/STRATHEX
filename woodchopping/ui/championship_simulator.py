@@ -1185,10 +1185,10 @@ def _display_personal_best_watch(predictions: List[Dict], wood_selection: Dict):
     for pred in predictions:
         name = pred["name"]
         event = wood_selection.get("event")
-        comp_rows = results_df[(results_df["Competitor"] == name) & (results_df["Event"] == event)]
+        comp_rows = results_df[(results_df["competitor_name"] == name) & (results_df["event"] == event)]
         if comp_rows.empty:
             continue
-        best_time = comp_rows["Time (seconds)"].min()
+        best_time = comp_rows["raw_time"].min()
         if best_time <= 0:
             continue
         predicted = pred["predicted_time"]

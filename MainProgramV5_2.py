@@ -1274,6 +1274,8 @@ def single_event_menu():
 
             try:
                 heat_choice = int(input("\nSelect heat to record (number): ").strip()) - 1
+                if not (0 <= heat_choice < len(available)):
+                    raise IndexError
                 selected_heat = available[heat_choice]
 
                 # Record times
@@ -1654,7 +1656,7 @@ def multi_event_tournament_menu():
         elif menu_choice == "5":
             # Entry Fee Management & Payouts Submenu
             if not multi_event_tournament_state.get("tournament_name"):
-                display_actionable_error(
+                choice = display_actionable_error(
                     "CANNOT MANAGE FINANCES",
                     "Tournament must be created first.",
                     quick_action="create tournament now",
