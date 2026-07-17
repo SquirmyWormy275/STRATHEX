@@ -256,6 +256,13 @@ def load_multi_event_tournament(
             if "payout_config" not in event:
                 event["payout_config"] = None
 
+            # Payout position keys are ints, but JSON stringifies dict keys on save.
+            # Coerce them back so payouts.get(position, 0) (int lookup) doesn't miss
+            # and render every payout as $0.00 after a resume.
+            _pc = event.get("payout_config")
+            if isinstance(_pc, dict) and isinstance(_pc.get("payouts"), dict):
+                _pc["payouts"] = {(int(k) if str(k).lstrip("-").isdigit() else k): v for k, v in _pc["payouts"].items()}
+
             # Backward compatibility: add competitor_status to events (V5.1)
             if "competitor_status" not in event:
                 event["competitor_status"] = {name: "active" for name in event.get("all_competitors", [])}
@@ -639,12 +646,28 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
 
     # Calculate handicaps for each event
     for event_idx, event in enumerate(tournament_state["events"], 1):
-        # Skip Championship events (already have Mark 3 assigned)
+        # Championship events don't get calculated handicaps -- everyone runs off
+        # Mark 3 (fastest time wins). Populate handicap_results_all + set status
+        # 'ready' so schedule generation (which requires status=='ready') isn't
+        # blocked on them. (Mirrors tournament_ui.py championship handling.)
         if event.get("event_type") == "championship":
             print(f"{'=' * 70}")
             print(f"  EVENT {event_idx} of {total_events}: {event['event_name']}")
             print(f"{'=' * 70}")
-            print("[ ] Skipping Championship event (marks pre-assigned: all Mark 3)")
+            event["handicap_results_all"] = [
+                {
+                    "name": comp_name,
+                    "predicted_time": 0.0,  # not used for championship
+                    "method_used": "Championship",
+                    "confidence": "N/A",
+                    "explanation": "Championship event: fastest time wins",
+                    "predictions": {},
+                    "mark": 3,
+                }
+                for comp_name in event["all_competitors"]
+            ]
+            event["status"] = "ready"
+            print(f"[OK] Championship event: Mark 3 assigned to all {len(event['all_competitors'])} competitors")
             print(f"{'=' * 70}\n")
             continue
 
@@ -1741,7 +1764,7 @@ def assign_competitors_to_events(tournament_state: Dict) -> Dict:
                 fee_paid = input(f"{event_name} - Fee paid? (y/n, currently {status_str}): ").strip().lower()
                 comp["entry_fees_paid"][event["event_id"]] = fee_paid == "y"
 
-        print(f"\n[OK] {comp_name} assigned to {len(selected_events)} event(s)")
+        print(f"\n[OK] {comp_name} assigned to {len(final_events)} event(s)")
 
     # Populate event.all_competitors from assignments
     print(f"\n{'=' * 70}")
