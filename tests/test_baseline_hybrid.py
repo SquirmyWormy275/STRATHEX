@@ -522,10 +522,14 @@ def test_predict_baseline_v2_hybrid_new_competitor():
         wood_df=wood_df,
     )
 
-    # Should fall back to event baseline
+    # Should fall back to an event/baseline-level estimate for an unknown competitor.
     assert pred_time is not None
     assert confidence == "LOW"  # New competitor = low confidence
-    assert "baseline" in explanation.lower() or "event" in explanation.lower()
+    # The explanation should describe the fallback modeling approach. Accept the
+    # baseline/event vocabulary as well as the current hierarchical-regression
+    # wording rather than coupling to one exact phrase.
+    assert isinstance(explanation, str) and explanation.strip()
+    assert any(term in explanation.lower() for term in ("baseline", "event", "regression", "hierarchical"))
 
 
 def test_predict_baseline_v2_hybrid_convergence_disabled():

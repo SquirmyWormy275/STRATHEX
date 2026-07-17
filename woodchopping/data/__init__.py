@@ -3,6 +3,7 @@
 from woodchopping.data.excel_io import (
     append_results_to_excel,
     detect_results_sheet,
+    ensure_workbook,
     get_competitor_id_name_mapping,
     get_species_name_from_code,
     load_competitors_df,
@@ -30,6 +31,7 @@ __all__ = [
     "get_competitor_id_name_mapping",
     "get_species_name_from_code",
     "detect_results_sheet",
+    "ensure_workbook",
     "save_time_to_results",
     "append_results_to_excel",
     # Validation

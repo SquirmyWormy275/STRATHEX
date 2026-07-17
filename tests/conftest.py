@@ -27,8 +27,9 @@ collect_ignore_glob = [
 
 # Tests in test_baseline_hybrid.py that call load_results_df() / load_wood_data()
 # require ``woodchopping.xlsx`` in the project root. That file is the production
-# database and is intentionally not tracked in git, so it is absent in CI.
-# Skip these specific tests when the file is missing rather than failing.
+# database; it is now tracked in git (restored from woodchopping_clean.xlsx), so
+# these tests normally run. The skip below is a fallback for any environment
+# where the file is still absent (e.g. a slimmed checkout) — skip rather than fail.
 _DATA_DEPENDENT_TESTS = {
     "test_fit_and_cache_baseline_v2_model",
     "test_predict_baseline_v2_hybrid_with_cache",
