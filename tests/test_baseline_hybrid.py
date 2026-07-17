@@ -529,10 +529,7 @@ def test_predict_baseline_v2_hybrid_new_competitor():
     # baseline/event vocabulary as well as the current hierarchical-regression
     # wording rather than coupling to one exact phrase.
     assert isinstance(explanation, str) and explanation.strip()
-    assert any(
-        term in explanation.lower()
-        for term in ("baseline", "event", "regression", "hierarchical")
-    )
+    assert any(term in explanation.lower() for term in ("baseline", "event", "regression", "hierarchical"))
 
 
 def test_predict_baseline_v2_hybrid_convergence_disabled():

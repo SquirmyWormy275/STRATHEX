@@ -85,9 +85,7 @@ def test_load_competitors_df_missing_file_creates_no_stub(isolated_paths):
 
     df = excel_io.load_competitors_df()
 
-    assert not os.path.exists(
-        fake.EXCEL_FILE
-    ), "load_competitors_df must not create a workbook"
+    assert not os.path.exists(fake.EXCEL_FILE), "load_competitors_df must not create a workbook"
     assert list(df.columns) == ["competitor_name", "competitor_country"]
     assert df.empty
 
@@ -134,9 +132,7 @@ def test_ensure_workbook_is_noop_when_file_present(isolated_paths):
 
     excel_io.ensure_workbook()
 
-    assert "sentinel" in _sheet_names_lower(
-        fake.EXCEL_FILE
-    ), "existing workbook must be left untouched"
+    assert "sentinel" in _sheet_names_lower(fake.EXCEL_FILE), "existing workbook must be left untouched"
 
 
 def test_wood_data_readable_after_guard(isolated_paths):
