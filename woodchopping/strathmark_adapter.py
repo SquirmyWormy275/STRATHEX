@@ -94,17 +94,23 @@ def build_competitor_records(
                 size_mm = float(row.get("size_mm", 300))
                 quality = int(float(row.get("quality", 5))) if not pd.isna(row.get("quality", 5)) else 5
 
-                # Parse date
+                # Parse date. pd.isna() handles None, float NaN, AND pandas NaT
+                # uniformly -- NaT is NOT None, and NaT.date() returns NaT, which
+                # would slip past STRATHMARK's `result_date is not None` filter and
+                # crash its date sort ("Cannot compare NaT with datetime.date").
                 rd = None
                 date_val = row.get("date")
-                if date_val is not None and not (isinstance(date_val, float) and pd.isna(date_val)):
+                if date_val is not None and not pd.isna(date_val):
                     try:
-                        if hasattr(date_val, "date"):
+                        if hasattr(date_val, "date") and callable(date_val.date):
                             rd = date_val.date()
                         elif isinstance(date_val, str) and date_val.strip():
                             rd = date.fromisoformat(date_val.strip()[:10])
                     except (ValueError, TypeError):
                         rd = None
+                # Belt-and-suspenders: never hand a NaT/NaN across the boundary.
+                if rd is not None and pd.isna(rd):
+                    rd = None
 
                 heat_id = str(row.get("heat_id", "") or "")
 
