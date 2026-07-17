@@ -31,6 +31,11 @@ DIAMETER_TOLERANCE = 10
 _event_exponent_cache: Dict[str, float] = {}
 
 
+def reset_exponent_cache() -> None:
+    """Clear cached per-event scaling exponents (call when the dataset reloads)."""
+    _event_exponent_cache.clear()
+
+
 @dataclass
 class ScalingMetadata:
     """Metadata about diameter scaling applied to a prediction."""

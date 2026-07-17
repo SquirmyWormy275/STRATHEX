@@ -11,7 +11,7 @@ Functions:
 """
 
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -1208,10 +1208,13 @@ def fit_hierarchical_regression(
 
     # Add features
     results_df["hardness_idx"] = results_df["species"].map(hardness_index).fillna(1.0)
-    results_df["median_diameter"] = results_df.apply(
-        lambda row: get_competitor_median_diameter(row["competitor_name"], row["event"], results_df),
-        axis=1,
-    )
+    # Vectorized median diameter per (competitor, event): an O(n) groupby replaces
+    # the former O(n^2) per-row apply that rescanned the whole frame each row.
+    # Keys are normalized to match get_competitor_median_diameter's matching, and
+    # fillna(300.0) preserves its no-history default.
+    _cn_key = results_df["competitor_name"].astype(str).str.strip().str.lower()
+    _ev_key = results_df["event"].astype(str).str.strip().str.upper()
+    results_df["median_diameter"] = results_df.groupby([_cn_key, _ev_key])["size_mm"].transform("median").fillna(300.0)
 
     # Fit diameter curves per event (for diagnostics + metadata)
     events = results_df["event"].unique()
@@ -1695,7 +1698,7 @@ def calibrate_predictions_for_handicapping(
 # ============================================================================
 
 # Global cache for Baseline V2 model
-_baseline_v2_cache: Optional[Dict[str, any]] = None
+_baseline_v2_cache: Optional[Dict[str, Any]] = None
 _cache_last_updated: Optional[datetime] = None
 
 
@@ -1778,10 +1781,17 @@ def fit_and_cache_baseline_v2_model(
 
 
 def invalidate_baseline_v2_cache():
-    """Invalidate the global Baseline V2 model cache."""
-    global _baseline_v2_cache, _cache_last_updated
+    """Invalidate ALL Baseline V2 caches (model + derived hardness/exponent caches)."""
+    global _baseline_v2_cache, _cache_last_updated, _wood_hardness_cache
     _baseline_v2_cache = None
     _cache_last_updated = None
+    # These derived caches otherwise freeze to the first data seen -> stale
+    # calibration after a data reload, and cross-test contamination.
+    _wood_hardness_cache = None
+    _species_exponent_cache.clear()
+    from woodchopping.predictions.diameter_scaling import reset_exponent_cache
+
+    reset_exponent_cache()
     print("[Baseline V2] Cache invalidated")
 
 

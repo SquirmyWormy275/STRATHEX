@@ -1,7 +1,7 @@
 """Helpers for checking competitor history and capturing manual results entry."""
 
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 
@@ -72,7 +72,7 @@ def filter_competitors_with_history(
     return eligible_df, blocked
 
 
-def prompt_add_competitor_times(competitor_name: str, event_code: str, wood_info: Dict[str, any]) -> bool:
+def prompt_add_competitor_times(competitor_name: str, event_code: str, wood_info: Dict[str, Any]) -> bool:
     """
     Prompt judge to add historical times for a competitor and append to Results sheet.
 

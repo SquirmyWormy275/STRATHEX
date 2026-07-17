@@ -40,10 +40,10 @@ WOOD_HEADERS = [
 def _resolve_sheet_name(excel_path: str, desired_name: str) -> str:
     """Return the exact sheet name matching desired_name (case-insensitive)."""
     try:
-        xl = pd.ExcelFile(excel_path)
-        for sheet in xl.sheet_names:
-            if sheet.strip().lower() == desired_name.strip().lower():
-                return sheet
+        with pd.ExcelFile(excel_path) as xl:
+            for sheet in xl.sheet_names:
+                if sheet.strip().lower() == desired_name.strip().lower():
+                    return sheet
     except Exception:
         pass
     return desired_name
