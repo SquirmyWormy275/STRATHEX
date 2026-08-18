@@ -36,9 +36,7 @@ def validate_complete_workbook(path: str, excel_io_module: ModuleType) -> None:
 
     missing = sorted(_required_sheet_names(excel_io_module) - present)
     if missing:
-        raise ValueError(
-            "Workbook is incomplete; missing required sheet(s): " + ", ".join(missing)
-        )
+        raise ValueError("Workbook is incomplete; missing required sheet(s): " + ", ".join(missing))
 
 
 def _create_backup(path: str) -> str:
@@ -120,9 +118,7 @@ def guarded_append_results_to_excel(
     original_workbook_factory = excel_io_module.Workbook
 
     def _refuse_partial_replacement(*_args, **_kwargs):
-        raise RuntimeError(
-            "Refusing to create a replacement workbook after an existing workbook load failure"
-        )
+        raise RuntimeError("Refusing to create a replacement workbook after an existing workbook load failure")
 
     excel_io_module.Workbook = _refuse_partial_replacement
     restore_attempted = False
