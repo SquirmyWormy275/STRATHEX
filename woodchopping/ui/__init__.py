@@ -272,3 +272,21 @@ __all__ = [
     "check_competitor_status",
     "get_scratch_count",
 ]
+
+# Replace the legacy direct JSON writers after all UI modules have loaded. This
+# keeps existing imports and call signatures intact while making every later
+# import resolve to the crash-safe implementations.
+from woodchopping.ui.state_persistence import install_persistence_guards
+
+install_persistence_guards()
+
+from woodchopping.ui.multi_event_ui import (
+    auto_save_multi_event,
+    load_multi_event_tournament,
+    save_multi_event_tournament,
+)
+from woodchopping.ui.tournament_ui import (
+    auto_save_state,
+    load_tournament_state,
+    save_tournament_state,
+)
