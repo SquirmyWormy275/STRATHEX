@@ -37,12 +37,11 @@ from woodchopping.data import (
     load_results_df,
 )
 from woodchopping.handicaps import calculate_ai_enhanced_handicaps
-from woodchopping.predictions.prediction_aggregator import (
-    display_basic_prediction_table,
-    display_comprehensive_prediction_analysis,
-    display_handicap_calculation_explanation,
-)
+from woodchopping.prediction_context import ensure_prediction_as_of
 from woodchopping.simulation import simulate_and_assess_handicaps
+from woodchopping.strathmark_adapter import MAX_STRATHMARK_FIELD_SIZE
+from woodchopping.strathmark_adapter import describe_api_endpoint as _describe_api_endpoint
+from woodchopping.strathmark_adapter import resolve_calculation_transport as _resolve_transport
 from woodchopping.ui import (
     display_and_export_schedule,
     personnel_management_menu,
@@ -84,6 +83,11 @@ from woodchopping.ui.multi_event_ui import (
     view_analyze_all_handicaps,
     view_tournament_schedule,
     view_wood_count,
+)
+from woodchopping.ui.prediction_display import (
+    display_basic_prediction_table,
+    display_comprehensive_prediction_analysis,
+    display_handicap_calculation_explanation,
 )
 from woodchopping.ui.progress_ui import ProgressDisplay
 from woodchopping.ui.scratch_management import (
@@ -143,12 +147,11 @@ except Exception as e:
 
 # Initialize STRATHMARK ResultStore and migrate historical Excel data (idempotent)
 try:
-    from strathmark.store import ResultStore as _ResultStore
-
     from woodchopping.data.store_registry import set_store as _set_store
+    from woodchopping.strathmark_adapter import create_result_store as _create_store
     from woodchopping.strathmark_adapter import migrate_excel_to_store as _migrate
 
-    _result_store = _ResultStore()
+    _result_store = _create_store()
     _set_store(_result_store)
     _results_for_migration = load_results_df()
     _migrated_count = _migrate(_results_for_migration, _result_store)
@@ -157,6 +160,21 @@ try:
     del _results_for_migration, _migrated_count, _migrate
 except Exception as _store_err:
     print(f"  Note: STRATHMARK store unavailable ({_store_err}). Predictions will use Excel only.")
+
+try:
+    _strathmark_transport = _resolve_transport()
+except ValueError as _transport_err:
+    print(f"  [WARN] Invalid STRATHMARK transport configuration: {_transport_err}")
+else:
+    if _strathmark_transport == "http":
+        try:
+            _strathmark_endpoint = _describe_api_endpoint()
+        except ValueError as _endpoint_err:
+            print(f"  [WARN] Invalid STRATHMARK API configuration: {_endpoint_err}")
+        else:
+            print(f"  STRATHMARK v2 transport: HTTP ({_strathmark_endpoint})")
+    else:
+        print("  STRATHMARK v2 transport: direct Python (offline-capable)")
 
 # Wood Selection Dictionary - initialize with all expected keys
 wood_selection = {"species": None, "size_mm": None, "quality": None, "event": None}
@@ -178,6 +196,7 @@ tournament_state = {
     "capacity_info": {},  # From calculate_tournament_scenarios()
     "handicap_results_all": [],  # Handicap results for all competitors
     "payout_config": None,  # Payout configuration dict (NEW V5.0)
+    "prediction_as_of": None,  # Exclusive STRATHMARK evidence cutoff
 }
 
 # Multi-Event Tournament State - NEW for V5.0
@@ -290,13 +309,17 @@ def display_bracket_status_tracker(wood_selection: dict, tournament_state: dict)
     print("═" * 70)
 
 
-def manage_bracket_competitors(tournament_state: dict, comp_df: pd.DataFrame, max_competitors: int = 999) -> dict:
+def manage_bracket_competitors(
+    tournament_state: dict,
+    comp_df: pd.DataFrame,
+    max_competitors: int = MAX_STRATHMARK_FIELD_SIZE,
+) -> dict:
     """Manage competitor selection for bracket tournament with add/remove/view options.
 
     Args:
         tournament_state: Tournament state dictionary
         comp_df: Full competitor roster DataFrame
-        max_competitors: Maximum allowed competitors (999 for bracket mode)
+        max_competitors: Maximum field size supported by STRATHMARK v2.
 
     Returns:
         dict: Updated tournament_state
@@ -709,6 +732,11 @@ def single_event_menu():
                     tournament_state["format"] = "heats_to_semis_to_finals"
                     tournament_state["capacity_info"] = scenarios["heats_to_semis_to_finals"]
                 elif format_choice == "4":
+                    if tentative > MAX_STRATHMARK_FIELD_SIZE:
+                        print(f"\n[WARN] STRATHMARK v2 supports at most {MAX_STRATHMARK_FIELD_SIZE} competitors.")
+                        print("Reduce the bracket field and reconfigure the tournament.")
+                        input("\nPress Enter to return to menu...")
+                        continue
                     # Bracket mode - validate 2 stands
                     if num_stands != 2:
                         print("\n[WARN] Bracket mode requires exactly 2 stands (one head-to-head match at a time)")
@@ -752,7 +780,7 @@ def single_event_menu():
                     print(f"[OK] Format: {elimination_type.title()} elimination bracket")
                     print("[OK] Stands: 2 (head-to-head)")
 
-                    # Skip capacity display for bracket - it supports unlimited competitors
+                    # Bracket capacity is bounded by the STRATHMARK field contract.
                     # Continue to event name input below
                 else:
                     print("Invalid choice. Tournament not configured.")
@@ -765,13 +793,14 @@ def single_event_menu():
                 # Prompt for event name
                 event_name = input("\nEvent name (e.g., 'SB Championship 2025'): ").strip()
                 tournament_state["event_name"] = event_name if event_name else "Unnamed Event"
+                tournament_state["prediction_as_of"] = None
 
                 print(f"\n[OK] Tournament configured: {tournament_state['format']}")
                 # Only show max competitors for non-bracket tournaments
                 if tournament_state["format"] != "bracket":
                     print(f"[OK] Max competitors: {tournament_state['capacity_info']['max_competitors']}")
                 else:
-                    print("[OK] Supports unlimited competitors with automatic byes")
+                    print(f"[OK] Supports up to {MAX_STRATHMARK_FIELD_SIZE} competitors with automatic byes")
 
             except ValueError:
                 print("Invalid input. Please enter numbers.")
@@ -796,7 +825,11 @@ def single_event_menu():
                     continue
 
                 # Use enhanced competitor management for bracket mode
-                tournament_state = manage_bracket_competitors(tournament_state, comp_df, max_competitors=999)
+                tournament_state = manage_bracket_competitors(
+                    tournament_state,
+                    comp_df,
+                    max_competitors=MAX_STRATHMARK_FIELD_SIZE,
+                )
             else:
                 # Regular handicap mode: Simple select all
                 max_comp = tournament_state["capacity_info"].get("max_competitors")
@@ -913,6 +946,7 @@ def single_event_menu():
 
             # Use existing calculate_ai_enhanced_handicaps function with progress
             results_df = load_results_df()
+            prediction_as_of = ensure_prediction_as_of(tournament_state)
             handicap_results = calculate_ai_enhanced_handicaps(
                 tournament_state["all_competitors_df"],
                 wood_selection["species"],
@@ -921,7 +955,14 @@ def single_event_menu():
                 wood_selection["event"],
                 results_df,
                 progress_callback=show_progress,
+                prediction_as_of=prediction_as_of,
             )
+
+            if not handicap_results:
+                progress_display.finish("STRATHMARK calculation failed")
+                print("\n[WARN] No mark sheet was produced. Tournament state was not changed.")
+                input("\nPress Enter to return to menu...")
+                continue
 
             progress_display.finish("All competitors analyzed successfully!")
 
@@ -1172,6 +1213,8 @@ def single_event_menu():
                 missing = []
                 if not tournament_state.get("all_competitors"):
                     missing.append("  ? No competitors selected (use Option 3)")
+                elif len(tournament_state["all_competitors"]) > MAX_STRATHMARK_FIELD_SIZE:
+                    missing.append(f"  ? Bracket exceeds STRATHMARK's {MAX_STRATHMARK_FIELD_SIZE}-competitor limit")
                 if not wood_selection.get("species"):
                     missing.append("  ? Wood species not selected (use Option 1)")
                 if not wood_selection.get("size_mm"):
@@ -1205,13 +1248,20 @@ def single_event_menu():
                 print("╚" + "═" * 68 + "╝\n")
 
                 # Generate predictions for seeding
-                predictions = generate_bracket_seeds(
-                    tournament_state["all_competitors_df"],
-                    wood_selection["species"],
-                    wood_selection["size_mm"],
-                    wood_selection["quality"],
-                    wood_selection["event"],
-                )
+                try:
+                    predictions = generate_bracket_seeds(
+                        tournament_state["all_competitors_df"],
+                        wood_selection["species"],
+                        wood_selection["size_mm"],
+                        wood_selection["quality"],
+                        wood_selection["event"],
+                        prediction_as_of=ensure_prediction_as_of(tournament_state),
+                    )
+                except (ValueError, RuntimeError) as error:
+                    print(f"\n[WARN] Bracket seeding failed: {error}")
+                    print("No bracket was generated; verify STRATHMARK and try again.")
+                    input("\nPress Enter to return to menu...")
+                    continue
 
                 tournament_state["predictions"] = predictions
                 tournament_state["num_competitors"] = len(predictions)

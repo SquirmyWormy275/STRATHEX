@@ -114,5 +114,5 @@ Wiki published: https://github.com/SquirmyWormy275/STRATHEX/wiki
 ## Related
 - [wiki/README.md](../../../wiki/README.md) — primary operator guide for editing and publishing
 - [wiki/publish.sh](../../../wiki/publish.sh) — the sync script itself
-- [docs/INDEX.md](../INDEX.md) — top-level doc index; should gain a pointer to the versioned wiki
+- [docs/INDEX.md](../../INDEX.md) — top-level documentation index
 - Commit c891c65 and PR #1 — where the wiki source and publish script landed

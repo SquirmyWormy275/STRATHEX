@@ -451,6 +451,7 @@ def manage_scratches(tournament_state: Dict) -> Dict:
                 del event["competitor_status"][comp_name]
 
                 # Regenerate bracket
+                from woodchopping.prediction_context import ensure_prediction_as_of
                 from woodchopping.ui.bracket_ui import (
                     generate_bracket_seeds,
                     generate_bracket_with_byes,
@@ -462,6 +463,7 @@ def manage_scratches(tournament_state: Dict) -> Dict:
                     event["wood_diameter"],
                     event["wood_quality"],
                     event["event_code"],
+                    prediction_as_of=ensure_prediction_as_of(event),
                 )
 
                 rounds = generate_bracket_with_byes(predictions)

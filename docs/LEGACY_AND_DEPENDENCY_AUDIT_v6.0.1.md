@@ -1,5 +1,7 @@
 # Legacy and dependency audit — v6.0.1
 
+> Historical v6.0.1 audit. STRATHEX 7 removes the live XGBoost/scikit-learn dependency and uses STRATHMARK 2 for all prediction surfaces.
+
 This audit traces imports from `MainProgramV5_2.py`, the declared
 `woodchopping.predictions` public surface, tests, validation scripts, and CLI
 entry points. It separates code that is merely old from code that is provably

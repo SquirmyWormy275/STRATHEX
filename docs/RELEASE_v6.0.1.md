@@ -1,5 +1,7 @@
 # STRATHEX v6.0.1 release notes
 
+> Historical release record. Current behavior is documented in [RELEASE_v7.0.0.md](RELEASE_v7.0.0.md).
+
 ## What changed
 
 - Single-event and multi-event state saves now use verified temporary files,

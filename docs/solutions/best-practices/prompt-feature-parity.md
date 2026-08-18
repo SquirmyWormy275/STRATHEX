@@ -17,6 +17,8 @@ related_components:
 tags: [llm, prompts, feature-parity, tournament-weighting, development-discipline]
 ---
 
+> Historical pre-v7 incident. Numeric LLM prediction and 97/3 weighting are retired. The durable lesson is to update operator text, tests, and documentation whenever calculation authority changes.
+
 # When a system feature ships, every LLM prompt that reasons about that feature must ship updated in the same commit
 
 ## Context

@@ -17,6 +17,8 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
+from woodchopping.prediction_context import ensure_prediction_as_of
+
 
 def find_optimal_heat_configuration(num_stands: int, tentative_competitors: int, target_advancers: int) -> Dict:
     """Find optimal stands_per_heat to create balanced heats.
@@ -689,10 +691,9 @@ def generate_next_round(
 ) -> List[Dict]:
     """Generate semi-final or final rounds from advancing competitors.
 
-    CRITICAL ENHANCEMENT: This function now RECALCULATES handicaps using actual times
-    from completed rounds in THIS TOURNAMENT. Since the wood is identical across all rounds,
-    these same-tournament results are weighted at 97% vs historical data (3%), providing
-    the most accurate handicaps possible.
+    Handicap fields are recalculated for the advancing competitors with the
+    event's original STRATHMARK evidence cutoff. Same-day round times remain
+    visible to the judge but cannot alter a v2 prediction.
 
     Args:
         tournament_state: Global tournament state
@@ -708,7 +709,7 @@ def generate_next_round(
         rng = random.Random()
         _run_slot_machine_animation(all_advancers, all_advancers, rng)
 
-    # Extract actual cutting times from completed rounds (NEW - critical improvement)
+    # Extract same-day times for judge reference only; v2 does not use them as evidence.
     tournament_results = extract_tournament_results(tournament_state)
 
     # Skip recalculation for Championship events (everyone stays at Mark 3)
@@ -778,11 +779,11 @@ def generate_next_round(
 
         return next_rounds
 
-    # Handicap event: full recalculation with tournament weighting
+    # Handicap event: recalculate the smaller field with the original evidence cutoff.
     print(f"\n{'=' * 70}")
-    print("  RECALCULATING HANDICAPS USING TOURNAMENT RESULTS")
+    print("  RECALCULATING HANDICAPS FOR ADVANCING FIELD")
     print(f"{'=' * 70}")
-    print("\nUsing actual times from completed rounds (97% weight):")
+    print("\nSame-day results are displayed for reference but are not prediction evidence:")
     for name, t in tournament_results.items():
         if name in all_advancers:
             print(f"  - {name}: {t:.2f}s")
@@ -796,7 +797,7 @@ def generate_next_round(
         tournament_state["all_competitors_df"]["competitor_name"].isin(all_advancers)
     ].copy()
 
-    # RECALCULATE handicaps with tournament results prioritized
+    # Recalculate the smaller field with the event's original evidence cutoff.
     # Check if wood characteristics are stored (v4.4+)
     wood_species = tournament_state.get("wood_species")
     wood_diameter = tournament_state.get("wood_diameter")
@@ -805,7 +806,7 @@ def generate_next_round(
 
     if not all([wood_species, wood_diameter, event_code is not None, wood_quality is not None]):
         print("\n[WARN] WARNING: Wood characteristics not found in tournament state.")
-        print("Cannot recalculate handicaps using tournament results.")
+        print("Cannot recalculate handicaps for the advancing field.")
         print("Using original handicaps from initial calculation.")
 
         # Fallback: extract handicap results from previous rounds
@@ -816,10 +817,10 @@ def generate_next_round(
 
         advancer_results = [r for r in all_results if r["name"] in all_advancers]
     else:
-        # Normal path: recalculate with tournament weighting
+        # Normal path: recalculate the new field using the persisted cutoff.
         results_df = load_results_df()
 
-        # Calculate new handicaps with tournament result weighting
+        prediction_as_of = ensure_prediction_as_of(tournament_state)
         advancer_results = calculate_ai_enhanced_handicaps(
             all_advancers_df,
             wood_species,
@@ -827,10 +828,15 @@ def generate_next_round(
             wood_quality,
             event_code,
             results_df,
-            tournament_results=tournament_results,  # NEW parameter for same-tournament weighting
+            prediction_as_of=prediction_as_of,
         )
 
-    print("\n[OK] Handicaps recalculated using tournament performance data")
+    if not advancer_results:
+        print("\n[WARN] STRATHMARK did not produce a complete advancing-field mark sheet.")
+        print("No next round was generated; the existing tournament state is unchanged.")
+        return []
+
+    print("\n[OK] Handicaps recalculated for the advancing field using the original cutoff")
     print(f"{'=' * 70}\n")
 
     # Determine optimal heat configuration for next round
@@ -856,7 +862,7 @@ def generate_next_round(
     # Use same distribution algorithm (snake draft) with RECALCULATED handicaps
     next_rounds = distribute_competitors_into_heats(
         all_advancers_df,
-        advancer_results,  # Now contains recalculated handicaps using tournament data
+        advancer_results,  # Recalculated field using the original evidence cutoff
         stands_per_heat,  # Use optimal stands per heat
         num_heats,
     )

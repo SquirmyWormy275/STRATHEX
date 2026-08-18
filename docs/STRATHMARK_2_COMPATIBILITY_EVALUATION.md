@@ -1,39 +1,37 @@
-# STRATHMARK 2.0 compatibility evaluation
+# STRATHMARK 2 Migration Decision
 
-**Decision for STRATHEX v6.0.1: retain commit `47bb143`.**
+**Status:** superseded as a compatibility warning and completed by STRATHEX 7.0.0.
 
-STRATHMARK 2.0 retains many import names and compatible-looking signatures, but
-it deliberately changes the calculation contract STRATHEX currently presents
-to judges. An import smoke test is therefore insufficient evidence for a pin
-change.
+The v6.0.1 evaluation correctly found that simply changing the dependency pin was unsafe. STRATHMARK 2 deliberately changed prediction authority, evidence rules, uncertainty, and mark optimization. Feeding the old expected-error winner through `manual_overrides` would have mislabeled model output as judge authority and bypassed v2 calibration.
 
-## Confirmed behavioral differences
+STRATHEX 7 accepts those semantic changes and replaces the bridge.
 
-- Same-tournament results supplied for later-round weighting no longer affect
-  the 2.0 prediction.
-- Wood quality remains accepted by the data shape but is numerically inactive.
-- Supplied legacy ML and numeric LLM inputs are ignored by 2.0; an in-memory
-  probe returned neither method as an available numeric prediction.
-- Selection changes from expected-error scoring to a fixed authority order.
-- Mark assignment uses the new joint optimizer instead of the pinned rounded-gap
-  behavior. For fixed selected times `[62, 48, 31]`, the candidate produced
-  marks `(3, 17, 33)` while the pinned contract produces `(3, 17, 34)`.
-- Undated history is excluded by the new evidence-cutoff rules.
-- STRATHEX does not yet supply stable competitor IDs, an explicit evidence
-  cutoff, or surface the new warning/provenance/optimizer fields.
+## Accepted v2 contract
 
-These are product decisions, not packaging defects. Adopting 2.0 would require
-an explicit decision to retire or replace quality adjustment, same-wood
-later-round weighting, numeric ML/LLM comparison, expected-error selection, and
-rounded-gap marks.
+- prior-only hierarchical core;
+- exclusive fixed cutoff and stable identity;
+- undated/same-day/future evidence excluded;
+- numeric LLM retired;
+- legacy ML input ignored unless a promoted residual exists;
+- wood quality and tournament context numeric no-ops;
+- calibrated forecast interval distinct from performance standard deviation;
+- deterministic joint optimizer;
+- complete warnings, degraded state, provenance, and ignored-factor metadata.
 
-## Upgrade gate
+## Migration implementation
 
-A future compatibility branch must compare pin and candidate in separate clean
-environments using fixed-cutoff SB/UH fixtures; replay heat-to-final workflows;
-golden-test method selection and mark rounding/optimization; migrate a copied
-SQLite fixture; surface degradation and provenance evidence; prove one
-prediction pass per competitor; and run with all network access disabled.
+- Exact engine pin: STRATHMARK `v2.0.0`, commit `a231ad65fe82317516cc82a282761d73adb0c0e3`.
+- Direct Python is the offline default.
+- Explicit HTTP mode uses one stateless `POST /calculate` per field.
+- HTTP checks OpenAPI 2.0.0 and returned engine metadata; no silent fallback.
+- Bracket and championship prediction paths now use the same adapter.
+- Event cutoff and v2 metadata persist in tournament state.
+- Existing ResultStore receives a one-time pre-v2 backup before schema migration.
+- New result writes include stable competition identity.
+- Maintained docs and wiki source no longer present the v6 predictor cascade as current.
 
-Until those gates pass and the behavior changes are accepted, `47bb143` is the
-only supported STRATHEX engine revision.
+## Verification requirement
+
+A fixed-cutoff field must produce the same marks, predictions, versions, intervals, optimizer, provenance, and ignored factors through direct Python and HTTP. That parity test is a permanent release gate.
+
+The original v6.0.1 decision remains available in Git history and the dated v6.0.1 release/audit documents. Those documents describe that release, not the current runtime.

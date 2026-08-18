@@ -16,12 +16,12 @@ import pandas as pd
 
 from woodchopping.data import (
     load_competitors_df,
-    load_wood_data,
     standardize_results_data,
 )
 from woodchopping.data.history_merge import merge_result_history
 from woodchopping.data.store_registry import get_store
 from woodchopping.strathmark_adapter import (
+    build_competitor_id_map,
     build_competitor_records,
     build_gender_map,
     build_wood_profile,
@@ -61,17 +61,19 @@ def calculate_ai_enhanced_handicaps(
     results_df: pd.DataFrame,
     progress_callback: Optional[Callable[[int, int, str], None]] = None,
     tournament_results: Optional[Dict[str, float]] = None,
+    prediction_as_of: Any = None,
+    include_store_history: bool = True,
 ) -> Optional[List[Dict[str, Any]]]:
     """
     Calculate handicap marks through the pinned STRATHMARK engine.
 
-    Existing STRATHEX callers and return fields are unchanged. The wrapper:
+    Existing STRATHEX callers and core return fields are retained. The wrapper:
     - combines judge-canonical Excel history with additional ResultStore rows;
     - validates and enriches historical rows with roster metadata;
-    - trains STRATHMARK's ML model from the complete supplied history;
-    - runs Baseline, ML, and LLM predictions once per competitor;
-    - selects the lowest-expected-error prediction;
-    - delegates mark assignment and variance to STRATHMARK.
+    - preserves stable competitor identity;
+    - fixes one exclusive evidence cutoff for the full field;
+    - delegates prediction, uncertainty, and joint mark optimization to
+      STRATHMARK v2 through the explicitly selected transport.
 
     Args:
         heat_assignment_df: DataFrame containing ``competitor_name`` and,
@@ -82,8 +84,11 @@ def calculate_ai_enhanced_handicaps(
         event_code: ``SB`` or ``UH``.
         results_df: Historical results DataFrame loaded from Excel.
         progress_callback: Optional callback(current, total, competitor_name).
-        tournament_results: Optional same-tournament actual times. Existing
-            STRATHEX behavior gives these observations 97% weight.
+        tournament_results: Retained for caller compatibility. STRATHMARK v2
+            reports same-tournament context as ignored and does not reweight it.
+        prediction_as_of: Exclusive evidence cutoff persisted with the event.
+        include_store_history: Merge the derived ResultStore history. Set false
+            when the caller intentionally supplies a curated history window.
 
     Returns:
         Existing STRATHEX list-of-dicts contract, or ``None`` when calculation
@@ -104,21 +109,20 @@ def calculate_ai_enhanced_handicaps(
     # Startup migration makes most ResultStore rows duplicates of Excel. Merge
     # with explicit de-duplication so persistent learning adds evidence rather
     # than multiplying it.
-    combined_history = merge_result_history(
-        results_df,
-        _load_persistent_history(),
+    combined_history = (
+        merge_result_history(results_df, _load_persistent_history()) if include_store_history else results_df.copy()
     )
 
-    # Apply the existing shared validation/outlier policy before either
-    # baseline construction or ML training.
+    # Apply the existing shared validation/outlier policy before translating
+    # historical evidence to STRATHMARK records.
     standardized_results, _ = standardize_results_data(combined_history)
     if standardized_results is None:
         standardized_results = pd.DataFrame()
 
     # Results carry performance observations; gender lives in the roster.
-    # Join the two sources so the trained model and live feature vector use the
-    # same encoding. Prefer the full roster, with the selected heat as a safe
-    # fallback in slim/test environments.
+    # Join the two sources so identity and compatibility metadata are stable.
+    # Prefer the full roster, with the selected heat as a safe fallback in
+    # slim/test environments.
     roster_messages = StringIO()
     with redirect_stdout(roster_messages):
         roster_df = load_competitors_df()
@@ -133,15 +137,15 @@ def calculate_ai_enhanced_handicaps(
         roster_df,
     )
     gender_map = build_gender_map(heat_assignment_df, enriched_results)
+    competitor_id_map = build_competitor_id_map(heat_assignment_df, enriched_results)
 
     records = build_competitor_records(
         competitor_names,
         enriched_results,
-        tournament_results=tournament_results,
         gender_map=gender_map,
+        competitor_id_map=competitor_id_map,
     )
     wood = build_wood_profile(species, diameter, quality)
-    wood_df = load_wood_data()
 
     try:
         handicap_results = calculate_handicap_results(
@@ -149,10 +153,10 @@ def calculate_ai_enhanced_handicaps(
             wood=wood,
             event_code=event_code,
             results_df=enriched_results,
-            wood_df=wood_df,
-            tournament_results=tournament_results,
+            prediction_as_of=prediction_as_of,
         )
-    except (ValueError, RuntimeError):
+    except (ValueError, RuntimeError) as exc:
+        print(f"[WARN] STRATHMARK v2 calculation failed: {exc}")
         return None
 
     if not handicap_results:
