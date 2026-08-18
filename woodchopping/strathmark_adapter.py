@@ -75,6 +75,99 @@ def _clean_optional_text(value: Any) -> Optional[str]:
     return text or None
 
 
+def prepare_results_for_strathmark(
+    results_df: Optional[pd.DataFrame],
+) -> pd.DataFrame:
+    """Return a unique-column DataFrame safe for the pinned engine boundary.
+
+    STRATHEX's loaded Results frame legitimately carries both ``competitor_id``
+    and the mapped ``competitor_name``. STRATHMARK 0.4.1 treats both as aliases
+    for ``competitor_name`` during normalization; passing both creates duplicate
+    columns and makes ``df["competitor_name"]`` a DataFrame instead of a Series.
+
+    Only colliding alias families are rewritten. Frames that are already safe
+    are returned unchanged so existing cache and caller identity semantics remain
+    intact. Canonical values win; aliases fill only missing cells.
+    """
+    if results_df is None or not isinstance(results_df, pd.DataFrame):
+        return pd.DataFrame()
+    if results_df.empty:
+        return results_df
+
+    normalized_names = [str(column).strip().lower() for column in results_df.columns]
+    alias_groups = {
+        "competitor_name": (
+            "competitor_name",
+            "competitor name",
+            "competitorname",
+            "name",
+            "competitor_id",
+            "competitorid",
+        ),
+        "event": ("event", "event_code", "eventcode"),
+        "raw_time": (
+            "raw_time",
+            "actual_time",
+            "actualtime",
+            "time",
+            "time (seconds)",
+            "time(seconds)",
+        ),
+        "size_mm": (
+            "size_mm",
+            "diameter_mm",
+            "diameter",
+            "size",
+            "size (mm)",
+            "size(mm)",
+        ),
+        "species": (
+            "species",
+            "wood_species",
+            "woodspecies",
+            "species code",
+            "speciescode",
+        ),
+        "result_date": (
+            "result_date",
+            "result date",
+            "date",
+            "date (optional)",
+        ),
+    }
+
+    collisions: Dict[str, List[int]] = {}
+    for target, aliases in alias_groups.items():
+        positions = [position for alias in aliases for position, name in enumerate(normalized_names) if name == alias]
+        if len(positions) > 1:
+            collisions[target] = positions
+
+    if not collisions and results_df.columns.is_unique:
+        return results_df
+
+    consumed_positions = {position for positions in collisions.values() for position in positions}
+    output = pd.DataFrame(index=results_df.index)
+
+    for position, column_name in enumerate(results_df.columns):
+        if position in consumed_positions:
+            continue
+        normalized = str(column_name).strip().lower()
+        if normalized not in output.columns:
+            output[normalized] = results_df.iloc[:, position]
+
+    for target, positions in collisions.items():
+        combined = results_df.iloc[:, positions[0]].copy()
+        for position in positions[1:]:
+            candidate = results_df.iloc[:, position]
+            missing = combined.isna()
+            if combined.dtype == object:
+                missing = missing | combined.astype(str).str.strip().eq("")
+            combined = combined.where(~missing, candidate)
+        output[target] = combined
+
+    return output
+
+
 def enrich_results_with_roster(
     results_df: Optional[pd.DataFrame],
     roster_df: Optional[pd.DataFrame],
@@ -503,7 +596,8 @@ def calculate_handicap_results(
         return []
 
     event_code = str(event_code).strip().upper()
-    ml_model = _train_ml_model(results_df, wood_df)
+    engine_results = prepare_results_for_strathmark(results_df)
+    ml_model = _train_ml_model(engine_results, wood_df)
     llm_client = {
         "url": ollama_url,
         "model": llm_config.PREDICTION_MODEL,
@@ -520,7 +614,7 @@ def calculate_handicap_results(
                 wood,
                 event_code,
                 wood_data_df=wood_df,
-                results_df=results_df,
+                results_df=engine_results,
                 ml_model=ml_model,
                 llm_client=llm_client,
             )
@@ -535,7 +629,7 @@ def calculate_handicap_results(
                 wood,
                 event_code,
                 wood_data_df=wood_df,
-                results_df=results_df,
+                results_df=engine_results,
                 ml_model=ml_model,
                 llm_client=None,
             )
