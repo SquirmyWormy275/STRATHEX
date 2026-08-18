@@ -17,9 +17,9 @@ dependencies = [
     "requests",
     # STRATHMARK is the handicap calculation engine, released under the Apache License 2.0.
     # License compatibility: STRATHEX is MIT and Apache 2.0 is a compatible permissive license.
-    # STRATHMARK 2.0 has no published package/tag yet, so pin the exact audited
-    # source commit used by both direct-Python and HTTP parity tests.
-    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@da5c44d07311b226c1e9842104477efaf61253fa",
+    # STRATHMARK 2.0.0 is distributed from GitHub rather than PyPI. Pin the
+    # exact v2.0.0 release commit used by direct-Python and HTTP parity tests.
+    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@a231ad65fe82317516cc82a282761d73adb0c0e3",
 ]
 
 [project.optional-dependencies]

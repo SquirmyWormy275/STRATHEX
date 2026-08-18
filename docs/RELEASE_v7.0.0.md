@@ -4,7 +4,7 @@ STRATHEX 7 is the breaking migration from the legacy STRATHMARK 0.4.1 bridge to 
 
 ## Changed
 
-- Pins STRATHMARK commit `da5c44d07311b226c1e9842104477efaf61253fa`.
+- Pins the STRATHMARK `v2.0.0` release at commit `a231ad65fe82317516cc82a282761d73adb0c0e3`.
 - Gives STRATHMARK v2 direct ownership of prediction, uncertainty, and joint mark optimization.
 - Adds an explicit FastAPI demo transport alongside the default offline direct-Python transport.
 - Fails closed on API schema/version mismatch, missing v2 audit metadata, malformed/oversized response, redirects, credential/path-bearing URLs, remote plaintext, or request failure.

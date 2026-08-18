@@ -11,7 +11,7 @@ pip install -e ".[dev]"
 python MainProgramV5_2.py
 ```
 
-STRATHEX pins the exact audited STRATHMARK 2 commit because no STRATHMARK PyPI distribution or tag exists yet. Ollama is not required for numeric prediction.
+STRATHEX pins the exact STRATHMARK `v2.0.0` release commit from GitHub; no STRATHMARK PyPI distribution is required. Ollama is not required for numeric prediction.
 
 ## Run an event
 

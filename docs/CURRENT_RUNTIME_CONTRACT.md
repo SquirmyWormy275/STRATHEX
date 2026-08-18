@@ -1,7 +1,7 @@
 # Current Runtime Contract
 
 **Applies to:** STRATHEX 7.0.0
-**Prediction authority:** STRATHMARK 2.0.0 at commit `da5c44d07311b226c1e9842104477efaf61253fa`
+**Prediction authority:** STRATHMARK 2.0.0 (`v2.0.0`) at commit `a231ad65fe82317516cc82a282761d73adb0c0e3`
 
 ## Ownership
 

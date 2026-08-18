@@ -20,7 +20,7 @@ STRATHEX 7 accepts those semantic changes and replaces the bridge.
 
 ## Migration implementation
 
-- Exact engine pin: `da5c44d07311b226c1e9842104477efaf61253fa`.
+- Exact engine pin: STRATHMARK `v2.0.0`, commit `a231ad65fe82317516cc82a282761d73adb0c0e3`.
 - Direct Python is the offline default.
 - Explicit HTTP mode uses one stateless `POST /calculate` per field.
 - HTTP checks OpenAPI 2.0.0 and returned engine metadata; no silent fallback.

@@ -4,7 +4,7 @@ STRATHEX is the judge-facing woodchopping tournament application. It manages ros
 
 ## Current runtime
 
-STRATHEX 7 is integrated with STRATHMARK 2.0 at the exact audited commit `da5c44d07311b226c1e9842104477efaf61253fa`. STRATHMARK has not yet published a PyPI package or tagged release, so the Git dependency is intentionally commit-pinned.
+STRATHEX 7 is integrated with the [STRATHMARK 2.0.0 release](https://github.com/SquirmyWormy275/STRATHMARK/releases/tag/v2.0.0) at exact commit `a231ad65fe82317516cc82a282761d73adb0c0e3`. STRATHMARK 2.0.0 is distributed through GitHub rather than PyPI, so the Git dependency remains commit-pinned for reproducibility.
 
 The live calculation contract is:
 

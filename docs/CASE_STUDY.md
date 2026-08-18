@@ -10,7 +10,7 @@ A real 12-competitor field demonstrated the impact: the proper v2 field calculat
 
 STRATHEX 7 lets STRATHMARK own the full field calculation. The offline default is a direct Python call. An explicit HTTP demo mode sends the same stateless field request to `POST /calculate`. No silent fallback is permitted.
 
-The exact engine source is pinned because STRATHMARK 2.0 has no tag or PyPI distribution yet.
+The exact `v2.0.0` release commit is pinned because STRATHMARK distributes this release through GitHub rather than PyPI.
 
 ## Implementation
 
