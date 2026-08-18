@@ -75,7 +75,6 @@ from woodchopping.ui.handicap_ui import (
 from woodchopping.ui.multi_event_ui import (
     add_event_to_tournament,
     approve_event_handicaps,
-    auto_save_multi_event,
     calculate_all_event_handicaps,
     create_multi_event_tournament,
     display_event_progress,
@@ -83,9 +82,7 @@ from woodchopping.ui.multi_event_ui import (
     generate_complete_day_schedule,
     generate_tournament_summary,
     get_next_incomplete_round,
-    load_multi_event_tournament,
     remove_event_from_tournament,
-    save_multi_event_tournament,
     sequential_results_workflow,
     view_all_handicaps_summary,
     view_analyze_all_handicaps,
@@ -124,6 +121,15 @@ from woodchopping.ui.scratch_management import (
     view_all_competitors_with_status,
     view_scratch_history,
 )
+from woodchopping.ui.state_persistence import (
+    auto_save_multi_event,
+    auto_save_state,
+    install_persistence_guards,
+    load_multi_event_tournament,
+    load_tournament_state,
+    save_multi_event_tournament,
+    save_tournament_state,
+)
 
 # Tournament Status & Validation (NEW V5.1)
 from woodchopping.ui.tournament_status import (
@@ -134,12 +140,9 @@ from woodchopping.ui.tournament_status import (
     get_progress_summary,
 )
 from woodchopping.ui.tournament_ui import (
-    auto_save_state,
     calculate_tournament_scenarios,
     distribute_competitors_into_heats,
     generate_next_round,
-    load_tournament_state,
-    save_tournament_state,
     select_heat_advancers,
     view_tournament_status,
 )
@@ -162,20 +165,8 @@ from woodchopping.ui.wood_ui import (
 )
 
 # Replace the legacy direct JSON writers after all UI modules have loaded. This
-# keeps existing imports and call signatures intact while making every later
-# import resolve to the crash-safe implementations.
-import woodchopping.ui.multi_event_ui as _multi_event_ui
-import woodchopping.ui.tournament_ui as _tournament_ui
-from woodchopping.ui.state_persistence import install_persistence_guards
-
+# keeps existing call sites intact while exporting the crash-safe functions.
 install_persistence_guards()
-
-save_tournament_state = _tournament_ui.save_tournament_state
-load_tournament_state = _tournament_ui.load_tournament_state
-auto_save_state = _tournament_ui.auto_save_state
-save_multi_event_tournament = _multi_event_ui.save_multi_event_tournament
-load_multi_event_tournament = _multi_event_ui.load_multi_event_tournament
-auto_save_multi_event = _multi_event_ui.auto_save_multi_event
 
 __all__ = [
     # Tournament UI
