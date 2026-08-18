@@ -138,21 +138,14 @@ def prepare_results_for_strathmark(
 
     collisions: Dict[str, List[int]] = {}
     for target, aliases in alias_groups.items():
-        positions = [
-            position
-            for alias in aliases
-            for position, name in enumerate(normalized_names)
-            if name == alias
-        ]
+        positions = [position for alias in aliases for position, name in enumerate(normalized_names) if name == alias]
         if len(positions) > 1:
             collisions[target] = positions
 
     if not collisions and results_df.columns.is_unique:
         return results_df
 
-    consumed_positions = {
-        position for positions in collisions.values() for position in positions
-    }
+    consumed_positions = {position for positions in collisions.values() for position in positions}
     output = pd.DataFrame(index=results_df.index)
 
     for position, column_name in enumerate(results_df.columns):
