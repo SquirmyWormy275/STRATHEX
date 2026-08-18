@@ -12,6 +12,7 @@ STRATHMARK owns numeric time prediction, forecast uncertainty, race-performance 
 ## Calculation
 
 Each field has one persisted exclusive `prediction_as_of` date. STRATHEX sends stable competitor IDs, dated historical observations, target wood, and event code under that cutoff.
+When an operator has not supplied an event date, STRATHEX anchors the cutoff to the operator computer's local calendar date so same-event results recorded locally cannot enter a later-round recalculation after UTC midnight.
 
 STRATHMARK v2 uses its prior-only hierarchical core. Manual overrides remain authoritative. The optional residual is inactive unless STRATHMARK promotes it. Numeric LLM and the former local XGBoost/expected-error cascade are retired.
 

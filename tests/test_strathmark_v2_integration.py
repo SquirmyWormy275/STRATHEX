@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from contextlib import closing
+from dataclasses import replace
 from datetime import date
 from types import SimpleNamespace
 
@@ -313,6 +314,222 @@ def test_direct_transport_rejects_result_engine_version_mismatch(monkeypatch):
             _history_df(),
             prediction_as_of=PREDICTION_AS_OF,
             transport="python",
+        )
+
+
+@pytest.mark.parametrize("transport", ["python", "http"])
+@pytest.mark.parametrize("returned_cutoff", [None, date(2026, 8, 17)])
+def test_transports_reject_missing_or_mismatched_evidence_cutoff(monkeypatch, transport, returned_cutoff):
+    result = _mark_result()
+    result.evidence_cutoff = returned_cutoff
+
+    class FakeCalculator:
+        def calculate(self, **kwargs):
+            return [result]
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(adapter, "HandicapCalculator", FakeCalculator)
+    monkeypatch.setattr(
+        adapter.requests,
+        "get",
+        lambda url, timeout, allow_redirects, stream: FakeResponse(_openapi_document()),
+    )
+    payload = _http_mark_payload()
+    payload["evidence_cutoff"] = returned_cutoff.isoformat() if returned_cutoff is not None else None
+    monkeypatch.setattr(
+        adapter.requests,
+        "post",
+        lambda url, json, timeout, allow_redirects, stream: FakeResponse([payload]),
+    )
+    records = adapter.build_competitor_records(
+        ["Alice Axe"],
+        _history_df(),
+        competitor_id_map={"Alice Axe": "C001"},
+    )
+
+    message = "invalid evidence_cutoff" if returned_cutoff is None else "does not match the requested cutoff"
+    with pytest.raises(RuntimeError, match=message):
+        adapter.calculate_handicap_results(
+            records,
+            adapter.build_wood_profile("S01", 300, 5),
+            "SB",
+            _history_df(),
+            prediction_as_of=PREDICTION_AS_OF,
+            transport=transport,
+            api_url="http://localhost:8000",
+        )
+
+
+def test_field_response_rejects_mixed_model_snapshots(monkeypatch):
+    alice = _mark_result()
+    bob = _mark_result(name="Bob Block", competitor_id="C002")
+    bob.model_version = "other-model"
+
+    class FakeCalculator:
+        def calculate(self, **kwargs):
+            return [alice, bob]
+
+    monkeypatch.setattr(adapter, "HandicapCalculator", FakeCalculator)
+    records = adapter.build_competitor_records(
+        ["Alice Axe", "Bob Block"],
+        _history_df(),
+        competitor_id_map={"Alice Axe": "C001", "Bob Block": "C002"},
+    )
+
+    with pytest.raises(RuntimeError, match="mixed model snapshots"):
+        adapter.calculate_handicap_results(
+            records,
+            adapter.build_wood_profile("S01", 300, 5),
+            "SB",
+            _history_df(),
+            prediction_as_of=PREDICTION_AS_OF,
+            transport="python",
+        )
+
+
+def test_manual_override_accepts_nullable_model_metadata_with_operator_provenance(monkeypatch):
+    result = _mark_result()
+    result.method_used = "manual"
+    result.model_version = None
+    result.calibration_version = None
+    result.interval = None
+    result.provenance = {"source": "operator_override", "model_evidence": False}
+
+    class FakeCalculator:
+        def calculate(self, **kwargs):
+            return [result]
+
+    monkeypatch.setattr(adapter, "HandicapCalculator", FakeCalculator)
+    record = adapter.build_competitor_records(
+        ["Alice Axe"],
+        _history_df(),
+        competitor_id_map={"Alice Axe": "C001"},
+    )[0]
+
+    output = adapter.calculate_handicap_results(
+        [replace(record, manual_time_override=31.25)],
+        adapter.build_wood_profile("S01", 300, 5),
+        "SB",
+        _history_df(),
+        prediction_as_of=PREDICTION_AS_OF,
+        transport="python",
+    )
+
+    assert output[0]["method_key"] == "manual"
+    assert output[0]["model_version"] is None
+    assert output[0]["calibration_version"] is None
+    assert output[0]["provenance"] == {"source": "operator_override", "model_evidence": False}
+
+
+def test_manual_override_rejects_non_operator_provenance(monkeypatch):
+    result = _mark_result()
+    result.method_used = "manual"
+    result.model_version = None
+    result.calibration_version = None
+    result.provenance = {"source": "model", "model_evidence": True}
+
+    class FakeCalculator:
+        def calculate(self, **kwargs):
+            return [result]
+
+    monkeypatch.setattr(adapter, "HandicapCalculator", FakeCalculator)
+    record = adapter.build_competitor_records(
+        ["Alice Axe"],
+        _history_df(),
+        competitor_id_map={"Alice Axe": "C001"},
+    )[0]
+
+    with pytest.raises(RuntimeError, match="invalid manual-override provenance"):
+        adapter.calculate_handicap_results(
+            [replace(record, manual_time_override=31.25)],
+            adapter.build_wood_profile("S01", 300, 5),
+            "SB",
+            _history_df(),
+            prediction_as_of=PREDICTION_AS_OF,
+            transport="python",
+        )
+
+
+@pytest.mark.parametrize("transport", ["python", "http"])
+@pytest.mark.parametrize("scenario", ["ignored", "unexpected", "altered"])
+def test_transports_bind_manual_results_to_requested_operator_override(monkeypatch, transport, scenario):
+    result = _mark_result()
+    record = adapter.build_competitor_records(
+        ["Alice Axe"],
+        _history_df(),
+        competitor_id_map={"Alice Axe": "C001"},
+    )[0]
+    if scenario in {"ignored", "altered"}:
+        record = replace(record, manual_time_override=29.5)
+        message = "did not honor the requested manual override"
+    if scenario in {"unexpected", "altered"}:
+        result.method_used = "manual"
+        result.model_version = None
+        result.calibration_version = None
+        result.interval = None
+        result.provenance = {"source": "operator_override", "model_evidence": False}
+        if scenario == "unexpected":
+            message = "unexpected manual override"
+
+    class FakeCalculator:
+        def calculate(self, **kwargs):
+            return [result]
+
+    class FakeResponse:
+        status_code = 200
+
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(adapter, "HandicapCalculator", FakeCalculator)
+    monkeypatch.setattr(
+        adapter.requests,
+        "get",
+        lambda url, timeout, allow_redirects, stream: FakeResponse(_openapi_document()),
+    )
+    payload = _http_mark_payload()
+    if scenario in {"unexpected", "altered"}:
+        payload.update(
+            {
+                "method_used": "manual",
+                "model_version": None,
+                "calibration_version": None,
+                "interval": None,
+                "provenance": {"source": "operator_override", "model_evidence": False},
+            }
+        )
+    monkeypatch.setattr(
+        adapter.requests,
+        "post",
+        lambda url, json, timeout, allow_redirects, stream: FakeResponse([payload]),
+    )
+
+    with pytest.raises(RuntimeError, match=message):
+        adapter.calculate_handicap_results(
+            [record],
+            adapter.build_wood_profile("S01", 300, 5),
+            "SB",
+            _history_df(),
+            prediction_as_of=PREDICTION_AS_OF,
+            transport=transport,
+            api_url="http://localhost:8000",
         )
 
 
@@ -672,6 +889,36 @@ def test_result_with_non_finite_interval_is_rejected(monkeypatch):
         )
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("lower", 0.0), ("upper", -1.0), ("nominal_coverage", 1.0)],
+)
+def test_result_with_out_of_domain_interval_is_rejected(monkeypatch, field, value):
+    result = _mark_result()
+    setattr(result.interval, field, value)
+
+    class FakeCalculator:
+        def calculate(self, **kwargs):
+            return [result]
+
+    monkeypatch.setattr(adapter, "HandicapCalculator", FakeCalculator)
+    records = adapter.build_competitor_records(
+        ["Alice Axe"],
+        _history_df(),
+        competitor_id_map={"Alice Axe": "C001"},
+    )
+
+    with pytest.raises(RuntimeError, match="invalid prediction interval"):
+        adapter.calculate_handicap_results(
+            records,
+            adapter.build_wood_profile("S01", 300, 5),
+            "SB",
+            _history_df(),
+            prediction_as_of=PREDICTION_AS_OF,
+            transport="python",
+        )
+
+
 def test_result_accepts_engine_maximum_legal_mark(monkeypatch):
     result = _mark_result()
     result.mark = adapter._sm_rules.MAX_MARK_SECONDS
@@ -778,6 +1025,7 @@ def test_real_python_and_http_transports_have_fixed_cutoff_parity(monkeypatch, r
         _history_df(),
         competitor_id_map={"Alice Axe": "C001", "Bob Block": "C002"},
     )
+    records[0] = replace(records[0], manual_time_override=29.5)
     wood = adapter.build_wood_profile("S01", 300, 5)
     direct = adapter.calculate_handicap_results(
         records,
@@ -803,3 +1051,7 @@ def test_real_python_and_http_transports_have_fixed_cutoff_parity(monkeypatch, r
     assert [{key: value for key, value in row.items() if key != "transport"} for row in remote] == [
         {key: value for key, value in row.items() if key != "transport"} for row in direct
     ]
+    manual = next(row for row in direct if row["competitor_id"] == "C001")
+    assert manual["method_key"] == "manual"
+    assert manual["model_version"] is None
+    assert manual["calibration_version"] is None

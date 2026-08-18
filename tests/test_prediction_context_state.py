@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+import woodchopping.prediction_context as prediction_context
 from woodchopping.prediction_context import ensure_competition_id, ensure_prediction_as_of
 from woodchopping.ui.tournament_ui import load_tournament_state, save_tournament_state
 
@@ -31,6 +32,23 @@ def test_single_event_can_receive_an_explicit_cutoff():
     state = {}
 
     cutoff = ensure_prediction_as_of(state, fallback=date(2026, 8, 18))
+
+    assert cutoff == date(2026, 8, 18)
+    assert state["prediction_as_of"] == "2026-08-18"
+
+
+def test_default_cutoff_uses_operator_local_date_across_utc_midnight(monkeypatch):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return cls(2026, 8, 18, 18, 0, 0)
+            return cls(2026, 8, 19, 1, 0, 0, tzinfo=timezone.utc).astimezone(tz)
+
+    monkeypatch.setattr(prediction_context, "datetime", FrozenDateTime)
+    state = {}
+
+    cutoff = ensure_prediction_as_of(state)
 
     assert cutoff == date(2026, 8, 18)
     assert state["prediction_as_of"] == "2026-08-18"

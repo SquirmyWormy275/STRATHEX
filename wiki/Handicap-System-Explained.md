@@ -3,6 +3,7 @@
 ## Fixed evidence
 
 An event stores one exclusive `prediction_as_of` date. Only valid observations before that date can become v2 evidence. This makes recalculation and resume reproducible.
+If no event date was entered, STRATHEX persists the operator computer's local calendar date on the first calculation. This matches locally recorded result dates and prevents same-event rows from entering later-round predictions after UTC midnight.
 
 ## Prediction and uncertainty
 

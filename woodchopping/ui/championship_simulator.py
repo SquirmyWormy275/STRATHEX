@@ -16,7 +16,7 @@ Key Features:
 
 import math
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -179,7 +179,7 @@ def run_championship_simulator(comp_df):
         results_df=results_df,
         peak_windows=peak_windows,
         peak_names=peak_names,
-        prediction_as_of=datetime.now(timezone.utc).date(),
+        prediction_as_of=datetime.now().date(),
     )
 
     if not predictions:

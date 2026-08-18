@@ -492,8 +492,10 @@ def _interval_to_dict(interval: Any) -> Optional[Dict[str, Any]]:
     scope = _value(interval, "scope")
     if (
         not all(math.isfinite(value) for value in (lower, upper, nominal_coverage))
+        or lower <= 0
+        or upper <= 0
         or lower > upper
-        or not 0 < nominal_coverage <= 1
+        or not 0 < nominal_coverage < 1
         or not _is_safe_output_text(calibration_state)
         or not _is_safe_output_text(scope)
     ):
@@ -809,7 +811,7 @@ def _is_safe_output_text(value: Any) -> bool:
     return isinstance(value, str) and bool(value.strip()) and value.isprintable()
 
 
-def _validate_result_contract(record: Any) -> None:
+def _validate_result_contract(record: Any, *, expected_evidence_cutoff: date) -> date:
     """Reject malformed v2 evidence before it reaches judge-facing output."""
     for field in ("name", "method_used", "confidence", "explanation"):
         value = _value(record, field)
@@ -840,23 +842,44 @@ def _validate_result_contract(record: Any) -> None:
         if not math.isfinite(numeric_std_dev) or numeric_std_dev <= 0:
             raise RuntimeError("STRATHMARK calculation returned an invalid std_dev")
 
-    for field in ("model_version", "calibration_version", "optimizer"):
-        if not _is_safe_output_text(_value(record, field)):
-            raise RuntimeError(f"STRATHMARK calculation returned invalid {field}")
+    method = str(_value(record, "method_used")).strip().lower()
+    provenance = _value(record, "provenance")
+    if method == "manual":
+        if (
+            not isinstance(provenance, Mapping)
+            or provenance.get("source") != "operator_override"
+            or provenance.get("model_evidence") is not False
+        ):
+            raise RuntimeError("STRATHMARK calculation returned invalid manual-override provenance")
+        if any(_value(record, field) is not None for field in ("model_version", "calibration_version", "interval")):
+            raise RuntimeError("STRATHMARK calculation returned invalid manual-override model metadata")
+    else:
+        for field in ("model_version", "calibration_version"):
+            if not _is_safe_output_text(_value(record, field)):
+                raise RuntimeError(f"STRATHMARK calculation returned invalid {field}")
+    if not _is_safe_output_text(_value(record, "optimizer")):
+        raise RuntimeError("STRATHMARK calculation returned invalid optimizer")
 
+    raw_evidence_cutoff = _value(record, "evidence_cutoff")
+    if raw_evidence_cutoff is None:
+        raise RuntimeError("STRATHMARK calculation returned invalid evidence_cutoff")
     try:
-        resolve_prediction_as_of(_value(record, "evidence_cutoff"), label="result evidence_cutoff")
+        evidence_cutoff = resolve_prediction_as_of(raw_evidence_cutoff, label="result evidence_cutoff")
     except ValueError as exc:
         raise RuntimeError("STRATHMARK calculation returned invalid evidence_cutoff") from exc
+    if evidence_cutoff != expected_evidence_cutoff:
+        raise RuntimeError("STRATHMARK calculation returned evidence_cutoff that does not match the requested cutoff")
 
     if not isinstance(_value(record, "degraded"), bool):
         raise RuntimeError("STRATHMARK calculation returned invalid degraded metadata")
+    return evidence_cutoff
 
 
 def mark_results_to_dicts(
     mark_results: Any,
     *,
     transport: str,
+    expected_evidence_cutoff: date,
     expected_competitors: Optional[List[CompetitorRecord]] = None,
 ) -> List[Dict[str, Any]]:
     """Preserve STRATHMARK v2 prediction, uncertainty, and optimizer evidence."""
@@ -868,19 +891,47 @@ def mark_results_to_dicts(
         if expected_competitors is not None
         else {}
     )
+    expected_records_by_key = (
+        {_result_identity_key(record): record for record in expected_competitors}
+        if expected_competitors is not None
+        else {}
+    )
     if len(expected_keys) != len(set(expected_keys)):
         raise ValueError("STRATHMARK field contains duplicate competitor identities")
     expected_key_set = set(expected_keys)
     seen_keys: set[str] = set()
+    field_execution_bundle: Optional[tuple[str, str, str]] = None
+    field_prediction_bundle: Optional[tuple[str, str]] = None
     output: List[Dict[str, Any]] = []
 
     for mark_result in mark_results:
         missing_fields = sorted(field for field in _REQUIRED_RESULT_FIELDS if not _has_field(mark_result, field))
         if missing_fields:
             raise RuntimeError("STRATHMARK calculation omitted required audit fields: " + ", ".join(missing_fields))
-        _validate_result_contract(mark_result)
+        evidence_cutoff = _validate_result_contract(
+            mark_result,
+            expected_evidence_cutoff=expected_evidence_cutoff,
+        )
         if _value(mark_result, "engine_version") != _STRATHMARK_API_VERSION:
             raise RuntimeError("STRATHMARK calculation did not return the required v2 engine metadata")
+        result_execution_bundle = (
+            str(_value(mark_result, "engine_version")),
+            evidence_cutoff.isoformat(),
+            str(_value(mark_result, "optimizer")),
+        )
+        if field_execution_bundle is None:
+            field_execution_bundle = result_execution_bundle
+        elif result_execution_bundle != field_execution_bundle:
+            raise RuntimeError("STRATHMARK calculation returned mixed model snapshots for one field")
+        if str(_value(mark_result, "method_used")).strip().lower() != "manual":
+            result_prediction_bundle = (
+                str(_value(mark_result, "model_version")),
+                str(_value(mark_result, "calibration_version")),
+            )
+            if field_prediction_bundle is None:
+                field_prediction_bundle = result_prediction_bundle
+            elif result_prediction_bundle != field_prediction_bundle:
+                raise RuntimeError("STRATHMARK calculation returned mixed model snapshots for one field")
         identity_key = _result_identity_key(mark_result)
         if expected_key_set and identity_key not in expected_key_set:
             raise RuntimeError("STRATHMARK calculation returned an unexpected competitor identity")
@@ -893,6 +944,19 @@ def mark_results_to_dicts(
         seen_keys.add(identity_key)
 
         raw_method = str(_value(mark_result, "method_used", "unknown"))
+        expected_record = expected_records_by_key.get(identity_key)
+        if expected_record is not None:
+            manual_override = expected_record.manual_time_override
+            if manual_override is None and raw_method.strip().lower() == "manual":
+                raise RuntimeError("STRATHMARK calculation returned an unexpected manual override")
+            if manual_override is not None:
+                if raw_method.strip().lower() != "manual" or not math.isclose(
+                    float(_value(mark_result, "predicted_time")),
+                    float(manual_override),
+                    rel_tol=0.0,
+                    abs_tol=1e-9,
+                ):
+                    raise RuntimeError("STRATHMARK calculation did not honor the requested manual override")
         interval = _interval_to_dict(_value(mark_result, "interval"))
         std_dev_value = _value(mark_result, "std_dev")
         std_dev = float(std_dev_value) if std_dev_value is not None else 3.0
@@ -932,7 +996,7 @@ def mark_results_to_dicts(
                 "engine_version": _value(mark_result, "engine_version"),
                 "model_version": _value(mark_result, "model_version"),
                 "calibration_version": _value(mark_result, "calibration_version"),
-                "evidence_cutoff": _iso_date(_value(mark_result, "evidence_cutoff")),
+                "evidence_cutoff": evidence_cutoff.isoformat(),
                 "optimizer": _value(mark_result, "optimizer"),
                 "optimizer_metadata": dict(optimizer_metadata),
                 "warnings": list(warnings),
@@ -990,6 +1054,7 @@ def calculate_handicap_results(
     return mark_results_to_dicts(
         mark_results,
         transport=selected_transport,
+        expected_evidence_cutoff=cutoff,
         expected_competitors=competitor_records,
     )
 

@@ -5,6 +5,7 @@ STRATHEX 7 delegates prediction and mark arithmetic to STRATHMARK 2.0. This page
 ## 1. Evidence cutoff
 
 Every event stores one `prediction_as_of` date. It is an exclusive cutoff: only valid observations dated before it can become evidence. This prevents a resumed or recalculated event from learning from results that did not exist when the event began.
+If no event date was entered, the first calculation uses the operator computer's local calendar date and persists it for the event. That matches STRATHEX's local result timestamps and keeps same-event rows excluded across UTC midnight.
 
 Twenty currently tracked historical rows are undated and are therefore excluded by v2. Same-day and future rows are also excluded. Exclusion is a deliberate prior-only rule, not a missing-data fallback.
 

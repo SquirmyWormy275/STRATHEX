@@ -10,9 +10,9 @@ from strathmark.identity import validate_namespaced_identity
 
 
 def resolve_prediction_as_of(value: Any = None, *, label: str = "prediction_as_of") -> date:
-    """Resolve an exclusive cutoff, normalizing aware datetimes to UTC."""
+    """Resolve an exclusive cutoff, defaulting to the operator's local event date."""
     if value is None:
-        return datetime.now(timezone.utc).date()
+        return datetime.now().date()
     if isinstance(value, datetime):
         if value.tzinfo is not None:
             return value.astimezone(timezone.utc).date()

@@ -15,6 +15,7 @@ from woodchopping.ui.bracket_ui import generate_bracket_seeds
 from woodchopping.ui.prediction_display import (
     display_basic_prediction_table,
     display_comprehensive_prediction_analysis,
+    display_handicap_calculation_explanation,
 )
 
 
@@ -110,6 +111,43 @@ def test_v2_prediction_tables_surface_operator_evidence_in_ascii(capsys):
     assert "2026-08-18" in output
     assert "posterior_crn_v2" in output
     assert "wood_quality" in output
+
+
+def test_handicap_explanation_describes_the_v2_audit_contract(capsys):
+    display_handicap_calculation_explanation()
+    output = capsys.readouterr().out
+
+    assert output.isascii()
+    assert "STRATHMARK v2" in output
+    assert "evidence cutoff" in output.lower()
+    assert "joint optimizer" in output.lower()
+    assert "numeric LLM" not in output
+
+
+def test_manual_override_without_forecast_interval_displays_safely(capsys):
+    manual_result = {
+        "name": "Alice Axe",
+        "mark": 3,
+        "predicted_time": 31.25,
+        "prediction_interval": None,
+        "performance_std_dev": 2.5,
+        "confidence": "VERY HIGH",
+        "method_used": "Manual Override",
+        "engine_version": "2.0.0",
+        "evidence_cutoff": "2026-08-18",
+        "optimizer": "posterior_crn_v2",
+        "warnings": [],
+        "ignored_factors": [],
+        "degraded": False,
+    }
+
+    display_basic_prediction_table([manual_result], {"event": "SB"})
+    display_comprehensive_prediction_analysis([manual_result], {"event": "SB"})
+    output = capsys.readouterr().out
+
+    assert output.isascii()
+    assert "unavailable" in output
+    assert "Manual Override" in output
 
 
 def test_advancing_field_calculation_failure_does_not_generate_partial_round(monkeypatch, capsys):
