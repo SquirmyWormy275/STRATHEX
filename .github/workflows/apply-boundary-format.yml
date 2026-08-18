@@ -23,34 +23,30 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('woodchopping/strathmark_adapter.py')
           text = path.read_text(encoding='utf-8')
-          text = text.replace(
-              '''        positions = [
-              position
-              for alias in aliases
-              for position, name in enumerate(normalized_names)
-              if name == alias
-          ]''',
-              '''        positions = [position for alias in aliases for position, name in enumerate(normalized_names) if name == alias]''',
+          text, first_count = re.subn(
+              r"        positions = \[\n\s+position\n\s+for alias in aliases\n\s+for position, name in enumerate\(normalized_names\)\n\s+if name == alias\n\s+\]",
+              "        positions = [position for alias in aliases for position, name in enumerate(normalized_names) if name == alias]",
+              text,
+              count=1,
           )
-          text = text.replace(
-              '''    consumed_positions = {
-              position for positions in collisions.values() for position in positions
-          }''',
-              '''    consumed_positions = {position for positions in collisions.values() for position in positions}''',
+          text, second_count = re.subn(
+              r"    consumed_positions = \{\n\s+position for positions in collisions\.values\(\) for position in positions\n\s+\}",
+              "    consumed_positions = {position for positions in collisions.values() for position in positions}",
+              text,
+              count=1,
           )
+          if first_count != 1 or second_count != 1:
+              raise SystemExit(f'Expected one replacement each, got {first_count=} {second_count=}')
           path.write_text(text, encoding='utf-8')
           PY
 
       - name: Commit formatting
         shell: bash
         run: |
-          if git diff --quiet -- woodchopping/strathmark_adapter.py; then
-            echo "Already formatted."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add woodchopping/strathmark_adapter.py
