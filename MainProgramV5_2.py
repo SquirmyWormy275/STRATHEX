@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-STRATHEX - Woodchopping Handicap Calculator v5.2
+STRATHEX - Woodchopping Handicap Calculator
 Professional Competition System
 """
 
@@ -26,6 +26,7 @@ if sys.platform == "win32":
 # Import functions from modular woodchopping package
 # Keep explanation system (educational tool)
 import explanation_system_functions as explain
+from woodchopping import __version__ as STRATHEX_VERSION
 from woodchopping.analytics.prediction_accuracy import (
     analyze_prediction_accuracy,
     format_prediction_accuracy_report,
@@ -114,16 +115,16 @@ try:
     print("║" + "S T R A T H E X".center(68) + "║")
     print("║" + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".center(68) + "║")
     print("║" + " " * 68 + "║")
-    print("║" + "WOODCHOPPING HANDICAP CALCULATOR v5.2".center(68) + "║")
+    print("║" + f"WOODCHOPPING HANDICAP CALCULATOR v{STRATHEX_VERSION}".center(68) + "║")
     print("║" + "Professional Competition System".center(68) + "║")
     print("║" + " " * 68 + "║")
     print("╚" + "═" * 68 + "╝")
 except UnicodeEncodeError:
     # Fallback to ASCII banner if Unicode fails
-    print("""
+    print(f"""
 ======================================================================
 
-           STRATHEX - WOODCHOPPING HANDICAP CALCULATOR v5.2
+           STRATHEX - WOODCHOPPING HANDICAP CALCULATOR v{STRATHEX_VERSION}
                    Professional Competition System
 
 ======================================================================

@@ -28,7 +28,7 @@ The `woodchopping/handicaps/calculator.py` and `woodchopping/simulation/*` modul
 
 ## Library separation: STRATHMARK
 
-The handicap calculation core is implemented in [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK), a separately-versioned Python library released under the Apache License 2.0. STRATHEX consumes STRATHMARK as a runtime dependency rather than embedding the calculation logic directly. (PyPI publication is pending STRATHMARK's v1.0.0 stabilization; today the library is installed via `pip install git+https://github.com/SquirmyWormy275/STRATHMARK.git`.)
+The handicap calculation core is implemented in [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK), a separately-versioned Python library released under the Apache License 2.0. STRATHEX consumes a behavior-pinned Git commit rather than embedding the calculation logic directly. STRATHMARK 2.0 is not a drop-in behavioral upgrade for this application; see [STRATHMARK_2_COMPATIBILITY_EVALUATION.md](STRATHMARK_2_COMPATIBILITY_EVALUATION.md).
 
 This separation is intentional. STRATHMARK's calculation logic is designed to power multiple consumers beyond STRATHEX (downstream tournament-day managers and future timbersports applications), and embedding the logic inside STRATHEX would either duplicate it across consumers or force consumers to inherit STRATHEX's full runtime footprint (XGBoost, Ollama, Monte Carlo simulation engine). The separate library lets consumers import only the calculation primitives they need, while STRATHEX retains the application-layer logic that composes those primitives into tournament management, simulation, and prediction.
 
@@ -85,7 +85,7 @@ The 97/3 weighting reflects the empirical fact that wood from this morning's hea
 ## Production hardening
 
 - **CI matrix** ([.github/workflows/ci.yml](../.github/workflows/ci.yml)) runs ruff lint, ruff format check, pytest with coverage on Ubuntu and Windows, and a wheel build with import verification on every push and pull request.
-- **Test suite:** 15 STRATHEX test files under `tests/` plus 7 validation suites under `tests/validation/` (backtesting, model comparison, fairness convergence). STRATHMARK ships its own 44-file test suite. The `ollama` pytest marker makes Ollama-dependent tests skippable in CI.
+- **Test suite:** assertion-based unit/integration tests live under `tests/`; historical backtesting and benchmark scripts are explicitly excluded from ordinary pytest collection. The `ollama` marker keeps local-model checks separate. Current release evidence is recorded in [RELEASE_v6.0.1.md](RELEASE_v6.0.1.md), not as a permanent count in this document.
 - **Frozen-dataclass config:** AAA rule constants (`MIN_MARK_SECONDS=3`, `MAX_TIME_LIMIT_SECONDS=180`, `PERFORMANCE_VARIANCE_SECONDS=3`) are encoded in `config.py` as `@dataclass(frozen=True)` so they cannot be silently mutated at runtime.
 - **Documented solutions repo:** [docs/solutions/](solutions/) catalogues 13 past problems and their fixes with YAML frontmatter (`module`, `tags`, `problem_type`, `severity`) so future contributors can grep by domain instead of re-debugging from scratch.
 - **Versioned wiki:** 17 judge-facing pages live in `wiki/` and are published via `wiki/publish.sh` so the public GitHub wiki is reproducible from a commit.
