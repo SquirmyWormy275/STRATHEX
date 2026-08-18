@@ -96,6 +96,7 @@ from woodchopping.ui.tournament_status import (
 from woodchopping.ui.tournament_ui import (
     auto_save_state,
     calculate_tournament_scenarios,
+    current_stage_rounds,
     distribute_competitors_into_heats,
     fill_advancers_with_random_draw,
     generate_next_round,
@@ -1293,6 +1294,12 @@ def single_event_menu():
                     selected_heat["advancers"] = []
                     print(f"\n[OK] {selected_heat['round_name']} completed")
                     print("[OK] Results saved to historical data")
+                elif selected_heat.get("round_type") == "final":
+                    selected_heat["status"] = "completed"
+                    selected_heat["advancers"] = []
+                    tournament_state["final_results"] = dict(selected_heat.get("finish_order", {}))
+                    print(f"\n[OK] {selected_heat['round_name']} completed")
+                    print("[OK] Tournament final results saved")
                 else:
                     advancers = select_heat_advancers(selected_heat)
                     print(f"\n[OK] {selected_heat['round_name']} completed")
@@ -1335,7 +1342,7 @@ def single_event_menu():
                 input("\nPress Enter to return to menu...")
                 continue
 
-            current_rounds = tournament_state["rounds"]
+            current_type, current_rounds = current_stage_rounds(tournament_state["rounds"])
             incomplete = [r for r in current_rounds if r["status"] != "completed"]
 
             if incomplete:
@@ -1354,7 +1361,6 @@ def single_event_menu():
             for name in all_advancers:
                 print(f"  - {name}")
 
-            current_type = current_rounds[0]["round_type"]
             tournament_format = tournament_state.get("format")
 
             if current_type == "heat":

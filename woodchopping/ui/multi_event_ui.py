@@ -358,18 +358,17 @@ def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, resul
     event_name = f"{int(wood_selection['size_mm'])}mm {wood_selection['event']}"
     print(f"\n[OK] Event name auto-generated: {event_name}")
 
-    # Step 2.5: Event type selection (NEW V5.0 - includes bracket)
+    # Step 2.5: Event type selection
     print(f"\n{'=' * 70}")
     print(f"  EVENT TYPE FOR: {event_name}")
     print(f"{'=' * 70}")
     print("\n1. Handicap Event (AI-predicted marks for fair competition)")
     print("2. Championship Event (Mark 3 for all - fastest time wins)")
-    print("3. Bracket Event (Head-to-head single elimination)")
     print("\nHandicap: Historical data + AI calculates individual marks for fairness")
     print("Championship: Everyone starts together (Mark 3), fastest time wins")
-    print("Bracket: Single elimination head-to-head, AI-seeded, 2 stands only")
+    print("Bracket events are managed through the single-event tournament workflow.")
 
-    event_type_choice = input("\nSelect event type (1, 2, or 3): ").strip()
+    event_type_choice = input("\nSelect event type (1 or 2): ").strip()
 
     if event_type_choice == "1":
         event_type = "handicap"
@@ -378,8 +377,9 @@ def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, resul
         event_type = "championship"
         print("\n[OK] Championship event - all competitors will get Mark 3")
     elif event_type_choice == "3":
-        event_type = "bracket"
-        print("\n[OK] Bracket event - single elimination tournament with AI seeding")
+        print("\n[WARN] Bracket events are not supported inside a multi-event day.")
+        print("Use the single-event tournament workflow for bracket competition.")
+        return tournament_state
     else:
         print("\n[WARN] Invalid choice. Defaulting to Handicap event")
         event_type = "handicap"
@@ -615,6 +615,17 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
 
     if not tournament_state.get("events"):
         print("\n[WARN] No events to calculate handicaps for.")
+        input("\nPress Enter to continue...")
+        return tournament_state
+
+    bracket_events = [
+        event
+        for event in tournament_state["events"]
+        if event.get("format") == "bracket" or event.get("event_type") == "bracket"
+    ]
+    if bracket_events:
+        print("\n[WARN] Bracket events cannot be scheduled inside a multi-event day.")
+        print("Run each bracket through the single-event tournament workflow instead.")
         input("\nPress Enter to continue...")
         return tournament_state
 
@@ -1825,6 +1836,17 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
         input("\nPress Enter to continue...")
         return tournament_state
 
+    bracket_events = [
+        event
+        for event in tournament_state["events"]
+        if event.get("format") == "bracket" or event.get("event_type") == "bracket"
+    ]
+    if bracket_events:
+        print("\n[WARN] Bracket events cannot be scheduled inside a multi-event day.")
+        print("Run each bracket through the single-event tournament workflow instead.")
+        input("\nPress Enter to continue...")
+        return tournament_state
+
     # Generate heats for each event
     for event in tournament_state["events"]:
         # Get event type indicator
@@ -2020,12 +2042,39 @@ def get_next_incomplete_round(
     Returns:
         tuple: (event_index, event_obj, round_obj) or (None, None, None) if all complete
     """
-    for event_idx, event in enumerate(tournament_state.get("events", [])):
+    events = tournament_state.get("events", [])
+    if not events:
+        return (None, None, None)
+
+    requested_index = tournament_state.get("current_event_index", 0)
+    try:
+        start_index = int(requested_index)
+    except (TypeError, ValueError):
+        start_index = 0
+    if not 0 <= start_index < len(events):
+        start_index = 0
+
+    event_indices = list(range(start_index, len(events))) + list(range(0, start_index))
+    for event_idx in event_indices:
+        event = events[event_idx]
         for round_obj in event.get("rounds", []):
             if round_obj["status"] in ["pending", "in_progress"]:
                 return (event_idx, event, round_obj)
 
     return (None, None, None)
+
+
+def complete_event_round(tournament_state: Dict, event_obj: Dict, round_obj: Dict) -> None:
+    """Complete a terminal round and update event-level placements exactly once."""
+    round_obj["status"] = "completed"
+    is_terminal = round_obj.get("round_type") == "final" or event_obj.get("format") == "single_heat"
+    if not is_terminal:
+        return
+
+    if event_obj.get("status") != "completed":
+        tournament_state["events_completed"] = tournament_state.get("events_completed", 0) + 1
+    event_obj["status"] = "completed"
+    event_obj["final_results"] = extract_event_placements(event_obj)
 
 
 def display_event_progress(event_obj: Dict, current_round: Dict) -> None:
@@ -2228,16 +2277,11 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
 
             else:
                 # Final round or single heat - mark event as complete
-                round_obj["status"] = "completed"
+                complete_event_round(tournament_state, event_obj, round_obj)
                 print(f"\n[OK] {round_obj['round_name']} completed")
 
-                if is_final:
-                    event_obj["status"] = "completed"
-                    tournament_state["events_completed"] += 1
+                if is_final or event_obj["format"] == "single_heat":
                     print(f"[OK] {event_obj['event_name']} COMPLETE!")
-
-                    # Extract placements
-                    event_obj["final_results"] = extract_event_placements(event_obj)
 
             # Update event status
             if event_obj["status"] != "completed":
@@ -2305,8 +2349,14 @@ def extract_event_placements(event_obj: Dict) -> Dict:
             'all_placements': {name: position, ...}
         }
     """
-    # Find final round
+    # Find final round. Single-heat events intentionally have no synthetic
+    # ``final`` stage, so their completed heat is the placement authority.
     final_rounds = [r for r in event_obj.get("rounds", []) if r["round_type"] == "final"]
+
+    if not final_rounds and event_obj.get("format") == "single_heat":
+        final_rounds = [
+            round_object for round_object in event_obj.get("rounds", []) if round_object.get("status") == "completed"
+        ]
 
     if not final_rounds:
         return {

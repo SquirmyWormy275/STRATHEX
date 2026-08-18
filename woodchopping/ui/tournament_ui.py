@@ -13,7 +13,7 @@ import json
 import random
 import time
 from math import ceil
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -637,6 +637,23 @@ def extract_tournament_results(tournament_state: Dict) -> Dict[str, float]:
                 tournament_results[competitor_name] = cutting_time
 
     return tournament_results
+
+
+def current_stage_rounds(rounds: List[Dict]) -> Tuple[Optional[str], List[Dict]]:
+    """Return only the most recently generated tournament stage.
+
+    Tournament state is append-only: heats remain in ``rounds`` after semis and
+    finals are generated.  Progression decisions must therefore use the final
+    appended stage instead of pooling advancers from every historical round.
+    """
+    if not rounds:
+        return None, []
+
+    current_type = rounds[-1].get("round_type")
+    if not current_type:
+        return None, []
+
+    return current_type, [round_object for round_object in rounds if round_object.get("round_type") == current_type]
 
 
 def generate_next_round(

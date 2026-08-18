@@ -82,6 +82,23 @@ def test_invalid_primary_and_backup_fail_closed(tmp_path):
     assert target.read_text(encoding="utf-8") == "not-json"
 
 
+def test_single_state_rejects_malformed_nested_round(tmp_path):
+    target = tmp_path / "tournament_state.json"
+    target.write_text(
+        json.dumps({"all_competitors": [], "all_competitors_df": [], "rounds": ["not-a-round"]}),
+        encoding="utf-8",
+    )
+
+    assert state_persistence.load_tournament_state(str(target)) is None
+
+
+def test_multi_state_rejects_malformed_nested_event(tmp_path):
+    target = tmp_path / "multi_tournament_state.json"
+    target.write_text(json.dumps({"events": [{"rounds": "not-a-list"}]}), encoding="utf-8")
+
+    assert state_persistence.load_multi_event_tournament(str(target)) is None
+
+
 def test_multi_event_state_round_trip_handles_dataframes_and_numpy(tmp_path):
     target = tmp_path / "multi_tournament_state.json"
     state = {

@@ -258,6 +258,13 @@ def generate_bracket_with_byes(predictions: Dict) -> List[Dict]:
     # Link matches (set advances_to and feeds_from)
     link_bracket_matches(rounds)
 
+    # Bye winners are known before links exist. Propagate them after the bracket
+    # tree is linked so non-power-of-two fields cannot stall in round two.
+    bracket_state = {"rounds": rounds, "predictions": predictions}
+    for match in round1_matches:
+        if match["status"] == "bye" and match["winner"] and match["advances_to"]:
+            advance_winner_to_next_match(bracket_state, match)
+
     return rounds
 
 
