@@ -31,7 +31,11 @@ from strathmark import (
 from strathmark.config import llm_config
 from strathmark.fairness import (
     get_ai_assessment_of_handicaps as _sm_assess_handicaps,
+)
+from strathmark.fairness import (
     get_championship_race_analysis as _sm_championship_analysis,
+)
+from strathmark.fairness import (
     simulate_and_assess_handicaps as _sm_simulate_and_assess,
 )
 from strathmark.predictor import MLModel
