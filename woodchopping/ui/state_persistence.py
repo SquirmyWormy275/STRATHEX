@@ -161,6 +161,15 @@ def _load_with_recovery(filename: str, validator: JsonValidator) -> Any:
     return payload
 
 
+def _validate_rounds_payload(rounds: list[Any], context: str) -> None:
+    """Validate round dictionaries shared by single- and multi-event saves."""
+    for round_object in rounds:
+        if not isinstance(round_object, dict):
+            raise ValueError(f"Every {context.lower()} round must be a JSON object")
+        if "competitors_df" in round_object and not isinstance(round_object["competitors_df"], list):
+            raise ValueError(f"{context} round 'competitors_df' must be a list")
+
+
 def _validate_single_state(payload: Any) -> None:
     if not isinstance(payload, dict):
         raise ValueError("Tournament state must be a JSON object")
@@ -170,11 +179,7 @@ def _validate_single_state(payload: Any) -> None:
         raise ValueError("Tournament state 'all_competitors' must be a list")
     if "all_competitors_df" in payload and not isinstance(payload["all_competitors_df"], list):
         raise ValueError("Tournament state 'all_competitors_df' must be a list")
-    for round_object in payload.get("rounds", []):
-        if not isinstance(round_object, dict):
-            raise ValueError("Every tournament round must be a JSON object")
-        if "competitors_df" in round_object and not isinstance(round_object["competitors_df"], list):
-            raise ValueError("Tournament round 'competitors_df' must be a list")
+    _validate_rounds_payload(payload.get("rounds", []), "Tournament")
 
 
 def _validate_multi_state(payload: Any) -> None:
@@ -189,11 +194,7 @@ def _validate_multi_state(payload: Any) -> None:
             raise ValueError("Every multi-event entry must be a JSON object")
         if "rounds" not in event or not isinstance(event["rounds"], list):
             raise ValueError("Every multi-event entry requires a 'rounds' list")
-        for round_object in event["rounds"]:
-            if not isinstance(round_object, dict):
-                raise ValueError("Every multi-event round must be a JSON object")
-            if "competitors_df" in round_object and not isinstance(round_object["competitors_df"], list):
-                raise ValueError("Multi-event round 'competitors_df' must be a list")
+        _validate_rounds_payload(event["rounds"], "Multi-event")
 
 
 def _serialize_single_state(tournament_state: Dict[str, Any]) -> Dict[str, Any]:

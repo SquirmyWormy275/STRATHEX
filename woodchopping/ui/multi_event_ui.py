@@ -11,6 +11,7 @@ This module handles multi-event tournament operations including:
 """
 
 import copy
+import itertools
 import json
 from datetime import datetime
 from typing import Dict, Optional, Tuple
@@ -33,6 +34,21 @@ from woodchopping.ui.tournament_ui import (
 
 # Import existing functions for reuse
 from woodchopping.ui.wood_ui import select_event_code, wood_menu
+
+
+def _reject_unsupported_bracket_events(tournament_state: Dict) -> bool:
+    """Pause and reject legacy bracket entries in a multi-event day."""
+    has_bracket = any(
+        event.get("format") == "bracket" or event.get("event_type") == "bracket"
+        for event in tournament_state.get("events", [])
+    )
+    if not has_bracket:
+        return False
+
+    print("\n[WARN] Bracket events cannot be scheduled inside a multi-event day.")
+    print("Run each bracket through the single-event tournament workflow instead.")
+    input("\nPress Enter to continue...")
+    return True
 
 
 def create_multi_event_tournament() -> Dict:
@@ -389,69 +405,48 @@ def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, resul
     print(f"  TOURNAMENT FORMAT FOR: {event_name}")
     print(f"{'=' * 70}")
 
-    # BRACKET MODE: Force 2 stands, skip format selection
-    if event_type == "bracket":
-        num_stands = 2
-        print("\n[OK] Bracket mode requires exactly 2 stands (head-to-head matches)")
+    try:
+        num_stands = int(input("\nNumber of available stands for this event: ").strip())
+        tentative = int(input("Approximate number of competitors for this event: ").strip())
+    except ValueError:
+        print("\n[WARN] Invalid input. Cancelling event addition...")
+        return tournament_state
 
-        try:
-            tentative = int(input("Approximate number of competitors for this event: ").strip())
-        except ValueError:
-            print("\n[WARN] Invalid input. Cancelling event addition...")
-            return tournament_state
+    # Calculate scenarios
+    scenarios = calculate_tournament_scenarios(num_stands, tentative)
 
-        event_format = "bracket"
-        capacity_info = {
-            "max_competitors": 999,  # No limit for brackets
-            "format_description": "Single elimination bracket",
-        }
+    # Display scenarios
+    print(f"\n{'=' * 70}")
+    print("  SCENARIO 1: Single Heat Mode")
+    print(f"{'=' * 70}")
+    print(scenarios["single_heat"]["description"])
 
-        print("[OK] Bracket tournament - supports any number of competitors (auto byes)")
+    print(f"\n{'=' * 70}")
+    print("  SCENARIO 2: Heats -> Finals")
+    print(f"{'=' * 70}")
+    print(scenarios["heats_to_finals"]["description"])
 
-    # REGULAR MODES: User selects stands and format
+    print(f"\n{'=' * 70}")
+    print("  SCENARIO 3: Heats -> Semis -> Finals")
+    print(f"{'=' * 70}")
+    print(scenarios["heats_to_semis_to_finals"]["description"])
+
+    # User selects format
+    print(f"\n{'=' * 70}")
+    format_choice = input("Select format (1, 2, or 3): ").strip()
+
+    if format_choice == "1":
+        event_format = "single_heat"
+        capacity_info = scenarios["single_heat"]
+    elif format_choice == "2":
+        event_format = "heats_to_finals"
+        capacity_info = scenarios["heats_to_finals"]
+    elif format_choice == "3":
+        event_format = "heats_to_semis_to_finals"
+        capacity_info = scenarios["heats_to_semis_to_finals"]
     else:
-        try:
-            num_stands = int(input("\nNumber of available stands for this event: ").strip())
-            tentative = int(input("Approximate number of competitors for this event: ").strip())
-        except ValueError:
-            print("\n[WARN] Invalid input. Cancelling event addition...")
-            return tournament_state
-
-        # Calculate scenarios
-        scenarios = calculate_tournament_scenarios(num_stands, tentative)
-
-        # Display scenarios
-        print(f"\n{'=' * 70}")
-        print("  SCENARIO 1: Single Heat Mode")
-        print(f"{'=' * 70}")
-        print(scenarios["single_heat"]["description"])
-
-        print(f"\n{'=' * 70}")
-        print("  SCENARIO 2: Heats -> Finals")
-        print(f"{'=' * 70}")
-        print(scenarios["heats_to_finals"]["description"])
-
-        print(f"\n{'=' * 70}")
-        print("  SCENARIO 3: Heats -> Semis -> Finals")
-        print(f"{'=' * 70}")
-        print(scenarios["heats_to_semis_to_finals"]["description"])
-
-        # User selects format
-        print(f"\n{'=' * 70}")
-        format_choice = input("Select format (1, 2, or 3): ").strip()
-
-        if format_choice == "1":
-            event_format = "single_heat"
-            capacity_info = scenarios["single_heat"]
-        elif format_choice == "2":
-            event_format = "heats_to_finals"
-            capacity_info = scenarios["heats_to_finals"]
-        elif format_choice == "3":
-            event_format = "heats_to_semis_to_finals"
-            capacity_info = scenarios["heats_to_semis_to_finals"]
-        else:
-            print("\n[WARN] Invalid choice. Cancelling event addition...")
-            return tournament_state
+        print("\n[WARN] Invalid choice. Cancelling event addition...")
+        return tournament_state
 
     # Step 5: Payout configuration (OPTIONAL) - NEW V5.0
     # NOTE: Competitor selection moved to tournament-wide roster assignment (V5.1)
@@ -618,15 +613,7 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
         input("\nPress Enter to continue...")
         return tournament_state
 
-    bracket_events = [
-        event
-        for event in tournament_state["events"]
-        if event.get("format") == "bracket" or event.get("event_type") == "bracket"
-    ]
-    if bracket_events:
-        print("\n[WARN] Bracket events cannot be scheduled inside a multi-event day.")
-        print("Run each bracket through the single-event tournament workflow instead.")
-        input("\nPress Enter to continue...")
+    if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
 
     # Check if handicaps already calculated
@@ -1836,15 +1823,7 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
         input("\nPress Enter to continue...")
         return tournament_state
 
-    bracket_events = [
-        event
-        for event in tournament_state["events"]
-        if event.get("format") == "bracket" or event.get("event_type") == "bracket"
-    ]
-    if bracket_events:
-        print("\n[WARN] Bracket events cannot be scheduled inside a multi-event day.")
-        print("Run each bracket through the single-event tournament workflow instead.")
-        input("\nPress Enter to continue...")
+    if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
 
     # Generate heats for each event
@@ -2054,7 +2033,7 @@ def get_next_incomplete_round(
     if not 0 <= start_index < len(events):
         start_index = 0
 
-    event_indices = list(range(start_index, len(events))) + list(range(0, start_index))
+    event_indices = itertools.chain(range(start_index, len(events)), range(start_index))
     for event_idx in event_indices:
         event = events[event_idx]
         for round_obj in event.get("rounds", []):
@@ -2351,14 +2330,16 @@ def extract_event_placements(event_obj: Dict) -> Dict:
     """
     # Find final round. Single-heat events intentionally have no synthetic
     # ``final`` stage, so their completed heat is the placement authority.
-    final_rounds = [r for r in event_obj.get("rounds", []) if r["round_type"] == "final"]
+    rounds = event_obj.get("rounds", [])
+    final_round = next((round_object for round_object in rounds if round_object["round_type"] == "final"), None)
 
-    if not final_rounds and event_obj.get("format") == "single_heat":
-        final_rounds = [
-            round_object for round_object in event_obj.get("rounds", []) if round_object.get("status") == "completed"
-        ]
+    if final_round is None and event_obj.get("format") == "single_heat":
+        final_round = next(
+            (round_object for round_object in rounds if round_object.get("status") == "completed"),
+            None,
+        )
 
-    if not final_rounds:
+    if final_round is None:
         return {
             "first_place": None,
             "second_place": None,
@@ -2366,7 +2347,6 @@ def extract_event_placements(event_obj: Dict) -> Dict:
             "all_placements": {},
         }
 
-    final_round = final_rounds[0]
     finish_order = final_round.get("finish_order", {})
 
     if not finish_order:

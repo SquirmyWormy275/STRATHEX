@@ -13,8 +13,8 @@ import pandas as pd
 from openpyxl import Workbook, load_workbook
 
 import woodchopping.data.excel_io as excel_io
+import woodchopping.data.store_registry as store_registry
 from woodchopping.data import append_results_to_excel
-from woodchopping.data.store_registry import set_store
 from woodchopping.ui.bracket_ui import (
     generate_bracket_with_byes,
     get_current_match,
@@ -38,17 +38,6 @@ from woodchopping.ui.tournament_ui import (
     generate_next_round,
     select_heat_advancers,
 )
-
-RESULT_HEADERS = [
-    "CompetitorID",
-    "Event",
-    "Time (seconds)",
-    "Size (mm)",
-    "Species Code",
-    "Quality",
-    "HeatID",
-    "Date",
-]
 
 
 class RecordingStore:
@@ -95,7 +84,7 @@ def _write_workbook(path: Path, names: list[str]) -> None:
     competitors.append(excel_io.COMPETITOR_HEADERS)
     for index, name in enumerate(names, 1):
         competitors.append([f"C{index:03d}", name, "USA", "MT", "X"])
-    workbook.create_sheet("Results").append(RESULT_HEADERS)
+    excel_io.detect_results_sheet(workbook)
     workbook.save(path)
     workbook.close()
 
@@ -121,7 +110,7 @@ def test_single_event_replay_records_resumes_and_completes(tmp_path, monkeypatch
         ),
     )
     store = RecordingStore()
-    set_store(store)
+    monkeypatch.setattr(store_registry, "get_store", lambda: store)
 
     roster = _competitors(names)
     heats = distribute_competitors_into_heats(roster, _handicaps(names, mark=7), 2, 2)
@@ -169,7 +158,6 @@ def test_single_event_replay_records_resumes_and_completes(tmp_path, monkeypatch
     assert workbook["Results"].max_row == 7  # header + four heats + two finalists
     workbook.close()
     assert len(store.rows) == 6
-    set_store(None)
 
 
 def test_current_stage_ignores_completed_prior_rounds():
