@@ -8,6 +8,8 @@ prompts or return contract.
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import os
 import shutil
 import tempfile
@@ -15,6 +17,8 @@ from types import ModuleType
 from typing import Any, Callable
 
 from openpyxl import load_workbook
+
+_ROUND_STATE_KEYS = ("actual_results", "finish_order", "status")
 
 
 def _required_sheet_names(excel_io_module: ModuleType) -> set[str]:
@@ -37,6 +41,48 @@ def validate_complete_workbook(path: str, excel_io_module: ModuleType) -> None:
     missing = sorted(_required_sheet_names(excel_io_module) - present)
     if missing:
         raise ValueError("Workbook is incomplete; missing required sheet(s): " + ", ".join(missing))
+
+
+def _file_digest(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as workbook_file:
+        for chunk in iter(lambda: workbook_file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _snapshot_round_state(round_object) -> dict[str, tuple[bool, Any]] | None:
+    if not isinstance(round_object, dict):
+        return None
+    return {
+        key: (key in round_object, copy.deepcopy(round_object.get(key)))
+        for key in _ROUND_STATE_KEYS
+    }
+
+
+def _restore_round_state(
+    round_object,
+    snapshot: dict[str, tuple[bool, Any]] | None,
+) -> None:
+    if not isinstance(round_object, dict) or snapshot is None:
+        return
+    for key, (was_present, value) in snapshot.items():
+        if was_present:
+            round_object[key] = copy.deepcopy(value)
+        else:
+            round_object.pop(key, None)
+
+
+def _actual_results_changed(
+    round_object,
+    snapshot: dict[str, tuple[bool, Any]] | None,
+) -> bool:
+    if not isinstance(round_object, dict) or snapshot is None:
+        return False
+    was_present, previous = snapshot["actual_results"]
+    is_present = "actual_results" in round_object
+    current = round_object.get("actual_results")
+    return was_present != is_present or previous != current
 
 
 def _create_backup(path: str) -> str:
@@ -92,6 +138,8 @@ def guarded_append_results_to_excel(
     4. The legacy routine's internal ``Workbook()`` fallback is disabled for the
        duration of the call, so a transient load failure cannot create a
        Results-only replacement.
+    5. If tournament times were added in memory but the canonical workbook bytes
+       did not change, only the affected round fields are rolled back.
     """
     target_path = str(excel_io_module.paths.EXCEL_FILE)
 
@@ -106,6 +154,10 @@ def guarded_append_results_to_excel(
         print("    any program locking it, then retry.")
         print(f"    System error: {exc}")
         return None
+
+    round_object = kwargs.get("round_object")
+    round_snapshot = _snapshot_round_state(round_object)
+    before_digest = _file_digest(target_path)
 
     try:
         backup_path = _create_backup(target_path)
@@ -130,15 +182,23 @@ def guarded_append_results_to_excel(
             validate_complete_workbook(target_path, excel_io_module)
         except Exception as exc:
             restore_attempted = True
+            _restore_round_state(round_object, round_snapshot)
             restored = _restore_backup(backup_path, target_path)
             if restored:
                 print("[X] Results write failed validation; the original workbook was restored.")
                 print(f"    System error: {exc}")
             return None
 
+        after_digest = _file_digest(target_path)
+        if _actual_results_changed(round_object, round_snapshot) and after_digest == before_digest:
+            _restore_round_state(round_object, round_snapshot)
+            print("[X] Results were not written; tournament round state was restored.")
+            return None
+
         return result
     except Exception as exc:
         restore_attempted = True
+        _restore_round_state(round_object, round_snapshot)
         restored = _restore_backup(backup_path, target_path)
         if restored:
             print("[X] Results were not written; the original workbook was restored.")
