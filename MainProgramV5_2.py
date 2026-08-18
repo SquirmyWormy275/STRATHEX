@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-STRATHEX - Woodchopping Handicap Calculator v5.2
+STRATHEX - Woodchopping Handicap Calculator
 Professional Competition System
 """
 
@@ -26,6 +26,7 @@ if sys.platform == "win32":
 # Import functions from modular woodchopping package
 # Keep explanation system (educational tool)
 import explanation_system_functions as explain
+from woodchopping import __version__ as STRATHEX_VERSION
 from woodchopping.analytics.prediction_accuracy import (
     analyze_prediction_accuracy,
     format_prediction_accuracy_report,
@@ -96,6 +97,8 @@ from woodchopping.ui.tournament_status import (
 from woodchopping.ui.tournament_ui import (
     auto_save_state,
     calculate_tournament_scenarios,
+    complete_recorded_round,
+    current_stage_rounds,
     distribute_competitors_into_heats,
     fill_advancers_with_random_draw,
     generate_next_round,
@@ -113,16 +116,16 @@ try:
     print("║" + "S T R A T H E X".center(68) + "║")
     print("║" + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".center(68) + "║")
     print("║" + " " * 68 + "║")
-    print("║" + "WOODCHOPPING HANDICAP CALCULATOR v5.2".center(68) + "║")
+    print("║" + f"WOODCHOPPING HANDICAP CALCULATOR v{STRATHEX_VERSION}".center(68) + "║")
     print("║" + "Professional Competition System".center(68) + "║")
     print("║" + " " * 68 + "║")
     print("╚" + "═" * 68 + "╝")
 except UnicodeEncodeError:
     # Fallback to ASCII banner if Unicode fails
-    print("""
+    print(f"""
 ======================================================================
 
-           STRATHEX - WOODCHOPPING HANDICAP CALCULATOR v5.2
+           STRATHEX - WOODCHOPPING HANDICAP CALCULATOR v{STRATHEX_VERSION}
                    Professional Competition System
 
 ======================================================================
@@ -1280,19 +1283,22 @@ def single_event_menu():
                 print(f"\n{'=' * 70}")
                 print(f"  RECORDING RESULTS FOR {selected_heat['round_name']}")
                 print(f"{'=' * 70}")
-                append_results_to_excel(
+                entry_succeeded = append_results_to_excel(
                     heat_assignment_df,
                     wood_selection,
                     round_object=selected_heat,
                     tournament_state=tournament_state,
                 )
 
+                if not entry_succeeded:
+                    print("\n[WARN] Results were not saved. This round remains open for retry.")
+                    auto_save_state(tournament_state)
+                    continue
+
                 # Select advancers
-                if tournament_state.get("format") == "single_heat":
-                    selected_heat["status"] = "completed"
-                    selected_heat["advancers"] = []
+                if complete_recorded_round(tournament_state, selected_heat, entry_succeeded):
                     print(f"\n[OK] {selected_heat['round_name']} completed")
-                    print("[OK] Results saved to historical data")
+                    print("[OK] Tournament results saved")
                 else:
                     advancers = select_heat_advancers(selected_heat)
                     print(f"\n[OK] {selected_heat['round_name']} completed")
@@ -1335,7 +1341,7 @@ def single_event_menu():
                 input("\nPress Enter to return to menu...")
                 continue
 
-            current_rounds = tournament_state["rounds"]
+            current_type, current_rounds = current_stage_rounds(tournament_state["rounds"])
             incomplete = [r for r in current_rounds if r["status"] != "completed"]
 
             if incomplete:
@@ -1354,7 +1360,6 @@ def single_event_menu():
             for name in all_advancers:
                 print(f"  - {name}")
 
-            current_type = current_rounds[0]["round_type"]
             tournament_format = tournament_state.get("format")
 
             if current_type == "heat":
@@ -1435,7 +1440,10 @@ def single_event_menu():
                     print("\nERROR: Generate bracket first (Option 10)")
                     input("\nPress Enter to return to menu...")
                     continue
-                tournament_state = sequential_match_entry_workflow(tournament_state)
+                tournament_state = sequential_match_entry_workflow(
+                    tournament_state,
+                    save_callback=auto_save_state,
+                )
                 continue
 
             # REGULAR MODE: Print Schedule (Export to File)

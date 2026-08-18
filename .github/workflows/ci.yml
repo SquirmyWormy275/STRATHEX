@@ -70,4 +70,4 @@ jobs:
       - name: Verify wheel imports cleanly
         run: |
           pip install dist/*.whl
-          python -c "import woodchopping; print('Build OK:', woodchopping.__version__)"
+          python -c "import os, tempfile; os.chdir(tempfile.mkdtemp()); import woodchopping, woodchopping.predictions, woodchopping.handicaps, woodchopping.simulation, woodchopping.strathmark_adapter; print('Build OK:', woodchopping.__version__)"

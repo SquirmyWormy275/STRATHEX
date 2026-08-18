@@ -33,13 +33,17 @@ woodchopping-handicap-system/
 
 ## Start Here
 
-### 1. **[SYSTEM_STATUS.md](SYSTEM_STATUS.md)** - System Overview
-**What**: Comprehensive status report of the entire system
-**When to Read**: First time exploring the system, checking current capabilities
+### 1. **[CURRENT_RUNTIME_CONTRACT.md](CURRENT_RUNTIME_CONTRACT.md)** - Maintained Runtime Authority
+**What**: Current engine pin, persistence, workflow, and release boundaries
+**When to Read**: First time exploring the system or checking current behavior
 
 ### 2. **[../README.md](../README.md)** - User Guide (Root Directory)
 **What**: User manual and quick start guide
 **When to Read**: Learning how to use the program
+
+### 3. **[RELEASE_v6.0.1.md](RELEASE_v6.0.1.md)** - Current Release Notes
+**What**: v6.0.1 repairs, compatibility decisions, and verified evidence
+**When to Read**: Preparing or reviewing the release
 
 ---
 
@@ -106,6 +110,10 @@ Historical implementation reports are in [archive/](archive/):
 - Tournament and Personnel Changes.md
 - V5.2_UI_IMPROVEMENTS.md
 
+`SYSTEM_STATUS.md` is also a historical V6.0 snapshot. It is retained outside
+the archive because older links point to it, but it is no longer the runtime
+authority.
+
 ---
 
 ## Quick Reference
@@ -137,4 +145,4 @@ When adding new documentation:
 ---
 
 **Maintained by**: Alex Kaper
-**Last Updated**: April 2026
+**Last Updated**: August 2026

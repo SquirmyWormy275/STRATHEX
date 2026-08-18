@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "strathex"
-version = "6.0.0"
+dynamic = ["version"]
 description = "AI-Powered Woodchopping Handicap Calculator and Tournament Management System"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -16,14 +16,12 @@ dependencies = [
     "openpyxl",
     "scikit-learn",
     "xgboost",
-    "lightgbm",
-    "matplotlib",
     "requests",
     # STRATHMARK is the handicap calculation engine, released under the Apache License 2.0.
     # License compatibility: STRATHEX is MIT and Apache 2.0 is a compatible permissive license.
-    # Pinned to STRATHMARK's portfolio-polish snapshot (commit 47bb143) for stability.
-    # Once STRATHMARK is published to PyPI at v1.0.0, switch this to:
-    #   "strathmark>=1.0.0,<2.0.0"
+    # Pinned to the behavior STRATHEX v6 was built and replay-tested against.
+    # STRATHMARK 2.0 is API-shaped but behaviorally incompatible; see the
+    # v6.0.1 compatibility evaluation before changing this commit.
     "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@47bb143",
 ]
 
@@ -41,8 +39,11 @@ dev = [
 # Required so the strathmark git+https direct reference in dependencies is allowed.
 allow-direct-references = true
 
+[tool.hatch.version]
+path = "woodchopping/__init__.py"
+
 [tool.hatch.build.targets.wheel]
-packages = ["woodchopping"]
+only-include = ["woodchopping", "config.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -79,12 +80,7 @@ ignore = ["E501"]
 "tests/**/*.py" = ["E402", "F401", "F841"]
 # explanation_system_functions.py is a long judge-facing literal text module.
 "explanation_system_functions.py" = ["F401", "F841"]
-# Optional ML backends (xgboost, lightgbm, sklearn) are imported inside
+# Optional ML backends (xgboost and sklearn) are imported inside
 # try/except ImportError blocks as availability sentinels. Ruff cannot tell
 # they gate downstream code paths.
 "woodchopping/predictions/ml_model.py" = ["F401"]
-"woodchopping/predictions/lightgbm_model.py" = ["F401"]
-"woodchopping/predictions/randomforest_model.py" = ["F401"]
-"woodchopping/predictions/ridge_model.py" = ["F401"]
-"woodchopping/predictions/stacking_ensemble.py" = ["F401"]
-"woodchopping/predictions/calibration.py" = ["F401"]

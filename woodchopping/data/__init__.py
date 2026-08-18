@@ -37,7 +37,9 @@ def append_results_to_excel(
 ):
     """Append results while refusing destructive workbook recovery.
 
-    The judge-facing prompts and return contract are unchanged. The guard only
+    The judge-facing prompts are unchanged. The returned boolean reports whether
+    result entry and any requested canonical workbook write succeeded. The guard
+    only
     prevents an unreadable existing workbook from being replaced by a partial
     Results-only file and verifies the workbook after the write.
     """

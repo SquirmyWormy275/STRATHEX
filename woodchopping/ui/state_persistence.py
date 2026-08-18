@@ -12,6 +12,7 @@ from __future__ import annotations
 import copy
 import importlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -22,6 +23,14 @@ import numpy as np
 import pandas as pd
 
 JsonValidator = Callable[[Any], None]
+
+_REGULAR_ROUND_TYPES = frozenset({"heat", "semi", "final"})
+_REGULAR_ROUND_STATUSES = frozenset({"pending", "in_progress", "completed"})
+_BRACKET_ROUND_STATUSES = frozenset({"pending", "in_progress", "completed"})
+_BRACKET_MATCH_STATUSES = frozenset({"pending", "in_progress", "completed", "bye", "forfeit"})
+_EVENT_STATUSES = frozenset({"pending", "configured", "ready", "scheduled", "in_progress", "completed"})
+_EVENT_FORMATS = frozenset({"single_heat", "heats_to_finals", "heats_to_semis_to_finals", "bracket"})
+_EVENT_TYPES = frozenset({"handicap", "championship", "bracket"})
 
 
 def _json_default(value: Any) -> Any:
@@ -161,15 +170,146 @@ def _load_with_recovery(filename: str, validator: JsonValidator) -> Any:
     return payload
 
 
+def _is_non_empty_string(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
+def _validate_string_list(value: Any, label: str) -> None:
+    if not isinstance(value, list) or not all(_is_non_empty_string(item) for item in value):
+        raise ValueError(f"{label} must be a list of non-empty strings")
+
+
+def _validate_optional_string(value: Any, label: str) -> None:
+    if value is not None and not _is_non_empty_string(value):
+        raise ValueError(f"{label} must be a non-empty string or null")
+
+
+def _validate_mapping(value: Any, label: str, value_validator: Callable[[Any], bool]) -> None:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be a JSON object")
+    if not all(_is_non_empty_string(name) and value_validator(item) for name, item in value.items()):
+        raise ValueError(f"{label} contains an invalid competitor name or value")
+
+
+def _is_positive_integer(value: Any) -> bool:
+    return isinstance(value, (int, np.integer)) and not isinstance(value, bool) and value > 0
+
+
+def _is_numeric_time(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float, np.integer, np.floating))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
+
+
+def _validate_regular_round(round_object: dict[str, Any], context: str) -> None:
+    if not _is_non_empty_string(round_object.get("round_name")):
+        raise ValueError(f"{context} round 'round_name' must be a non-empty string")
+    if round_object.get("round_type") not in _REGULAR_ROUND_TYPES:
+        raise ValueError(f"{context} round has an unsupported 'round_type'")
+    if round_object.get("status") not in _REGULAR_ROUND_STATUSES:
+        raise ValueError(f"{context} round has an unsupported 'status'")
+
+    _validate_string_list(round_object.get("competitors"), f"{context} round 'competitors'")
+    if not isinstance(round_object.get("competitors_df"), list):
+        raise ValueError(f"{context} round 'competitors_df' must be a list")
+
+    if "advancers" in round_object:
+        _validate_string_list(round_object["advancers"], f"{context} round 'advancers'")
+    if "finish_order" in round_object:
+        _validate_mapping(
+            round_object["finish_order"],
+            f"{context} round 'finish_order'",
+            _is_positive_integer,
+        )
+    if "actual_results" in round_object:
+        _validate_mapping(
+            round_object["actual_results"],
+            f"{context} round 'actual_results'",
+            _is_numeric_time,
+        )
+
+
+def _validate_bracket_match(match: Any, context: str) -> None:
+    if not isinstance(match, dict):
+        raise ValueError(f"Every {context.lower()} match must be a JSON object")
+    if not _is_non_empty_string(match.get("match_id")):
+        raise ValueError(f"{context} match 'match_id' must be a non-empty string")
+    if match.get("status") not in _BRACKET_MATCH_STATUSES:
+        raise ValueError(f"{context} match has an unsupported 'status'")
+
+    for field in ("competitor1", "competitor2"):
+        if field not in match:
+            raise ValueError(f"{context} match requires '{field}'")
+        _validate_optional_string(match[field], f"{context} match '{field}'")
+
+    if "advances_to" not in match:
+        raise ValueError(f"{context} match requires 'advances_to'")
+    _validate_optional_string(match["advances_to"], f"{context} match 'advances_to'")
+    if "feeds_from" not in match:
+        raise ValueError(f"{context} match requires 'feeds_from'")
+    _validate_string_list(match["feeds_from"], f"{context} match 'feeds_from'")
+
+    for field in ("winner", "loser"):
+        if field in match:
+            _validate_optional_string(match[field], f"{context} match '{field}'")
+    for field in ("time1", "time2"):
+        if field in match and match[field] is not None and not _is_numeric_time(match[field]):
+            raise ValueError(f"{context} match '{field}' must be numeric or null")
+    for field in ("finish_position1", "finish_position2"):
+        if field in match and match[field] is not None and not _is_positive_integer(match[field]):
+            raise ValueError(f"{context} match '{field}' must be a positive integer or null")
+
+
+def _validate_bracket_round(round_object: dict[str, Any], context: str) -> None:
+    if not _is_non_empty_string(round_object.get("round_name")):
+        raise ValueError(f"{context} bracket round 'round_name' must be a non-empty string")
+    if round_object.get("status") not in _BRACKET_ROUND_STATUSES:
+        raise ValueError(f"{context} bracket round has an unsupported 'status'")
+    if not isinstance(round_object.get("matches"), list):
+        raise ValueError(f"{context} bracket round 'matches' must be a list")
+    for match in round_object["matches"]:
+        _validate_bracket_match(match, context)
+
+
+def _validate_rounds_payload(rounds: list[Any], context: str) -> None:
+    """Validate regular and bracket round dictionaries used by saved state."""
+    for round_object in rounds:
+        if not isinstance(round_object, dict):
+            raise ValueError(f"Every {context.lower()} round must be a JSON object")
+        if "matches" in round_object:
+            _validate_bracket_round(round_object, context)
+        else:
+            _validate_regular_round(round_object, context)
+
+
+def _validate_bracket_sections(payload: dict[str, Any], context: str) -> None:
+    for field in ("winners_rounds", "losers_rounds"):
+        if field not in payload:
+            continue
+        rounds = payload[field]
+        if not isinstance(rounds, list):
+            raise ValueError(f"{context} '{field}' must be a list")
+        for round_object in rounds:
+            if not isinstance(round_object, dict):
+                raise ValueError(f"Every {context.lower()} bracket round must be a JSON object")
+            _validate_bracket_round(round_object, context)
+    if "grand_finals" in payload:
+        _validate_bracket_match(payload["grand_finals"], f"{context} grand finals")
+
+
 def _validate_single_state(payload: Any) -> None:
     if not isinstance(payload, dict):
         raise ValueError("Tournament state must be a JSON object")
     if "rounds" in payload and not isinstance(payload["rounds"], list):
         raise ValueError("Tournament state 'rounds' must be a list")
-    if "all_competitors" in payload and not isinstance(payload["all_competitors"], list):
-        raise ValueError("Tournament state 'all_competitors' must be a list")
+    if "all_competitors" in payload:
+        _validate_string_list(payload["all_competitors"], "Tournament state 'all_competitors'")
     if "all_competitors_df" in payload and not isinstance(payload["all_competitors_df"], list):
         raise ValueError("Tournament state 'all_competitors_df' must be a list")
+    _validate_rounds_payload(payload.get("rounds", []), "Tournament")
+    _validate_bracket_sections(payload, "Tournament")
 
 
 def _validate_multi_state(payload: Any) -> None:
@@ -177,8 +317,32 @@ def _validate_multi_state(payload: Any) -> None:
         raise ValueError("Multi-event tournament state must be a JSON object")
     if "events" not in payload or not isinstance(payload["events"], list):
         raise ValueError("Multi-event tournament state requires an 'events' list")
-    if "total_events" in payload and not isinstance(payload["total_events"], (int, np.integer)):
+    if "total_events" in payload and (
+        not isinstance(payload["total_events"], (int, np.integer)) or isinstance(payload["total_events"], bool)
+    ):
         raise ValueError("Multi-event tournament state 'total_events' must be an integer")
+    if "competitor_roster_df" in payload and not isinstance(payload["competitor_roster_df"], list):
+        raise ValueError("Multi-event tournament state 'competitor_roster_df' must be a list")
+    for event in payload["events"]:
+        if not isinstance(event, dict):
+            raise ValueError("Every multi-event entry must be a JSON object")
+        if "rounds" not in event or not isinstance(event["rounds"], list):
+            raise ValueError("Every multi-event entry requires a 'rounds' list")
+        for field in ("event_id", "event_name"):
+            if field in event and not _is_non_empty_string(event[field]):
+                raise ValueError(f"Multi-event entry '{field}' must be a non-empty string")
+        if "status" in event and event["status"] not in _EVENT_STATUSES:
+            raise ValueError("Multi-event entry has an unsupported 'status'")
+        if "format" in event and event["format"] not in _EVENT_FORMATS:
+            raise ValueError("Multi-event entry has an unsupported 'format'")
+        if "event_type" in event and event["event_type"] not in _EVENT_TYPES:
+            raise ValueError("Multi-event entry has an unsupported 'event_type'")
+        if "all_competitors" in event:
+            _validate_string_list(event["all_competitors"], "Multi-event entry 'all_competitors'")
+        if "all_competitors_df" in event and not isinstance(event["all_competitors_df"], list):
+            raise ValueError("Multi-event entry 'all_competitors_df' must be a list")
+        _validate_rounds_payload(event["rounds"], "Multi-event")
+        _validate_bracket_sections(event, "Multi-event")
 
 
 def _serialize_single_state(tournament_state: Dict[str, Any]) -> Dict[str, Any]:
@@ -279,14 +443,16 @@ def _deserialize_multi_state(payload: Dict[str, Any]) -> Dict[str, Any]:
 def save_tournament_state(
     tournament_state: Dict[str, Any],
     filename: str = "saves/tournament_state.json",
-) -> None:
-    """Atomically save single-event tournament state with a rolling backup."""
+) -> bool:
+    """Atomically save single-event state and report whether it persisted."""
     try:
         payload = _serialize_single_state(tournament_state)
         _atomic_write_json(payload, filename, _validate_single_state)
         print(f"Tournament state saved to {filename}")
+        return True
     except Exception as error:
         print(f"Error saving tournament state: {error}")
+        return False
 
 
 def load_tournament_state(filename: str = "saves/tournament_state.json") -> Optional[Dict[str, Any]]:
@@ -304,21 +470,23 @@ def load_tournament_state(filename: str = "saves/tournament_state.json") -> Opti
         return None
 
 
-def auto_save_state(tournament_state: Dict[str, Any]) -> None:
-    save_tournament_state(tournament_state, "saves/tournament_state.json")
+def auto_save_state(tournament_state: Dict[str, Any]) -> bool:
+    return save_tournament_state(tournament_state, "saves/tournament_state.json")
 
 
 def save_multi_event_tournament(
     tournament_state: Dict[str, Any],
     filename: str = "saves/multi_tournament_state.json",
-) -> None:
-    """Atomically save multi-event state with a rolling backup."""
+) -> bool:
+    """Atomically save multi-event state and report whether it persisted."""
     try:
         payload = _serialize_multi_state(tournament_state)
         _atomic_write_json(payload, filename, _validate_multi_state)
         print(f"\n[OK] Tournament state saved to {filename}")
+        return True
     except Exception as error:
         print(f"\n[WARN] Error saving tournament state: {error}")
+        return False
 
 
 def load_multi_event_tournament(
@@ -340,8 +508,8 @@ def load_multi_event_tournament(
         return None
 
 
-def auto_save_multi_event(tournament_state: Dict[str, Any]) -> None:
-    save_multi_event_tournament(tournament_state, "saves/multi_tournament_state.json")
+def auto_save_multi_event(tournament_state: Dict[str, Any]) -> bool:
+    return save_multi_event_tournament(tournament_state, "saves/multi_tournament_state.json")
 
 
 def install_persistence_guards() -> None:

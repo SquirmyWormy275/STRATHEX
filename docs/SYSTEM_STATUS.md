@@ -1,5 +1,10 @@
 # Woodchopping Handicap System - Complete Status Report
 
+> **Historical V6.0 snapshot (March 2026).** Claims and test totals below are
+> preserved as project history. For the maintained runtime and release gates,
+> use [CURRENT_RUNTIME_CONTRACT.md](CURRENT_RUNTIME_CONTRACT.md) and
+> [RELEASE_v6.0.1.md](RELEASE_v6.0.1.md).
+
 **Date**: March 9, 2026
 **Version**: 6.0
 **Status**: PRODUCTION READY

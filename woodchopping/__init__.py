@@ -5,7 +5,7 @@ A comprehensive system for calculating fair handicaps in woodchopping competitio
 using ML predictions, LLM reasoning, and Monte Carlo simulation.
 """
 
-__version__ = "3.0.0"
+__version__ = "6.0.1"
 __author__ = "STRATHEX Project"
 
 # Import key components for easy access

@@ -447,6 +447,10 @@ def append_results_to_excel(
         round_object (dict): NEW - Round object from tournament system (optional)
         tournament_state (dict): NEW - Tournament state for single-event context (optional)
         event_name (str): NEW - Event name for multi-event tournaments (optional)
+
+    Returns:
+        bool: True when a valid placement was recorded (and any requested Excel
+        write succeeded); False when validation or the canonical write failed.
     """
     # Determine if using new tournament system or legacy single-heat system
     if round_object is not None:
@@ -457,7 +461,7 @@ def append_results_to_excel(
         # LEGACY SINGLE-HEAT SYSTEM
         if heat_assignment_df is None or heat_assignment_df.empty:
             print("No competitors in heat assignment.")
-            return
+            return False
         competitors_list = heat_assignment_df["competitor_name"].tolist()
         round_name = None
 
@@ -467,7 +471,7 @@ def append_results_to_excel(
         event_code = event_code.upper()
     if event_code not in ("SB", "UH"):
         print("Event not selected. Use Wood Menu -> Select event (SB/UH) or Main Menu option 3.")
-        return
+        return False
 
     species = wood_selection.get("species")
     size_mm = wood_selection.get("size_mm")
@@ -608,7 +612,7 @@ def append_results_to_excel(
                 round_object["finish_order"] = {}
             round_object["finish_order"].update(finish_order)
         print("\nPlacings recorded. No times saved to Excel.")
-        return
+        return True
 
     if choice == "2":
         times_collected = _collect_times(require_all=True)
@@ -635,7 +639,7 @@ def append_results_to_excel(
 
     if not times_collected:
         print("\nNo cutting times recorded. Finish order saved; nothing written to Excel.")
-        return
+        return True
 
     # Prepare rows for Excel and update round_object
     timestamp = datetime.now().isoformat(timespec="seconds")
@@ -657,7 +661,7 @@ def append_results_to_excel(
 
     if not rows_to_write:
         print("No results to write.")
-        return
+        return False
 
     try:
         # Load or create workbook
@@ -734,5 +738,8 @@ def append_results_to_excel(
         if round_object is not None:
             round_object["status"] = "in_progress"  # Mark as in progress (not completed until advancers selected)
 
+        return True
+
     except Exception as e:
         print(f"Error appending results: {e}")
+        return False
