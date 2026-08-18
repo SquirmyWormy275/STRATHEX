@@ -3,10 +3,11 @@
 Handicap mark calculation -- STRATHMARK integration wrapper.
 
 The public function signature and STRATHEX dictionary output are retained for
-all tournament and UI callers.  Prediction methods, method selection, mark
+all tournament and UI callers. Prediction methods, method selection, mark
 arithmetic, and variance calculation remain owned by STRATHMARK.
 """
 
+import logging
 from contextlib import redirect_stdout
 from io import StringIO
 from typing import Any, Callable, Dict, List, Optional
@@ -18,6 +19,8 @@ from woodchopping.data import (
     load_wood_data,
     standardize_results_data,
 )
+from woodchopping.data.history_merge import merge_result_history
+from woodchopping.data.store_registry import get_store
 from woodchopping.strathmark_adapter import (
     build_competitor_records,
     build_gender_map,
@@ -25,6 +28,28 @@ from woodchopping.strathmark_adapter import (
     calculate_handicap_results,
     enrich_results_with_roster,
 )
+
+_log = logging.getLogger(__name__)
+
+
+def _load_persistent_history() -> pd.DataFrame:
+    """Read accumulated STRATHMARK history without making it a hard dependency."""
+    store = get_store()
+    if store is None:
+        return pd.DataFrame()
+
+    try:
+        history = store.get_all_as_dataframe()
+    except Exception as exc:
+        # Excel is still the judge-canonical source. A derived-store read failure
+        # must not prevent a live event from calculating marks.
+        _log.warning(
+            "Could not read STRATHMARK ResultStore history; using Excel history only: %s",
+            exc,
+        )
+        return pd.DataFrame()
+
+    return history if isinstance(history, pd.DataFrame) else pd.DataFrame()
 
 
 def calculate_ai_enhanced_handicaps(
@@ -40,9 +65,10 @@ def calculate_ai_enhanced_handicaps(
     """
     Calculate handicap marks through the pinned STRATHMARK engine.
 
-    Existing STRATHEX callers and return fields are unchanged.  The wrapper:
+    Existing STRATHEX callers and return fields are unchanged. The wrapper:
+    - combines judge-canonical Excel history with additional ResultStore rows;
     - validates and enriches historical rows with roster metadata;
-    - trains STRATHMARK's ML model from the supplied history;
+    - trains STRATHMARK's ML model from the complete supplied history;
     - runs Baseline, ML, and LLM predictions once per competitor;
     - selects the lowest-expected-error prediction;
     - delegates mark assignment and variance to STRATHMARK.
@@ -54,9 +80,9 @@ def calculate_ai_enhanced_handicaps(
         diameter: Block diameter in millimetres.
         quality: Wood firmness on the existing 1-10 scale (5 = average).
         event_code: ``SB`` or ``UH``.
-        results_df: Historical results DataFrame.
+        results_df: Historical results DataFrame loaded from Excel.
         progress_callback: Optional callback(current, total, competitor_name).
-        tournament_results: Optional same-tournament actual times.  Existing
+        tournament_results: Optional same-tournament actual times. Existing
             STRATHEX behavior gives these observations 97% weight.
 
     Returns:
@@ -75,15 +101,23 @@ def calculate_ai_enhanced_handicaps(
     quality = 5 if quality is None else max(1, min(10, int(quality)))
     event_code = str(event_code).strip().upper()
 
+    # Startup migration makes most ResultStore rows duplicates of Excel. Merge
+    # with explicit de-duplication so persistent learning adds evidence rather
+    # than multiplying it.
+    combined_history = merge_result_history(
+        results_df,
+        _load_persistent_history(),
+    )
+
     # Apply the existing shared validation/outlier policy before either
     # baseline construction or ML training.
-    standardized_results, _ = standardize_results_data(results_df)
+    standardized_results, _ = standardize_results_data(combined_history)
     if standardized_results is None:
         standardized_results = pd.DataFrame()
 
     # Results carry performance observations; gender lives in the roster.
     # Join the two sources so the trained model and live feature vector use the
-    # same encoding.  Prefer the full roster, with the selected heat as a safe
+    # same encoding. Prefer the full roster, with the selected heat as a safe
     # fallback in slim/test environments.
     roster_messages = StringIO()
     with redirect_stdout(roster_messages):
