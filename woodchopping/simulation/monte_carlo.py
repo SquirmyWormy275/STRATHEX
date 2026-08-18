@@ -1,53 +1,35 @@
 """
-Monte Carlo simulation — STRATHMARK wrapper.
+Monte Carlo simulation -- STRATHMARK compatibility wrapper.
 
-This module is now a thin wrapper around STRATHMARK's run_monte_carlo_simulation.
-All simulation logic lives in STRATHMARK; improvements there are immediately
-available here without any code changes.
-
-The public function signature is unchanged for backward compatibility with
-all STRATHEX UI callers. CompetitorTimeStats dataclasses from STRATHMARK are
-converted to plain dicts so existing STRATHEX UI code (stats['mean'], etc.)
-continues to work without modification.
-
-simulate_single_race() keeps a local implementation because STRATHMARK's version
-returns only the winner's name (str), while STRATHEX callers expect the full
-list-of-dicts with finish time details.
+The public STRATHEX signatures and result shape are unchanged.  All engine
+access is routed through ``woodchopping.strathmark_adapter``.
 """
 
 from typing import Any, Dict, List, Optional
 
 import numpy as np
-import strathmark.variance as _sm_variance
 
 from config import rules, sim_config
-
-# ---------------------------------------------------------------------------
-# Per-competitor variance (delegates to STRATHMARK's version)
-# ---------------------------------------------------------------------------
+from woodchopping.strathmark_adapter import (
+    get_competitor_variance_seconds,
+    run_monte_carlo_simulation_engine,
+)
 
 
 def _get_competitor_variance_seconds(comp: Dict[str, Any]) -> float:
-    """Return per-competitor variance (std-dev) delegating to STRATHMARK."""
-    return _sm_variance._get_competitor_variance_seconds(comp)
+    """Return the pinned STRATHMARK per-competitor variance value."""
+    return get_competitor_variance_seconds(comp)
 
 
-# ---------------------------------------------------------------------------
-# simulate_single_race — kept local for backward compat
-# STRATHMARK's version returns str (winner name); STRATHEX expects list[dict].
-# ---------------------------------------------------------------------------
-
-
-def simulate_single_race(competitors_with_marks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def simulate_single_race(
+    competitors_with_marks: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
     """
-    Simulate a single race with performance variation.
+    Simulate one race and return the existing full finish-detail structure.
 
-    Returns the full list-of-dicts sorted by finish time (fastest first).
-    Each entry contains: name, mark, actual_time, finish_time, predicted_time.
-
-    Note: STRATHMARK's simulate_single_race() returns only the winner's name.
-    This local implementation preserves the STRATHEX return type for callers
-    that need the full per-competitor race result breakdown.
+    STRATHMARK's single-race helper returns only a winner name; this small local
+    compatibility implementation is retained because STRATHEX callers need
+    every competitor's actual and elapsed finish time.
     """
     if not competitors_with_marks:
         return []
@@ -55,36 +37,33 @@ def simulate_single_race(competitors_with_marks: List[Dict[str, Any]]) -> List[D
     finish_results = []
     heat_delta = np.random.normal(0.0, sim_config.HEAT_VARIANCE_SECONDS)
 
-    for comp in competitors_with_marks:
-        pt = comp.get("predicted_time")
-        if pt is None or (isinstance(pt, float) and np.isnan(pt)):
-            raise ValueError(f"Invalid predicted_time for competitor '{comp.get('name', 'unknown')}': {pt!r}")
-        variance_seconds = _get_competitor_variance_seconds(comp)
+    for competitor in competitors_with_marks:
+        predicted_time = competitor.get("predicted_time")
+        if predicted_time is None or (isinstance(predicted_time, float) and np.isnan(predicted_time)):
+            name = competitor.get("name", "unknown")
+            raise ValueError(f"Invalid predicted_time for competitor '{name}': {predicted_time!r}")
+
+        variance_seconds = _get_competitor_variance_seconds(competitor)
         actual_time = np.random.normal(
-            pt + heat_delta,
+            predicted_time + heat_delta,
             variance_seconds,
         )
-        actual_time = max(actual_time, pt * 0.5)
-        start_delay = comp["mark"] - rules.MIN_MARK_SECONDS
+        actual_time = max(actual_time, predicted_time * 0.5)
+        start_delay = competitor["mark"] - rules.MIN_MARK_SECONDS
         finish_time = start_delay + actual_time
 
         finish_results.append(
             {
-                "name": comp["name"],
-                "mark": comp["mark"],
+                "name": competitor["name"],
+                "mark": competitor["mark"],
                 "actual_time": actual_time,
                 "finish_time": finish_time,
-                "predicted_time": comp["predicted_time"],
+                "predicted_time": predicted_time,
             }
         )
 
-    finish_results.sort(key=lambda x: x["finish_time"])
+    finish_results.sort(key=lambda result: result["finish_time"])
     return finish_results
-
-
-# ---------------------------------------------------------------------------
-# run_monte_carlo_simulation — delegates to STRATHMARK
-# ---------------------------------------------------------------------------
 
 
 def run_monte_carlo_simulation(
@@ -96,31 +75,15 @@ def run_monte_carlo_simulation(
     progress_interval: int = 50000,
 ) -> Dict[str, Any]:
     """
-    Run Monte Carlo simulation to assess handicap fairness.
+    Run STRATHMARK's Monte Carlo engine and retain STRATHEX's dictionary shape.
 
-    Delegates to STRATHMARK's HandicapCalculator.  Public signature is unchanged
-    for backward compatibility with all STRATHEX UI callers.
-
-    STRATHMARK returns CompetitorTimeStats dataclasses in competitor_time_stats;
-    this wrapper converts them to plain dicts so existing STRATHEX UI code
-    (stats['mean'], stats['min'], etc.) continues to work unchanged.
-
-    Args:
-        competitors_with_marks: List of dicts with 'name', 'mark', 'predicted_time',
-                                 and optionally 'performance_std_dev'.
-        num_simulations: Number of races to simulate (defaults to config value).
-        track_finish_orders: Track most common finish order.
-        track_podium_margins: Track avg podium margins and photo-finish rate.
-        show_live_leaders: Print interim leader updates during long runs.
-        progress_interval: Simulation count interval for progress updates.
-
-    Returns:
-        Analysis dict — same keys as before (see STRATHMARK docs for full list).
+    ``CompetitorTimeStats`` objects are converted to the plain dictionaries
+    expected by existing reports and UI functions.
     """
     if num_simulations is None:
         num_simulations = sim_config.NUM_SIMULATIONS
 
-    analysis = _sm_variance.run_monte_carlo_simulation(
+    analysis = run_monte_carlo_simulation_engine(
         competitors_with_marks,
         num_simulations=num_simulations,
         track_finish_orders=track_finish_orders,
@@ -129,9 +92,6 @@ def run_monte_carlo_simulation(
         progress_interval=progress_interval,
     )
 
-    # Convert CompetitorTimeStats dataclasses -> plain dicts.
-    # STRATHEX UI code reads stats['mean'], stats['min'], stats['max'],
-    # but CompetitorTimeStats uses .min_time / .max_time attribute names.
     converted: Dict[str, Any] = {}
     for name, stats in analysis.get("competitor_time_stats", {}).items():
         if hasattr(stats, "mean"):
@@ -146,7 +106,7 @@ def run_monte_carlo_simulation(
                 "consistency_rating": stats.consistency_rating,
             }
         else:
-            converted[name] = stats  # already a plain dict
+            converted[name] = stats
 
     analysis["competitor_time_stats"] = converted
     return analysis
