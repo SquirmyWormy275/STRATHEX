@@ -1,0 +1,30 @@
+name: Maintenance Source Export
+
+on:
+  push:
+    branches:
+      - agent/maintenance-source-export
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Package clean source tree
+        shell: bash
+        run: |
+          tar --exclude=.git --exclude=strathex-maintenance-source.tar.gz \
+            -czf strathex-maintenance-source.tar.gz .
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: strathex-maintenance-source
+          path: strathex-maintenance-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
