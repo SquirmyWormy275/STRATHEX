@@ -21,13 +21,14 @@ jobs:
       - name: Package clean source tree
         shell: bash
         run: |
-          tar --exclude=.git --exclude=strathex-maintenance-source.tar.gz \
-            -czf strathex-maintenance-source.tar.gz .
+          git archive --format=tar.gz \
+            --output="$RUNNER_TEMP/strathex-maintenance-source.tar.gz" \
+            HEAD
 
       - name: Upload source artifact
         uses: actions/upload-artifact@v4
         with:
           name: strathex-maintenance-source
-          path: strathex-maintenance-source.tar.gz
+          path: ${{ runner.temp }}/strathex-maintenance-source.tar.gz
           if-no-files-found: error
           retention-days: 1
