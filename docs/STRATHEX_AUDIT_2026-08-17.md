@@ -1,5 +1,7 @@
 # STRATHEX V6 Maintenance Audit
 
+> Historical v6.0.1 audit. It does not describe the STRATHEX 7 / STRATHMARK 2 runtime. See [CURRENT_RUNTIME_CONTRACT.md](CURRENT_RUNTIME_CONTRACT.md).
+
 **Audit date:** 2026-08-17  
 **Audited repository:** `SquirmyWormy275/STRATHEX`  
 **Audited base commit:** `db8cf74c175feab57a015e67813e5a72b207b5e4`  

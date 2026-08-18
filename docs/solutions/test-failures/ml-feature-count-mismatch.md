@@ -18,6 +18,8 @@ related_components:
 tags: [xgboost, ml, feature-count, silent-failure, end-to-end-testing, ai-slop]
 ---
 
+> Historical pre-v7 incident. The local XGBoost predictor is not part of live STRATHEX 7 calculation; STRATHMARK 2 owns numeric prediction.
+
 # ML trained on 19 features but inference built only 7 — silent fall-through meant ML was never contributing to handicaps
 
 ## Problem

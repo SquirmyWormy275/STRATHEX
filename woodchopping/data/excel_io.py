@@ -5,7 +5,7 @@ import shutil
 
 # Import config
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from typing import Dict, Optional, Tuple
 
 import pandas as pd
@@ -13,6 +13,7 @@ from openpyxl import Workbook, load_workbook
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from config import paths
+from woodchopping.prediction_context import ensure_competition_id
 
 # Canonical, git-tracked seed workbook. Used to restore a missing production
 # workbook with its FULL schema instead of a partial stub.
@@ -433,6 +434,30 @@ def save_time_to_results(
         print(f"Error saving time to results: {e}")
 
 
+def _result_store_context(
+    tournament_state: Optional[Dict],
+    event_name: Optional[str],
+    heat_id: str,
+) -> Tuple[str, Optional[date]]:
+    """Return a stable competition ID and actual event date for ResultStore."""
+    state = tournament_state if tournament_state is not None else {}
+    label = event_name or state.get("event_name") or state.get("tournament_name") or heat_id or "event"
+    raw_date = state.get("tournament_date") or state.get("date") or state.get("prediction_as_of")
+    result_date = None
+    if raw_date:
+        try:
+            result_date = date.fromisoformat(str(raw_date).strip()[:10])
+        except ValueError:
+            result_date = None
+    if tournament_state is not None:
+        competition_id = ensure_competition_id(state)
+    else:
+        date_key = result_date.isoformat() if result_date else "unknown"
+        label_key = "-".join("".join(char if char.isalnum() else " " for char in str(label)).split()) or "event"
+        competition_id = f"strathex:{date_key}:{label_key}"[:128]
+    return competition_id, result_date
+
+
 def append_results_to_excel(
     heat_assignment_df, wood_selection, round_object=None, tournament_state=None, event_name=None
 ):
@@ -495,6 +520,8 @@ def append_results_to_excel(
         heat_id = input("Enter a Heat ID (e.g., SB-01-Qual or any short label): ").strip()
         if not heat_id:
             heat_id = f"{event_code}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+
+    competition_id, result_date = _result_store_context(tournament_state, event_name, heat_id)
 
     # Get ID/name mapping
     _, name_to_id = get_competitor_id_name_mapping()
@@ -715,6 +742,8 @@ def append_results_to_excel(
                             "event": event_code,
                         },
                         _store,
+                        competition_id=competition_id,
+                        result_date=result_date,
                     )
                 else:
                     # Legacy single-heat mode: write each time directly
@@ -728,6 +757,8 @@ def append_results_to_excel(
                                 diameter_mm=float(size_mm),
                                 quality=int(quality),
                                 heat_id=str(heat_id),
+                                competition_id=competition_id,
+                                result_date=result_date,
                             )
                         except Exception:
                             pass

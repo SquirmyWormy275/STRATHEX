@@ -509,6 +509,7 @@ def generate_bracket_seeds(
     wood_diameter: float,
     wood_quality: int,
     event_code: str,
+    prediction_as_of=None,
 ) -> Dict[str, Dict]:
     """Generate predictions for all competitors and assign seeds.
 
@@ -526,39 +527,22 @@ def generate_bracket_seeds(
         dict: {competitor_name: prediction_with_seed}
     """
     from woodchopping.data import load_results_df
-    from woodchopping.predictions.prediction_aggregator import (
-        get_all_predictions,
-        select_best_prediction,
-    )
+    from woodchopping.handicaps import calculate_ai_enhanced_handicaps
 
     results_df = load_results_df()
-    predictions = {}
+    field_results = calculate_ai_enhanced_handicaps(
+        competitors_df,
+        wood_species,
+        wood_diameter,
+        wood_quality,
+        event_code,
+        results_df,
+        prediction_as_of=prediction_as_of,
+    )
+    if not field_results:
+        raise RuntimeError("STRATHMARK v2 did not return bracket seed predictions")
 
-    # Get predictions for all competitors
-    for _, comp_row in competitors_df.iterrows():
-        comp_name = comp_row["competitor_name"]
-
-        # Get all prediction methods
-        all_preds = get_all_predictions(
-            comp_name,
-            wood_species,
-            wood_diameter,
-            wood_quality,
-            event_code,
-            results_df,
-            tournament_results=None,  # No prior tournament data
-        )
-
-        # Select best prediction
-        pred_time, pred_method, pred_conf, pred_exp = select_best_prediction(all_preds)
-
-        predictions[comp_name] = {
-            "predicted_time": pred_time,
-            "method_used": pred_method,
-            "confidence": pred_conf,
-            "explanation": pred_exp,
-            "predictions": all_preds,  # Store all for reference
-        }
+    predictions = {result["name"]: dict(result) for result in field_results}
 
     # Sort by predicted time (fastest first)
     sorted_competitors = sorted(predictions.items(), key=lambda x: x[1]["predicted_time"])

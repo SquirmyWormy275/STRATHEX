@@ -44,7 +44,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package and dev dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev,api-test]"
 
       - name: Run pytest (skip Ollama-dependent tests)
         run: pytest tests/ -v --tb=short -m "not ollama" --cov=woodchopping --cov-report=term-missing

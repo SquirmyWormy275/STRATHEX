@@ -18,6 +18,8 @@ related_components:
 tags: [wood-quality, data-model, historical-data, prediction, sign-inversion]
 ---
 
+> Historical pre-v7 incident. STRATHMARK 2 accepts wood quality for compatibility but it does not change current numeric predictions.
+
 # Wood quality is 1=softest, 10=hardest — historical data predates this convention and is all recorded as 5
 
 ## Problem

@@ -2,6 +2,8 @@
 
 This directory is the searchable knowledge store for past STRATHEX problems — bugs, architectural decisions, development practices, and workflow patterns. Each document has YAML frontmatter (`module`, `tags`, `problem_type`, `severity`) so agents can search by field.
 
+> These are dated incident records, not current runtime specifications. Any local XGBoost, numeric LLM, quality-adjustment, or 97/3 weighting discussion describes a pre-v7 system. [CURRENT_RUNTIME_CONTRACT.md](../CURRENT_RUNTIME_CONTRACT.md) is authoritative for STRATHEX 7.
+
 **Relevant when:** implementing features, debugging issues, or making decisions in a documented area. Written after problems are solved and verified.
 
 ---
@@ -32,7 +34,7 @@ Development disciplines and patterns that future work should follow. Each ties b
 
 | Doc | What it covers |
 | --- | --- |
-| [prompt-feature-parity.md](best-practices/prompt-feature-parity.md) | Every system-feature change must ship with corresponding LLM prompt updates in the same commit |
+| [prompt-feature-parity.md](best-practices/prompt-feature-parity.md) | Historical numeric-LLM incident; retained for the general documentation-parity lesson |
 | [judge-ui-simplicity-principle.md](best-practices/judge-ui-simplicity-principle.md) | Judge UI minimizes workflow change under time pressure; concrete rollbacks from V5.1 |
 
 ### build-errors/
@@ -84,7 +86,7 @@ If you are new to STRATHEX and want the shortest path to operational understandi
 2. **[qaa-scaling-removal.md](architecture-decisions/qaa-scaling-removal.md)** — understand what *isn't* in the prediction path and why
 3. **[wood-quality-scale-inversion.md](data-integrity/wood-quality-scale-inversion.md)** — the data-model conventions you'll encounter immediately
 4. **[sparse-competitor-data-fallback.md](data-integrity/sparse-competitor-data-fallback.md)** — why eligibility filtering exists
-5. **[prompt-feature-parity.md](best-practices/prompt-feature-parity.md)** — how features and prompts must move together
+5. **[prompt-feature-parity.md](best-practices/prompt-feature-parity.md)** — historical incident retained for the broader documentation-parity lesson
 6. **[judge-ui-simplicity-principle.md](best-practices/judge-ui-simplicity-principle.md)** — the UX philosophy for the judge-facing CLI
 
 Then browse the rest as needed when you touch the relevant area.
@@ -96,7 +98,7 @@ Then browse the rest as needed when you touch the relevant area.
 STRATHMARK (the sister repo that owns all handicap calculation) has its own `docs/solutions/` directory. Cross-repo topics live there:
 
 - Absolute variance model (±3s across all competitors)
-- Tournament result weighting (97% same-tournament / 3% historical) and the `num_tournament_rounds >= 4` gate
+- Historical tournament-result weighting behavior retired by STRATHMARK 2
 - Decay-weights date-type mismatch bug
 - Timeout results polluting baseline
 - Ollama cascade hang on unreachable host

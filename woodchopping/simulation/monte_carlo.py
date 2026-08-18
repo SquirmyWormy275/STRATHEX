@@ -73,6 +73,7 @@ def run_monte_carlo_simulation(
     track_podium_margins: bool = False,
     show_live_leaders: bool = False,
     progress_interval: int = 50000,
+    include_finish_spreads: bool = True,
 ) -> Dict[str, Any]:
     """
     Run STRATHMARK's Monte Carlo engine and retain STRATHEX's dictionary shape.
@@ -88,6 +89,7 @@ def run_monte_carlo_simulation(
         num_simulations=num_simulations,
         track_finish_orders=track_finish_orders,
         track_podium_margins=track_podium_margins,
+        include_finish_spreads=include_finish_spreads,
         show_live_leaders=show_live_leaders,
         progress_interval=progress_interval,
     )

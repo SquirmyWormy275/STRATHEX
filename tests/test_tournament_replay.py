@@ -162,6 +162,9 @@ def test_single_event_replay_records_resumes_and_completes(tmp_path, monkeypatch
     assert workbook["Results"].max_row == 7  # header + four heats + two finalists
     workbook.close()
     assert len(store.rows) == 6
+    competition_ids = {row["competition_id"] for row in store.rows}
+    assert competition_ids == {reloaded["competition_id"]}
+    assert reloaded["competition_id"].startswith("strathex:")
 
 
 def test_failed_result_entry_keeps_terminal_round_retryable():

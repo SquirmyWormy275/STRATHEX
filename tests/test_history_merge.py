@@ -130,7 +130,6 @@ def test_live_calculation_uses_store_only_history(monkeypatch):
 
     monkeypatch.setattr(calculator, "build_competitor_records", fake_build_records)
     monkeypatch.setattr(calculator, "build_wood_profile", lambda *args: "wood")
-    monkeypatch.setattr(calculator, "load_wood_data", lambda: pd.DataFrame())
     monkeypatch.setattr(
         calculator,
         "calculate_handicap_results",

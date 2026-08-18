@@ -20,6 +20,7 @@ import pandas as pd
 
 from woodchopping.data import append_results_to_excel, load_results_df
 from woodchopping.handicaps import calculate_ai_enhanced_handicaps
+from woodchopping.prediction_context import ensure_prediction_as_of
 from woodchopping.ui.adjustment_tracking import log_handicap_adjustment
 from woodchopping.ui.competitor_ui import select_all_event_competitors
 from woodchopping.ui.history_entry import prompt_add_competitor_times
@@ -49,6 +50,19 @@ def _reject_unsupported_bracket_events(tournament_state: Dict) -> bool:
     print("Run each bracket through the single-event tournament workflow instead.")
     input("\nPress Enter to continue...")
     return True
+
+
+def _event_competition_has_started(event: Dict) -> bool:
+    """Return whether an event contains competition results that must be preserved."""
+    if event.get("status") in {"in_progress", "completed"}:
+        return True
+
+    for round_object in event.get("rounds", []):
+        if round_object.get("status") in {"in_progress", "completed"}:
+            return True
+        if any(round_object.get(result_field) for result_field in ("actual_results", "results", "finish_order")):
+            return True
+    return False
 
 
 def create_multi_event_tournament() -> Dict:
@@ -82,6 +96,7 @@ def create_multi_event_tournament() -> Dict:
         "tournament_mode": "multi_event",
         "tournament_name": tournament_name,
         "tournament_date": tournament_date,
+        "prediction_as_of": tournament_date,
         "created_at": datetime.now().isoformat(),
         "total_events": 0,
         "events_completed": 0,
@@ -579,6 +594,20 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
     print(f"{'?'}{title}{'?'}")
     print(f"{'?' + '?' * 68 + '?'}")
 
+    if not tournament_state.get("events"):
+        print("\n[WARN] No events to calculate handicaps for.")
+        input("\nPress Enter to continue...")
+        return tournament_state
+
+    started_events = [event for event in tournament_state["events"] if _event_competition_has_started(event)]
+    if started_events:
+        print("\n[WARN] Handicaps cannot be recalculated after competition has begun:")
+        for event in started_events:
+            print(f"  - {event['event_name']}: {event['status']}")
+        print("Existing results and marks were left unchanged.")
+        input("\nPress Enter to continue...")
+        return tournament_state
+
     # Validation: Check all events are configured
     not_configured = [e for e in tournament_state.get("events", []) if e["status"] == "pending"]
     if not_configured:
@@ -608,11 +637,6 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
         input("\nPress Enter to continue...")
         return tournament_state
 
-    if not tournament_state.get("events"):
-        print("\n[WARN] No events to calculate handicaps for.")
-        input("\nPress Enter to continue...")
-        return tournament_state
-
     if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
 
@@ -634,6 +658,11 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
 
     print(f"\nCalculating handicaps for {total_events} {event_label} ({total_competitors} total {competitor_label})...")
     print(f"{'=' * 70}\n")
+
+    staged_tournament_state = dict(tournament_state)
+    tournament_cutoff = ensure_prediction_as_of(staged_tournament_state)
+    successful_updates = []
+    failed_events = []
 
     # Calculate handicaps for each event
     for event_idx, event in enumerate(tournament_state["events"], 1):
@@ -668,6 +697,8 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
             progress_display.update(current, total, comp_name)
 
         # Calculate handicaps for this event
+        staged_event = dict(event)
+        event_cutoff = ensure_prediction_as_of(staged_event, fallback=tournament_cutoff)
         handicap_results = calculate_ai_enhanced_handicaps(
             event["all_competitors_df"],
             event["wood_species"],
@@ -676,22 +707,38 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
             event["event_code"],
             results_df,
             progress_callback=show_progress,
+            prediction_as_of=event_cutoff,
         )
 
         if not handicap_results:
             progress_display.finish("No handicap results returned")
             print(f"\n[WARN] Failed to calculate handicaps for {event['event_name']}")
-            print("Skipping this event...")
+            print("Existing marks and generated heats will be cleared.")
+            failed_events.append(event)
             continue
 
         result_label = "competitor" if len(handicap_results) == 1 else "competitors"
         progress_display.finish(f"Completed {len(handicap_results)} {result_label}")
 
-        # Update event with handicap results
-        event["handicap_results_all"] = handicap_results
-        event["status"] = "ready"  # Now ready for heat generation
+        successful_updates.append((event, handicap_results, staged_event["prediction_as_of"]))
 
         print(f"\n[OK] Event {event_idx}: Handicaps calculated for {len(handicap_results)} {result_label}")
+
+    tournament_state["prediction_as_of"] = staged_tournament_state["prediction_as_of"]
+    invalidated_schedule = False
+    for event, handicap_results, prediction_as_of in successful_updates:
+        invalidated_schedule = bool(event.get("rounds")) or invalidated_schedule
+        event["rounds"] = []
+        event["handicap_results_all"] = handicap_results
+        event["prediction_as_of"] = prediction_as_of
+        event["status"] = "ready"
+    for event in failed_events:
+        invalidated_schedule = bool(event.get("rounds")) or invalidated_schedule
+        event["rounds"] = []
+        event["handicap_results_all"] = []
+        event["status"] = "recalculation_failed"
+    if invalidated_schedule and "schedule" in tournament_state:
+        tournament_state["schedule"] = []
 
     # Display final summary
     print(f"{'=' * 70}")
@@ -703,7 +750,11 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
 
     print(f"Events processed: {len(calculated_events)}/{total_events}")
     print(f"Competitors analyzed: {calculated_competitors}")
-    print("Status: All events ready for heat generation")
+    if failed_events:
+        print(f"Failed events: {len(failed_events)}")
+        print("Status: NOT READY - failed events must be recalculated")
+    else:
+        print("Status: All events ready for heat generation")
     print(f"{'=' * 70}")
 
     # Auto-save
@@ -730,11 +781,11 @@ def analyze_single_event(event: Dict, event_index: int, tournament_state: Dict) 
         event_index: Index in tournament_state['events']
         tournament_state: Multi-event tournament state dict
     """
-    from woodchopping.predictions.prediction_aggregator import (
+    from woodchopping.simulation import simulate_and_assess_handicaps
+    from woodchopping.ui.prediction_display import (
         display_comprehensive_prediction_analysis,
         display_handicap_calculation_explanation,
     )
-    from woodchopping.simulation import simulate_and_assess_handicaps
 
     print(f"\n{'?' + '?' * 68 + '?'}")
     title = f"HANDICAP ANALYSIS: {event['event_name']}".center(68)
@@ -2132,7 +2183,9 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
 
     # Validation: All events must have heats generated
     not_ready = [
-        e for e in tournament_state.get("events", []) if e["status"] == "pending" or e["status"] == "configured"
+        event
+        for event in tournament_state.get("events", [])
+        if event.get("status") not in {"scheduled", "in_progress", "completed"} or not event.get("rounds")
     ]
     if not_ready:
         print(f"\n[WARN] ERROR: {len(not_ready)} event(s) not ready for results:")
@@ -2187,7 +2240,7 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
                 heat_assignment_df,  # Legacy param (not used)
                 event_wood,
                 round_object=round_obj,
-                tournament_state=None,  # Pass None to avoid single-event logic
+                tournament_state=tournament_state,
                 event_name=event_obj["event_name"],  # Pass event name for HeatID
             )
 

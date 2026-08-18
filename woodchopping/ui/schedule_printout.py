@@ -31,6 +31,19 @@ def generate_printable_schedule(tournament_state: Dict) -> str:
     is_multi_event = tournament_state.get("tournament_mode") == "multi_event"
 
     if is_multi_event:
+        failed_events = [
+            event.get("event_name", "Unknown Event")
+            for event in tournament_state.get("events", [])
+            if event.get("status") == "recalculation_failed"
+        ]
+        if failed_events:
+            names = ", ".join(failed_events)
+            raise ValueError(
+                "Cannot export a schedule while handicap recalculation has failed "
+                f"for: {names}. Recalculate successfully and regenerate the day schedule."
+            )
+
+    if is_multi_event:
         schedule_text = _generate_multi_event_schedule(tournament_state)
         filename = _generate_filename(tournament_state.get("tournament_name", "Tournament"))
     else:
@@ -224,7 +237,12 @@ def display_and_export_schedule(tournament_state: Dict):
     print("=" * 70)
 
     # Generate schedule
-    schedule_text = generate_printable_schedule(tournament_state)
+    try:
+        schedule_text = generate_printable_schedule(tournament_state)
+    except ValueError as exc:
+        print(f"\n[WARN] {exc}")
+        input("\nPress Enter to continue...")
+        return False
 
     # Display on screen
     print("\n" + schedule_text)
@@ -234,3 +252,4 @@ def display_and_export_schedule(tournament_state: Dict):
     print("=" * 70)
 
     input("\nPress Enter to continue...")
+    return True

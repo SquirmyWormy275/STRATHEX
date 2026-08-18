@@ -2,10 +2,10 @@
 Woodchopping Handicap Management System
 
 A comprehensive system for calculating fair handicaps in woodchopping competitions
-using ML predictions, LLM reasoning, and Monte Carlo simulation.
+using STRATHMARK v2 predictions and Monte Carlo simulation.
 """
 
-__version__ = "6.0.1"
+__version__ = "7.0.0"
 __author__ = "STRATHEX Project"
 
 # Import key components for easy access
@@ -18,8 +18,8 @@ from woodchopping.data.excel_io import (
 from woodchopping.data.preprocessing import engineer_features_for_ml
 from woodchopping.data.validation import validate_results_data
 
-# Note: Predictions, handicaps, and simulation modules are placeholders
-# Functions remain in FunctionsLibrary.py for now
+# Live handicap calculations are exposed through ``woodchopping.handicaps``;
+# package-level exports remain limited to stable data utilities.
 
 __all__ = [
     # Data

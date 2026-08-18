@@ -109,5 +109,5 @@ Pytest offers three layers of test exclusion, and each problem needs the right o
 ## Related Issues
 - [README.md CI/CD section](../../../README.md) — documents the `-m "not ollama"` filter
 - [.github/workflows/ci.yml](../../../.github/workflows/ci.yml) — consumer of the `ollama` marker
-- [docs/PROJECT_STRUCTURE.md](../PROJECT_STRUCTURE.md) — may need refresh to mention the new `tests/conftest.py` and marker strategy
+- [docs/PROJECT_STRUCTURE.md](../../PROJECT_STRUCTURE.md) — current project and test structure
 - Commit 9ee59c8 — the conftest + marker changes

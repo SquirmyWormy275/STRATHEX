@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "strathex"
 dynamic = ["version"]
-description = "AI-Powered Woodchopping Handicap Calculator and Tournament Management System"
+description = "STRATHMARK-powered woodchopping handicap and tournament management system"
 readme = "README.md"
 requires-python = ">=3.13"
 license = { text = "MIT" }
@@ -14,15 +14,12 @@ dependencies = [
     "pandas",
     "numpy",
     "openpyxl",
-    "scikit-learn",
-    "xgboost",
     "requests",
     # STRATHMARK is the handicap calculation engine, released under the Apache License 2.0.
     # License compatibility: STRATHEX is MIT and Apache 2.0 is a compatible permissive license.
-    # Pinned to the behavior STRATHEX v6 was built and replay-tested against.
-    # STRATHMARK 2.0 is API-shaped but behaviorally incompatible; see the
-    # v6.0.1 compatibility evaluation before changing this commit.
-    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@47bb143",
+    # STRATHMARK 2.0 has no published package/tag yet, so pin the exact audited
+    # source commit used by both direct-Python and HTTP parity tests.
+    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@da5c44d07311b226c1e9842104477efaf61253fa",
 ]
 
 [project.optional-dependencies]
@@ -33,6 +30,13 @@ dev = [
     "pytest",
     "pytest-cov",
     "ruff",
+]
+api-test = [
+    # Exact versions exercised by the direct/HTTP parity gate. STRATHMARK itself
+    # remains pinned above; these packages activate its optional FastAPI surface.
+    "fastapi==0.135.1",
+    "httpx==0.28.1",
+    "httpx2==2.10.0",
 ]
 
 [tool.hatch.metadata]
@@ -78,8 +82,6 @@ ignore = ["E501"]
 # Test scripts and benchmark scripts frequently manipulate sys.path before
 # importing project modules — E402 is expected.
 "tests/**/*.py" = ["E402", "F401", "F841"]
-# explanation_system_functions.py is a long judge-facing literal text module.
-"explanation_system_functions.py" = ["F401", "F841"]
 # Optional ML backends (xgboost and sklearn) are imported inside
 # try/except ImportError blocks as availability sentinels. Ruff cannot tell
 # they gate downstream code paths.

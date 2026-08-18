@@ -7,8 +7,8 @@ calculating handicap marks. All competitors start together (Mark 3) in champions
 format - fastest raw time wins.
 
 Key Features:
-    - Reuses existing prediction engine (baseline, ML, LLM)
-    - Runs 2 million Monte Carlo simulations for statistical confidence
+    - Uses STRATHMARK v2 predictions and calibrated uncertainty
+    - Runs Monte Carlo simulations for statistical confidence
     - Displays individual competitor statistics (time variations, consistency)
     - AI-powered race analysis focusing on matchups and competitive dynamics
     - View-only (no tournament state changes or Excel writes)
@@ -16,18 +16,15 @@ Key Features:
 
 import math
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import numpy as np
 import pandas as pd
 
 from woodchopping.data import load_results_df
+from woodchopping.handicaps import calculate_ai_enhanced_handicaps
 from woodchopping.predictions.baseline import get_competitor_historical_times_normalized
-from woodchopping.predictions.prediction_aggregator import (
-    get_all_predictions,
-    select_best_prediction,
-)
 from woodchopping.simulation.monte_carlo import run_monte_carlo_simulation
 from woodchopping.simulation.visualization import (
     generate_simulation_summary,
@@ -35,6 +32,19 @@ from woodchopping.simulation.visualization import (
 )
 from woodchopping.ui.competitor_ui import select_all_event_competitors
 from woodchopping.ui.wood_ui import select_event_code, wood_menu
+
+_MAX_CHAMPIONSHIP_SIMULATIONS = 250_000
+_MAX_CHAMPIONSHIP_SIMULATION_CELLS = 2_000_000
+
+
+def _championship_simulation_count(num_competitors: int) -> int:
+    """Cap vectorized simulation memory while retaining a useful sample."""
+    if num_competitors <= 0:
+        return 0
+    return min(
+        _MAX_CHAMPIONSHIP_SIMULATIONS,
+        max(10_000, _MAX_CHAMPIONSHIP_SIMULATION_CELLS // num_competitors),
+    )
 
 
 def run_championship_simulator(comp_df):
@@ -49,12 +59,12 @@ def run_championship_simulator(comp_df):
     Workflow:
         1. Wood configuration (species, diameter, quality)
         2. Event type selection (SB/UH)
-        3. Competitor selection (no enforced limits for fun scenarios)
+        3. Competitor selection (bounded by the STRATHMARK field contract)
         4. Optional per-competitor wood overrides
         5. Optional era normalization (time adjustments by year)
         6. Optional peak/prime form filtering for selected competitors
         7. Generate predictions for all competitors (all receive Mark 3)
-        8. Run Monte Carlo simulation (2 million races)
+        8. Run a memory-bounded adaptive Monte Carlo simulation
         9. Display championship results table with win rates
         10. Display visualization (bar chart)
         11. Display individual competitor statistics
@@ -169,6 +179,7 @@ def run_championship_simulator(comp_df):
         results_df=results_df,
         peak_windows=peak_windows,
         peak_names=peak_names,
+        prediction_as_of=datetime.now(timezone.utc).date(),
     )
 
     if not predictions:
@@ -227,16 +238,21 @@ def run_championship_simulator(comp_df):
 
     analysis = None
     if sim_outputs:
-        num_simulations = 10_000_000
+        num_simulations = _championship_simulation_count(len(predictions))
         print(f"\n[SIMULATION] Running {num_simulations:,} race simulations...")
-        print("This may take several minutes depending on hardware.")
-        analysis = run_monte_carlo_simulation(
-            predictions,
-            num_simulations=num_simulations,
-            track_finish_orders=sim_options.get("championship_analysis", False),
-            track_podium_margins=sim_options.get("podium_margins", False),
-            show_live_leaders=sim_options.get("live_updates", False),
-        )
+        print("Simulation count is capped adaptively to protect race-day memory.")
+        try:
+            analysis = run_monte_carlo_simulation(
+                predictions,
+                num_simulations=num_simulations,
+                track_finish_orders=sim_options.get("championship_analysis", False),
+                track_podium_margins=sim_options.get("podium_margins", False),
+                include_finish_spreads=False,
+                show_live_leaders=sim_options.get("live_updates", False),
+            )
+        except MemoryError:
+            print("\n[WARN] Championship simulation exceeded available memory and was stopped safely.")
+            analysis = None
 
     # Display simulation summary
     if sim_options.get("monte_carlo_summary") and analysis is not None:
@@ -290,12 +306,13 @@ def _generate_championship_predictions(
     results_df: Optional[pd.DataFrame] = None,
     peak_windows: Optional[Dict[str, Dict]] = None,
     peak_names: Optional[set] = None,
+    prediction_as_of=None,
 ) -> List[Dict]:
     """
     Generate predictions for all competitors with Mark 3 (championship format).
 
-    Uses the standard prediction pipeline (baseline, ML, LLM) but assigns
-    Mark 3 to all competitors since championship format has no handicaps.
+    Uses STRATHMARK v2 but assigns Mark 3 to all competitors because
+    championship format has no handicaps.
 
     Args:
         selected_df: DataFrame of selected competitors
@@ -307,11 +324,13 @@ def _generate_championship_predictions(
     if results_df is None:
         results_df = load_results_df()
     predictions = []
+    expected_bundle = None
+    groups = {}
 
     total = len(selected_df)
     print(f"\nGenerating predictions for {total} competitors...")
 
-    for idx, (_, row) in enumerate(selected_df.iterrows(), 1):
+    for row_index, row in selected_df.iterrows():
         comp_name = row["competitor_name"]
         comp_wood = competitor_woods.get(comp_name, wood_selection)
         prime_info = None
@@ -327,36 +346,76 @@ def _generate_championship_predictions(
                         prime_info.get("end_date"),
                     )
 
-        # Progress indicator
-        sys.stdout.write(f"\r  Progress: {idx}/{total} ({comp_name[:30]}...)")
-        sys.stdout.flush()
+        group_key = (
+            comp_wood["species"],
+            float(comp_wood["size_mm"]),
+            int(comp_wood["quality"]),
+            str(comp_wood["event"]).upper(),
+            id(results_for_comp),
+            results_for_comp is results_df,
+        )
+        group = groups.setdefault(
+            group_key,
+            {
+                "indices": [],
+                "wood": comp_wood,
+                "results": results_for_comp,
+                "include_store_history": results_for_comp is results_df,
+                "prime_by_name": {},
+            },
+        )
+        group["indices"].append(row_index)
+        group["prime_by_name"][comp_name] = prime_info
 
-        # Get all 3 prediction methods
-        all_preds = get_all_predictions(
-            comp_name,
+    completed = 0
+    for group in groups.values():
+        comp_wood = group["wood"]
+        group_df = selected_df.loc[group["indices"]]
+        field_result = calculate_ai_enhanced_handicaps(
+            group_df,
             comp_wood["species"],
             comp_wood["size_mm"],
             comp_wood["quality"],
             comp_wood["event"],
-            results_for_comp,
-            tournament_results=None,  # No tournament weighting for mock events
+            group["results"],
+            prediction_as_of=prediction_as_of,
+            include_store_history=group["include_store_history"],
         )
+        expected_names = group_df["competitor_name"].astype(str).tolist()
+        if not field_result or len(field_result) != len(expected_names):
+            print("\n[WARN] STRATHMARK did not return the complete championship field.")
+            return []
 
-        # Select best prediction
-        pred_time, method, confidence, explanation = select_best_prediction(all_preds)
+        by_name = {str(result["name"]).strip().casefold(): result for result in field_result}
+        if len(by_name) != len(expected_names):
+            print("\n[WARN] STRATHMARK returned duplicate championship identities.")
+            return []
 
-        predictions.append(
-            {
-                "name": comp_name,
-                "predicted_time": pred_time,
-                "mark": 3,  # Championship: everyone starts together
-                "method_used": method,
-                "confidence": confidence,
-                "predictions": all_preds,
-                "wood": dict(comp_wood),
-                "prime_window": prime_info,
-            }
-        )
+        for comp_name in expected_names:
+            result = by_name.get(comp_name.strip().casefold())
+            if result is None:
+                print(f"\n[WARN] STRATHMARK omitted {comp_name}; championship simulation aborted.")
+                return []
+            prediction = dict(result)
+            bundle = (
+                prediction.get("engine_version"),
+                prediction.get("model_version"),
+                prediction.get("calibration_version"),
+                prediction.get("evidence_cutoff"),
+            )
+            if expected_bundle is None:
+                expected_bundle = bundle
+            elif bundle != expected_bundle:
+                print("\n[WARN] STRATHMARK model evidence changed during championship prediction.")
+                print("Championship simulation aborted rather than mixing model snapshots.")
+                return []
+            prediction["mark"] = 3
+            prediction["wood"] = dict(comp_wood)
+            prediction["prime_window"] = group["prime_by_name"].get(comp_name)
+            predictions.append(prediction)
+            completed += 1
+            sys.stdout.write(f"\r  Progress: {completed}/{total} ({comp_name[:30]}...)")
+            sys.stdout.flush()
 
     print("\n")  # New line after progress
 
@@ -905,6 +964,7 @@ def _display_wood_swap_sensitivity(
             results_df=results_df,
             peak_windows=peak_windows,
             peak_names=peak_names,
+            prediction_as_of=base_predictions[0].get("evidence_cutoff") if base_predictions else None,
         )
 
         scenario_rank = {pred["name"]: i + 1 for i, pred in enumerate(scenario_predictions)}
@@ -1000,7 +1060,7 @@ def _select_sim_options(predictions: List[Dict]) -> Dict[str, Any]:
     options_list = [
         ("prediction_table", "Prediction table"),
         ("prediction_heatmap", "Confidence heatmap (table symbols)"),
-        ("prediction_disagreement", "Prediction disagreement report"),
+        ("prediction_disagreement", "STRATHMARK v2 uncertainty report"),
         ("confidence_weighted", "Confidence-weighted leaderboard"),
         ("personal_best_watch", "Personal best watch"),
         ("cross_wood_transfer", "Cross-wood transferability"),
@@ -1114,36 +1174,23 @@ def _confidence_symbol(confidence: str) -> str:
 
 def _display_prediction_disagreement(predictions: List[Dict]):
     print("\n" + "=" * 70)
-    print("  PREDICTION DISAGREEMENT REPORT")
+    print("  STRATHMARK V2 UNCERTAINTY REPORT")
     print("=" * 70)
-    print(f"{'Competitor':<26} {'Spread':<10} {'Spread %':<10} {'Methods':<14} {'Flag'}")
+    print(f"{'Competitor':<26} {'90% interval':<20} {'Width':<10} {'State'}")
     print("-" * 70)
 
     for pred in predictions:
-        name = pred["name"]
-        preds = pred.get("predictions", {})
-        times = []
-        methods = []
-        for key, label in (("baseline", "B"), ("ml", "M"), ("llm", "L")):
-            val = preds.get(key, {}).get("time")
-            if val is not None:
-                times.append(val)
-                methods.append(label)
-        if len(times) < 2:
-            spread = 0.0
-            pct = 0.0
+        interval = pred.get("prediction_interval") or {}
+        lower = interval.get("lower")
+        upper = interval.get("upper")
+        if lower is None or upper is None:
+            interval_text = "unavailable"
+            width_text = "n/a"
         else:
-            spread = max(times) - min(times)
-            pct = (spread / (sum(times) / len(times))) * 100.0
-
-        flag = ""
-        if spread >= 4.0 or pct >= 20.0:
-            flag = "HIGH"
-        elif spread >= 2.5 or pct >= 12.0:
-            flag = "MED"
-
-        method_str = "".join(methods) if methods else "N/A"
-        print(f"{name:<26} {spread:>6.2f}s   {pct:>6.1f}%    {method_str:<14} {flag}")
+            interval_text = f"{lower:.2f}-{upper:.2f}s"
+            width_text = f"{upper - lower:.2f}s"
+        state = "DEGRADED" if pred.get("degraded") else interval.get("calibration_state", "ready")
+        print(f"{pred['name']:<26} {interval_text:<20} {width_text:<10} {state}")
 
     print("-" * 70)
 

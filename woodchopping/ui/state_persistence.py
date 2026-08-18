@@ -28,7 +28,9 @@ _REGULAR_ROUND_TYPES = frozenset({"heat", "semi", "final"})
 _REGULAR_ROUND_STATUSES = frozenset({"pending", "in_progress", "completed"})
 _BRACKET_ROUND_STATUSES = frozenset({"pending", "in_progress", "completed"})
 _BRACKET_MATCH_STATUSES = frozenset({"pending", "in_progress", "completed", "bye", "forfeit"})
-_EVENT_STATUSES = frozenset({"pending", "configured", "ready", "scheduled", "in_progress", "completed"})
+_EVENT_STATUSES = frozenset(
+    {"pending", "configured", "ready", "recalculation_failed", "scheduled", "in_progress", "completed"}
+)
 _EVENT_FORMATS = frozenset({"single_heat", "heats_to_finals", "heats_to_semis_to_finals", "bracket"})
 _EVENT_TYPES = frozenset({"handicap", "championship", "bracket"})
 

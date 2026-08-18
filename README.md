@@ -1,134 +1,89 @@
-# STRATHEX
+# STRATHEX 7
 
-**A CLI tournament management system for Australian-style woodchopping competitions, built on the STRATHMARK handicap engine.**
+STRATHEX is the judge-facing woodchopping tournament application. It manages rosters, wood setup, handicap and championship fields, brackets, multi-event days, result entry, autosave, and Excel exports. Numeric prediction and mark assignment are owned by [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK).
 
-A world-champion axeman cuts a 300mm Standing Block in about 25 seconds. A skilled amateur takes 60. Run them in the same heat without a handicap and the amateur has zero chance, so the amateur stays home and the tournament dies. Handicapping fixes this by delaying faster competitors' starts so everyone should finish together. STRATHEX predicts each competitor's cutting time, applies the configured mark formula, and gives judges a Monte Carlo fairness check before a single axe lands.
+## Current runtime
 
-The current release combines a time-decayed statistical baseline, an XGBoost machine-learning model trained per event, and an optional Ollama LLM that reasons over wood quality and recent form. It reports simulated spread and win-rate evidence to the judge; those figures depend on the selected field and are not a general production guarantee. As of V6.0 the calculation engine lives in the separately versioned **[STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK)** package.
+STRATHEX 7 is integrated with STRATHMARK 2.0 at the exact audited commit `da5c44d07311b226c1e9842104477efaf61253fa`. STRATHMARK has not yet published a PyPI package or tagged release, so the Git dependency is intentionally commit-pinned.
 
-## My role
+The live calculation contract is:
 
-Solo developer. I designed and built STRATHEX end-to-end: the CLI, the prediction stack, the Monte Carlo validator, the multi-round and multi-event tournament workflows, the Excel ingest pipeline, the GitHub Actions CI matrix, and the V6.0 STRATHMARK extraction that split the calculation engine into its own repo. Australian competition rules and the historical QAA references are cited in the wiki.
+- one prior-only hierarchical prediction core;
+- stable competitor IDs and dated history;
+- one persisted, exclusive `prediction_as_of` cutoff per event;
+- calibrated forecast intervals, separate race-performance standard deviation, and explicit provenance;
+- deterministic joint optimization of legal handicap marks;
+- manual operator adjustments as explicit authority;
+- no numeric LLM prediction, no local XGBoost selection cascade, and no 97/3 same-tournament reweighting;
+- wood quality and same-tournament times retained as compatibility context but ignored by v2 numerics.
 
-## Tech stack
+Bracket seeding, championship predictions, single-event handicaps, and multi-event handicaps all use this boundary.
 
-**Runtime:** Python 3.13, pandas, numpy, openpyxl, scikit-learn, xgboost, requests.
-**Engine:** [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK) (pip-installed direct from GitHub via `pyproject.toml`), exposing `HandicapCalculator`, `run_monte_carlo_simulation`, `get_ai_assessment_of_handicaps`, and a `ResultStore` SQLite layer.
-**LLM (optional):** Ollama with the `qwen2.5:7b` model running locally.
-**Build / quality:** hatchling, ruff (lint + format), pytest with coverage. CI runs on Ubuntu and Windows for every push and pull request.
-**Persistence:** Excel (judge-portable) and SQLite at `~/.strathmark/results.db` (dual-write, idempotent migration on startup).
+## Transports
 
-## Key features
-
-- **Multi-round tournaments:** heats → semi-finals → finals with automatic advancement, per-round result entry, and 97% same-wood tournament weighting in later rounds.
-- **Multi-event tournament days:** five or six independent events on one card, each with its own wood, roster, format, payouts, and event type (Handicap or Championship).
-- **Bracket tournaments:** single and double elimination with AI-suggested seeding.
-- **Championship Race Simulator:** equal-start race outcome predictions with 2M Monte Carlo iterations and AI commentary, used as a fun analytical tool separate from handicap fairness.
-- **Three prediction methods:** statistical baseline with QAA diameter scaling, XGBoost (separate models for Standing Block and Underhand), and an optional LLM that adjusts for wood quality and recent form. Selection uses expected-error scoring rather than a fixed cascade.
-- **Monte Carlo fairness validation:** default 250,000 race iterations, validating ±3s absolute variance per competitor (deliberately not proportional variance, which would advantage faster competitors).
-- **Pinned mark contract:** 3-second minimum mark, 183-second system mark ceiling, and Python half-to-even rounding of predicted-time gaps, delegated to the pinned STRATHMARK engine.
-
-## Architecture
-
-```text
-STRATHEX (this repo)                     STRATHMARK (sister repo)
-+------------------------------+         +------------------------------+
-| MainProgramV5_2.py           |         | calculator.py                |
-|   tournament loop, menus     |         |   HandicapCalculator         |
-| woodchopping/                |         | predictor.py                 |
-|   ui/      Excel I/O, judge  |  pip    |   prediction cascade         |
-|   data/    DataFrame plumbing| ------> | variance.py                  |
-|   handicaps/  thin wrappers  |  via    |   Monte Carlo (250k - 2M)    |
-|   simulation/ proxy modules  | git+    | fairness.py                  |
-|   strathmark_adapter.py *    | https   |   AI fairness assessment     |
-+------------------------------+         | store.py + migrations/       |
-                                         |   SQLite ResultStore         |
-                                         | api.py                       |
-                                         |   FastAPI HTTP endpoints     |
-                                         +------------------------------+
-* the only file in STRATHEX that imports strathmark
-```
-
-Full module map and design-decision rationale: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [wiki/Architecture](wiki/Architecture.md).
-
-The clean adapter boundary means STRATHMARK has zero imports from STRATHEX. The library is Apache 2.0 licensed. STRATHEX deliberately pins commit `47bb143`: the newer STRATHMARK 2.0 API imports successfully but changes prediction authority, later-round weighting, quality handling, and mark optimization. See [the compatibility evaluation](docs/STRATHMARK_2_COMPATIBILITY_EVALUATION.md) before changing the pin.
-
-## Quickstart
+Direct Python is the default and remains usable without a race-day network:
 
 ```powershell
-# Clone and install. STRATHMARK is pulled automatically as a Git dependency.
-git clone https://github.com/SquirmyWormy275/STRATHEX.git
-cd STRATHEX
-pip install -e ".[dev]"
-
-# Run the CLI.
 python MainProgramV5_2.py
-
-# Run the test suite (skips Ollama-dependent tests, same as CI).
-pytest tests/ -v -m "not ollama" --cov=woodchopping
 ```
 
-**Prerequisites:** Python 3.13+, an Excel file at `woodchopping_clean.xlsx` (a sample is included), and optionally a local Ollama instance running `qwen2.5:7b` if you want the LLM predictor.
-
-For development against a live STRATHMARK checkout:
+The demo can explicitly call STRATHMARK's stateless FastAPI field endpoint:
 
 ```powershell
-git clone https://github.com/SquirmyWormy275/STRATHMARK.git ../STRATHMARK
-pip install -e ../STRATHMARK
+# In the STRATHMARK checkout
+$env:STRATHMARK_DB_PATH = "C:\path\to\strathmark-demo.db"
+uvicorn strathmark.api:app --host 127.0.0.1 --port 8000
+
+# In the STRATHEX shell
+$env:STRATHMARK_TRANSPORT = "http"
+$env:STRATHMARK_API_URL = "http://127.0.0.1:8000"
+python MainProgramV5_2.py
 ```
 
-Edits to STRATHMARK source then take effect on the next STRATHEX run with no rebuild step.
+HTTP mode checks the audited 2.0.0 `/calculate` OpenAPI request/response shape and every result's required audit metadata. It never silently falls back to Python or follows redirects, and response bodies are size-bounded. Plaintext HTTP is accepted only on loopback; remote endpoints require HTTPS, and configured URLs cannot contain credentials, paths, queries, or fragments. `POST /calculate` is stateless and unauthenticated, so do not expose it publicly without a deliberate security boundary.
 
-## What it looks like
+## Persistence
 
-Real CLI banner from the tournament control screen:
+Excel is the judge-canonical result record. STRATHEX then attempts a best-effort write to STRATHMARK ResultStore. These are two separate writes, not one cross-store atomic transaction. A ResultStore failure does not roll back a successful Excel write.
 
-```text
-======================================================================
-                     TOURNAMENT CONTROL SYSTEM
-                  Spring Open 2026  ·  5 events
-----------------------------------------------------------------------
-  1. Configure event (wood, format, stands, type)
-  2. Select competitors
-  3. Calculate handicap marks
-  4. View Monte Carlo fairness analysis
-  5. Generate next round
-  6. Record results
-  7. Approve and advance
-  8. Tournament summary
-  9. Save and exit
-======================================================================
+Single-event and multi-event JSON state use validated temporary files, atomic replacement, and rolling backups. Before STRATHMARK v2 first opens an existing ResultStore, STRATHEX creates a one-time `.pre-v2.bak` copy. New result writes include a stable competition ID and event date.
+
+ResultStore history, STRATHMARK PredictionLedger receipts, and the public stateless calculation endpoint are distinct facilities. STRATHEX 7 uses ResultStore history locally and does not write trusted PredictionLedger receipts through `/ledger/calculate`.
+
+## Install and test
+
+Requirements: Python 3.13+, Windows or another terminal with Unicode support, and the supplied workbook schema.
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -e ".[dev,api-test]"
 ```
 
-Functional symbols are normalized to plain ASCII while a small box-drawing alphabet is retained. Judges run it on a single laptop in a sawdust pile, and the retro interface is meant to stay low-friction.
+Tests must always use a disposable STRATHMARK database:
+
+```powershell
+$env:STRATHMARK_TEST_DB = "1"
+$env:STRATHMARK_DB_PATH = "$env:TEMP\strathex-tests.db"
+python -m pytest -p no:cacheprovider --basetemp "$env:TEMP\strathex-pytest"
+python -m ruff check --no-cache .
+python -m ruff format --check --no-cache .
+```
+
+The cache flags are needed only in restricted nested worktrees. Never point tests at the production ResultStore or workbook.
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): system architecture, data flow, failure modes, what I would do differently
-- [docs/CASE_STUDY.md](docs/CASE_STUDY.md): design decisions and what shipped, with the rationale for each
-- [docs/SYSTEM_STATUS.md](docs/SYSTEM_STATUS.md): current capabilities, ML model audit, fairness metrics
-- [docs/CURRENT_RUNTIME_CONTRACT.md](docs/CURRENT_RUNTIME_CONTRACT.md): maintained release authority and operator boundaries
-- [docs/RELEASE_v6.0.1.md](docs/RELEASE_v6.0.1.md): v6.0.1 changes, compatibility, and release evidence
-- [docs/PROMPT_ENGINEERING_GUIDELINES.md](docs/PROMPT_ENGINEERING_GUIDELINES.md): LLM prompt discipline and version history
-- [docs/solutions/](docs/solutions/): 13 documented solutions to past problems, indexed by `module`, `tags`, `problem_type`
-- [wiki/](wiki/): 17-page judge-facing wiki (handicap explanation, AAA/QAA rule compliance, FAQ, troubleshooting)
-- **CI:** [.github/workflows/ci.yml](.github/workflows/ci.yml) runs ruff lint + pytest on Ubuntu and Windows + a build-and-import verification step
+- [Current runtime contract](docs/CURRENT_RUNTIME_CONTRACT.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Handicap system](docs/HANDICAP_SYSTEM_EXPLAINED.md)
+- [STRATHMARK 2 migration decision](docs/STRATHMARK_2_COMPATIBILITY_EVALUATION.md)
+- [STRATHEX 7 release notes](docs/RELEASE_v7.0.0.md)
+- [Documentation index](docs/INDEX.md)
+- [Versioned wiki source](wiki/README.md)
 
-## Project context
-
-STRATHEX is a personal project showcasing both the prototype application and the STRATHMARK engine extraction. It targets two audiences: hiring managers evaluating my work, and US woodchopping show runners exploring Australian-style handicap tournaments. The handicap methodology is grounded in 150+ years of empirical Australian data via the Queensland Axemen's Association scaling tables. For a deeper system explanation written for tournament organizers, see the [wiki Home page](wiki/Home.md).
-
-## About the author
-
-**Alex Kaper.** MIS graduate (May 2026) from the University of Montana College of Business.
-
-- LinkedIn: [linkedin.com/in/alex-kaper](https://linkedin.com/in/alex-kaper)
-- Email: [alex.j.kaper@gmail.com](mailto:alex.j.kaper@gmail.com)
+Dated v6.0.1 release and audit documents are preserved as historical evidence. Baseline/XGBoost/Ollama, QAA interpolation, and prompt-engineering reports are historical and do not describe the live v7 runtime.
 
 ## License
 
-[MIT](LICENSE)
-
----
-
-*Last updated: August 2026 — v6.0.1*
+STRATHEX is MIT licensed. STRATHMARK is Apache 2.0 licensed.
