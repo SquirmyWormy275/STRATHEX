@@ -16,15 +16,11 @@ def _single_state(label: str) -> dict:
     return {
         "event_name": label,
         "all_competitors": ["Alice", "Bob"],
-        "all_competitors_df": pd.DataFrame(
-            {"competitor_name": ["Alice", "Bob"]}
-        ),
+        "all_competitors_df": pd.DataFrame({"competitor_name": ["Alice", "Bob"]}),
         "rounds": [
             {
                 "round_name": "Heat 1",
-                "competitors_df": pd.DataFrame(
-                    {"competitor_name": ["Alice", "Bob"]}
-                ),
+                "competitors_df": pd.DataFrame({"competitor_name": ["Alice", "Bob"]}),
             }
         ],
     }
@@ -95,22 +91,16 @@ def test_multi_event_state_round_trip_handles_dataframes_and_numpy(tmp_path):
             {
                 "event_name": "300mm SB",
                 "all_competitors": ["Alice"],
-                "all_competitors_df": pd.DataFrame(
-                    {"competitor_name": ["Alice"]}
-                ),
+                "all_competitors_df": pd.DataFrame({"competitor_name": ["Alice"]}),
                 "rounds": [
                     {
                         "round_name": "Heat 1",
-                        "competitors_df": pd.DataFrame(
-                            {"competitor_name": ["Alice"]}
-                        ),
+                        "competitors_df": pd.DataFrame({"competitor_name": ["Alice"]}),
                     }
                 ],
             }
         ],
-        "competitor_roster_df": pd.DataFrame(
-            {"competitor_name": ["Alice"]}
-        ),
+        "competitor_roster_df": pd.DataFrame({"competitor_name": ["Alice"]}),
     }
 
     state_persistence.save_multi_event_tournament(state, str(target))
