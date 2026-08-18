@@ -24,9 +24,7 @@ def _history_df() -> pd.DataFrame:
             "species": ["S01", "S01", "S01", "S01"],
             "size_mm": [300.0, 300.0, 300.0, 300.0],
             "quality": [5, 5, 5, 5],
-            "date": pd.to_datetime(
-                ["2025-01-01", "2025-02-01", "2025-01-01", "2025-02-01"]
-            ),
+            "date": pd.to_datetime(["2025-01-01", "2025-02-01", "2025-01-01", "2025-02-01"]),
         }
     )
 
@@ -43,12 +41,8 @@ def test_enrich_results_with_roster_fills_gender_without_mutating_inputs():
     enriched = adapter.enrich_results_with_roster(results, roster)
 
     assert "gender" not in results.columns
-    assert enriched.loc[
-        enriched["competitor_name"] == "Alice Axe", "gender"
-    ].eq("F").all()
-    assert enriched.loc[
-        enriched["competitor_name"] == "Bob Block", "gender"
-    ].eq("M").all()
+    assert enriched.loc[enriched["competitor_name"] == "Alice Axe", "gender"].eq("F").all()
+    assert enriched.loc[enriched["competitor_name"] == "Bob Block", "gender"].eq("M").all()
 
 
 def test_build_records_preserves_gender_and_existing_97_percent_weight_policy():
@@ -77,9 +71,7 @@ def test_build_records_preserves_gender_and_existing_97_percent_weight_policy():
     assert len(record.history) == 2
 
 
-def test_calculation_trains_ml_selects_by_expected_error_and_reuses_predictions(
-    monkeypatch,
-):
+def test_calculation_trains_ml_selects_by_expected_error_and_reuses_predictions(monkeypatch):
     calls = {
         "train": [],
         "all_predictions": [],
@@ -176,18 +168,11 @@ def test_calculation_trains_ml_selects_by_expected_error_and_reuses_predictions(
     adapter._ML_MODEL_CACHE.clear()
     monkeypatch.setattr(adapter, "MLModel", FakeMLModel)
     monkeypatch.setattr(adapter, "get_all_predictions", fake_get_all_predictions)
-    monkeypatch.setattr(
-        adapter,
-        "select_best_prediction",
-        fake_select_best_prediction,
-    )
+    monkeypatch.setattr(adapter, "select_best_prediction", fake_select_best_prediction)
     monkeypatch.setattr(adapter, "HandicapCalculator", FakeCalculator)
 
     results_df = _history_df()
-    records = adapter.build_competitor_records(
-        ["Alice Axe", "Bob Block"],
-        results_df,
-    )
+    records = adapter.build_competitor_records(["Alice Axe", "Bob Block"], results_df)
     wood = adapter.build_wood_profile("S01", 300, 5)
     wood_df = pd.DataFrame({"speciesID": ["S01"], "janka_hard": [1690]})
 
@@ -207,15 +192,11 @@ def test_calculation_trains_ml_selects_by_expected_error_and_reuses_predictions(
     # One prediction pass per competitor: no second pass for the display table.
     assert len(calls["all_predictions"]) == 2
     assert len(calls["select"]) == 2
-    assert all(
-        call["ml_model"] is calls["train"][0][2]
-        for call in calls["all_predictions"]
-    )
+    assert all(call["ml_model"] is calls["train"][0][2] for call in calls["all_predictions"])
     assert all(call["results_df"] is results_df for call in calls["all_predictions"])
     assert all(call["wood_df"] is wood_df for call in calls["all_predictions"])
     assert all(
-        call["llm_client"]["url"] == "http://localhost:11434"
-        for call in calls["all_predictions"]
+        call["llm_client"]["url"] == "http://localhost:11434" for call in calls["all_predictions"]
     )
 
     bridge_call = calls["calculator"][1]

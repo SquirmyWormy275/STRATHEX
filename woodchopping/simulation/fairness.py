@@ -69,13 +69,8 @@ def format_ai_assessment(assessment: str, width: int = 100) -> None:
             continue
 
         # Preserve compact headings and divider lines exactly.
-        if (
-            len(stripped) <= width
-            and (
-                stripped.isupper()
-                or set(stripped) <= {"-", "=", "_"}
-                or stripped.endswith(":")
-            )
+        if len(stripped) <= width and (
+            stripped.isupper() or set(stripped) <= {"-", "=", "_"} or stripped.endswith(":")
         ):
             print(stripped)
             continue

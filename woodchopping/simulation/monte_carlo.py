@@ -39,14 +39,9 @@ def simulate_single_race(
 
     for competitor in competitors_with_marks:
         predicted_time = competitor.get("predicted_time")
-        if predicted_time is None or (
-            isinstance(predicted_time, float) and np.isnan(predicted_time)
-        ):
+        if predicted_time is None or (isinstance(predicted_time, float) and np.isnan(predicted_time)):
             name = competitor.get("name", "unknown")
-            raise ValueError(
-                f"Invalid predicted_time for competitor '{name}': "
-                f"{predicted_time!r}"
-            )
+            raise ValueError(f"Invalid predicted_time for competitor '{name}': {predicted_time!r}")
 
         variance_seconds = _get_competitor_variance_seconds(competitor)
         actual_time = np.random.normal(

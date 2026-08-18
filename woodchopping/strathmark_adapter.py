@@ -192,12 +192,8 @@ def build_competitor_records(
     )
 
     division_by_key = {_name_key(name): value for name, value in (division_map or {}).items()}
-    gender_by_key = {
-        _name_key(name): _clean_gender(value) for name, value in (gender_map or {}).items()
-    }
-    tournament_by_key = {
-        _name_key(name): value for name, value in (tournament_results or {}).items()
-    }
+    gender_by_key = {_name_key(name): _clean_gender(value) for name, value in (gender_map or {}).items()}
+    tournament_by_key = {_name_key(name): value for name, value in (tournament_results or {}).items()}
 
     records: List[CompetitorRecord] = []
     for name in competitor_names:
@@ -224,11 +220,7 @@ def build_competitor_records(
                     size_mm = 300.0
 
                 quality_value = row.get("quality", 5)
-                quality = (
-                    int(float(quality_value))
-                    if quality_value is not None and not pd.isna(quality_value)
-                    else 5
-                )
+                quality = int(float(quality_value)) if quality_value is not None and not pd.isna(quality_value) else 5
                 quality = max(1, min(10, quality))
 
                 result_date = None
@@ -534,8 +526,7 @@ def calculate_handicap_results(
             )
         except Exception as first_error:
             _log.warning(
-                "Prediction comparison failed for %s with LLM enabled; "
-                "retrying deterministic methods only: %s",
+                "Prediction comparison failed for %s with LLM enabled; retrying deterministic methods only: %s",
                 record.name,
                 first_error,
             )
