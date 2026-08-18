@@ -16,8 +16,6 @@ dependencies = [
     "openpyxl",
     "scikit-learn",
     "xgboost",
-    "lightgbm",
-    "matplotlib",
     "requests",
     # STRATHMARK is the handicap calculation engine, released under the Apache License 2.0.
     # License compatibility: STRATHEX is MIT and Apache 2.0 is a compatible permissive license.
@@ -79,12 +77,7 @@ ignore = ["E501"]
 "tests/**/*.py" = ["E402", "F401", "F841"]
 # explanation_system_functions.py is a long judge-facing literal text module.
 "explanation_system_functions.py" = ["F401", "F841"]
-# Optional ML backends (xgboost, lightgbm, sklearn) are imported inside
+# Optional ML backends (xgboost and sklearn) are imported inside
 # try/except ImportError blocks as availability sentinels. Ruff cannot tell
 # they gate downstream code paths.
 "woodchopping/predictions/ml_model.py" = ["F401"]
-"woodchopping/predictions/lightgbm_model.py" = ["F401"]
-"woodchopping/predictions/randomforest_model.py" = ["F401"]
-"woodchopping/predictions/ridge_model.py" = ["F401"]
-"woodchopping/predictions/stacking_ensemble.py" = ["F401"]
-"woodchopping/predictions/calibration.py" = ["F401"]

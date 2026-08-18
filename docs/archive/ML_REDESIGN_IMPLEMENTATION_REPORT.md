@@ -1,5 +1,10 @@
 # ML Prediction Engine Redesign - Implementation Report
 
+> **Historical document.** The experimental stacking, calibration, diagnostics,
+> and production-registry modules described here were never connected to the
+> shipped STRATHEX runtime and were removed in v6.0.1. This report is retained
+> as design history, not as a description of current behavior.
+
 **Date**: 2026-01-11
 **System**: STRATHEX Woodchopping Handicap Calculator
 **Scope**: Complete ML architecture redesign for maximum predictive accuracy
@@ -111,13 +116,13 @@ Successfully implemented a **hierarchical stacking ensemble** combining 6 base m
 **Parameters**:
 ```python
 {
-    'num_leaves': 63,
-    'learning_rate': 0.05,
-    'n_estimators': 250,
-    'feature_fraction': 0.8,
-    'bagging_fraction': 0.8,
-    'lambda_l1': 0.1,
-    'lambda_l2': 0.1
+    "num_leaves": 63,
+    "learning_rate": 0.05,
+    "n_estimators": 250,
+    "feature_fraction": 0.8,
+    "bagging_fraction": 0.8,
+    "lambda_l1": 0.1,
+    "lambda_l2": 0.1,
 }
 ```
 
@@ -136,13 +141,7 @@ Successfully implemented a **hierarchical stacking ensemble** combining 6 base m
 
 **Parameters**:
 ```python
-{
-    'n_estimators': 300,
-    'max_depth': 20,
-    'max_features': 'sqrt',
-    'oob_score': True,
-    'bootstrap': True
-}
+{"n_estimators": 300, "max_depth": 20, "max_features": "sqrt", "oob_score": True, "bootstrap": True}
 ```
 
 **Functions**:
@@ -231,12 +230,12 @@ INPUT → BASE MODELS (6) → META-MODEL → CALIBRATION → OUTPUT
 **Parameters**:
 ```python
 {
-    'n_estimators': 100,
-    'max_depth': 3,        # Shallow to avoid overfitting
-    'learning_rate': 0.1,
-    'reg_alpha': 0.5,      # Heavy regularization
-    'reg_lambda': 1.0,
-    'subsample': 0.8
+    "n_estimators": 100,
+    "max_depth": 3,  # Shallow to avoid overfitting
+    "learning_rate": 0.1,
+    "reg_alpha": 0.5,  # Heavy regularization
+    "reg_lambda": 1.0,
+    "subsample": 0.8,
 }
 ```
 
@@ -286,7 +285,7 @@ class EnsemblePrediction:
 ```python
 def calibrate(self, prediction: float, event_code: str) -> float:
     """Apply isotonic calibration to fix bias"""
-    if event_code == 'SB' and self.calibrator_sb is not None:
+    if event_code == "SB" and self.calibrator_sb is not None:
         return float(self.calibrator_sb.predict([prediction])[0])
     ...
 ```
@@ -305,12 +304,7 @@ def calibrate(self, prediction: float, event_code: str) -> float:
 
 **Implementation**:
 ```python
-def predict_std_dev(
-    self,
-    competitor_features: Dict[str, float],
-    event_code: str,
-    baseline_std: float = 3.0
-) -> float:
+def predict_std_dev(self, competitor_features: Dict[str, float], event_code: str, baseline_std: float = 3.0) -> float:
     """Predict competitor-specific std_dev"""
     # Combines predicted variance with baseline (floor)
     # Returns clamped value [1.5s, 6.0s]
@@ -329,9 +323,7 @@ def predict_std_dev(
 **Implementation**:
 ```python
 def apply_convergence_calibration(
-    predictions: List[Tuple[str, float]],
-    target_spread: float = 2.0,
-    preserve_order: bool = True
+    predictions: List[Tuple[str, float]], target_spread: float = 2.0, preserve_order: bool = True
 ) -> List[Tuple[str, float]]:
     """Compress spread via linear scaling toward median"""
     compression_factor = target_spread / current_spread
@@ -348,7 +340,7 @@ def calibrate_ensemble_prediction(
     event_code: str,
     competitor_features: Dict[str, float],
     isotonic_calibrator: Optional[IsotonicCalibrator] = None,
-    variance_scaler: Optional[VarianceScaler] = None
+    variance_scaler: Optional[VarianceScaler] = None,
 ) -> Tuple[float, float]:
     """Apply full calibration pipeline"""
     # 1. Isotonic for bias correction
@@ -401,24 +393,24 @@ else:
 **Model Registry**:
 ```python
 MODEL_REGISTRY = {
-    'baseline_v2_hybrid': {
-        'version': '2.0',
-        'mae': 3.58,
-        'active': True,
-        'description': 'Hierarchical regression + convergence'
+    "baseline_v2_hybrid": {
+        "version": "2.0",
+        "mae": 3.58,
+        "active": True,
+        "description": "Hierarchical regression + convergence",
     },
-    'xgboost_enhanced': {
-        'version': '2.0',
-        'mae': None,  # TBD from validation
-        'active': True,
-        'description': 'XGBoost with 19 features'
+    "xgboost_enhanced": {
+        "version": "2.0",
+        "mae": None,  # TBD from validation
+        "active": True,
+        "description": "XGBoost with 19 features",
     },
-    'stacking_ensemble': {
-        'version': '1.0',
-        'mae': None,  # TBD from validation
-        'active': False,  # Enable after validation
-        'description': 'Hierarchical stacking of 6 models'
-    }
+    "stacking_ensemble": {
+        "version": "1.0",
+        "mae": None,  # TBD from validation
+        "active": False,  # Enable after validation
+        "description": "Hierarchical stacking of 6 models",
+    },
 }
 ```
 
@@ -466,7 +458,7 @@ if any(drift_results.values()):
 
 **Usage**:
 ```python
-ab_test = ABTester('stacking_ensemble', 'baseline_v2', split_ratio=0.5)
+ab_test = ABTester("stacking_ensemble", "baseline_v2", split_ratio=0.5)
 model = ab_test.assign_model(competitor_name)
 ab_test.log_result(model, prediction, actual)
 comparison = ab_test.get_comparison()
@@ -482,8 +474,8 @@ def predict_with_versioning(
     diameter: float,
     quality: int,
     event_code: str,
-    model_version: str = 'stacking_ensemble',
-    fallback: str = 'baseline_v2_hybrid'
+    model_version: str = "stacking_ensemble",
+    fallback: str = "baseline_v2_hybrid",
 ) -> Tuple[Optional[float], str, str]:
     """Make prediction with versioning and fallback"""
     # Routes to appropriate model
@@ -495,9 +487,9 @@ def predict_with_versioning(
 
 ```python
 AUTO_RETRAIN_CONFIG = {
-    'new_results_threshold': 50,       # Retrain after 50 new results
-    'degradation_threshold': 0.20,     # Retrain if MAE degrades >20%
-    'drift_alpha': 0.05,               # Drift detection significance
+    "new_results_threshold": 50,  # Retrain after 50 new results
+    "degradation_threshold": 0.20,  # Retrain if MAE degrades >20%
+    "drift_alpha": 0.05,  # Drift detection significance
 }
 ```
 

@@ -12,7 +12,7 @@ Solo developer. I designed and built STRATHEX end-to-end: the CLI, the predictio
 
 ## Tech stack
 
-**Runtime:** Python 3.13, pandas, numpy, openpyxl, scikit-learn, xgboost, lightgbm, matplotlib, requests.
+**Runtime:** Python 3.13, pandas, numpy, openpyxl, scikit-learn, xgboost, requests.
 **Engine:** [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK) (pip-installed direct from GitHub via `pyproject.toml`), exposing `HandicapCalculator`, `run_monte_carlo_simulation`, `get_ai_assessment_of_handicaps`, and a `ResultStore` SQLite layer.
 **LLM (optional):** Ollama with the `qwen2.5:7b` model running locally.
 **Build / quality:** hatchling, ruff (lint + format), pytest with coverage. CI runs on Ubuntu and Windows for every push and pull request.
