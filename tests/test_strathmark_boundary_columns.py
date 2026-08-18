@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pandas as pd
-
 from strathmark.utils import standardize_results_columns
 
 from woodchopping.data import load_results_df
