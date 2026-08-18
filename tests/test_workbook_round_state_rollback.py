@@ -97,9 +97,7 @@ def test_round_fields_are_retained_when_workbook_write_succeeds(tmp_path, monkey
         round_object["status"] = "in_progress"
 
         workbook = load_workbook(path)
-        workbook["Results"].append(
-            ["C001", "SB", 30.0, 300, "S01", 5, "H1", "2026-08-18"]
-        )
+        workbook["Results"].append(["C001", "SB", 30.0, 300, "S01", 5, "H1", "2026-08-18"])
         workbook.save(path)
         workbook.close()
         return "saved"
