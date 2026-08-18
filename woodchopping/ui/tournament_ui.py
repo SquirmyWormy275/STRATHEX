@@ -464,6 +464,30 @@ def _build_finish_positions(round_object: Dict) -> Dict[str, int]:
     return {}
 
 
+def complete_recorded_round(
+    tournament_state: Dict,
+    round_object: Dict,
+    entry_succeeded: bool,
+) -> bool:
+    """Finalize a single-event terminal round only after valid result entry."""
+    is_terminal = tournament_state.get("format") == "single_heat" or round_object.get("round_type") == "final"
+    finish_order = _build_finish_positions(round_object)
+    if not entry_succeeded or not is_terminal or not finish_order:
+        return False
+
+    round_object["finish_order"] = finish_order
+    round_object["status"] = "completed"
+    round_object["advancers"] = []
+    sorted_placements = sorted(finish_order.items(), key=lambda item: item[1])
+    tournament_state["final_results"] = {
+        "first_place": sorted_placements[0][0] if sorted_placements else None,
+        "second_place": sorted_placements[1][0] if len(sorted_placements) > 1 else None,
+        "third_place": sorted_placements[2][0] if len(sorted_placements) > 2 else None,
+        "all_placements": dict(finish_order),
+    }
+    return True
+
+
 def _format_slot_name(name: str, width: int) -> str:
     clean = str(name)
     if len(clean) > width:

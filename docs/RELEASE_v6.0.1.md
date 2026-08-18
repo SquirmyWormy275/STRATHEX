@@ -6,12 +6,16 @@
   atomic replacement, a rolling `.bak`, nested structure validation, and
   visible backup recovery.
 - Heat, semifinal, and final progression now reads only the current appended
-  stage. Finals and single-heat events transition to completed state correctly.
-- Non-power-of-two bracket byes propagate into the linked next round, and the
-  replay suite carries a saved bracket through to a champion without writing
-  canonical result stores.
+  stage. Finals and single-heat events transition to completed state only after
+  successful result entry, and both summary paths render single-heat winners.
+- Brackets use canonical power-of-two seed positions, so top seeds remain in
+  opposite halves while non-power-of-two byes propagate into the linked next
+  round. Confirmed bracket matches now autosave and report save failures.
 - Multi-event days now explicitly support handicap and championship events;
-  bracket competition is directed to the working single-event workflow.
+  bracket competition is directed to the working single-event workflow before
+  any canonical Excel or ResultStore write can occur.
+- The replay suite now drives the judge-facing multi-event workflow across
+  multiple save/reload boundaries, including generated finals and summaries.
 - Terminal output normalizes functional symbols and display width. The gallery
   script provides a repeatable Windows visual check and text capture.
 - Seven unreachable experimental prediction modules and their unused LightGBM
@@ -24,7 +28,8 @@
 
 - Existing Excel workbook schemas do not change.
 - Existing valid JSON saves continue to load. Structurally malformed primary
-  saves fail closed or recover from a valid backup.
+  saves, including malformed nested round and bracket match data, fail closed
+  or recover from a valid backup.
 - `MainProgramV5_2.py` remains the launcher so existing shortcuts keep working.
 - STRATHMARK remains pinned at `47bb143`. The evaluated 2.0 release is
   import-compatible but behaviorally incompatible with current STRATHEX.

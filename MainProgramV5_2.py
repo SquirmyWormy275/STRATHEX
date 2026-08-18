@@ -97,6 +97,7 @@ from woodchopping.ui.tournament_status import (
 from woodchopping.ui.tournament_ui import (
     auto_save_state,
     calculate_tournament_scenarios,
+    complete_recorded_round,
     current_stage_rounds,
     distribute_competitors_into_heats,
     fill_advancers_with_random_draw,
@@ -1282,25 +1283,22 @@ def single_event_menu():
                 print(f"\n{'=' * 70}")
                 print(f"  RECORDING RESULTS FOR {selected_heat['round_name']}")
                 print(f"{'=' * 70}")
-                append_results_to_excel(
+                entry_succeeded = append_results_to_excel(
                     heat_assignment_df,
                     wood_selection,
                     round_object=selected_heat,
                     tournament_state=tournament_state,
                 )
 
+                if not entry_succeeded:
+                    print("\n[WARN] Results were not saved. This round remains open for retry.")
+                    auto_save_state(tournament_state)
+                    continue
+
                 # Select advancers
-                if tournament_state.get("format") == "single_heat":
-                    selected_heat["status"] = "completed"
-                    selected_heat["advancers"] = []
+                if complete_recorded_round(tournament_state, selected_heat, entry_succeeded):
                     print(f"\n[OK] {selected_heat['round_name']} completed")
-                    print("[OK] Results saved to historical data")
-                elif selected_heat.get("round_type") == "final":
-                    selected_heat["status"] = "completed"
-                    selected_heat["advancers"] = []
-                    tournament_state["final_results"] = dict(selected_heat.get("finish_order", {}))
-                    print(f"\n[OK] {selected_heat['round_name']} completed")
-                    print("[OK] Tournament final results saved")
+                    print("[OK] Tournament results saved")
                 else:
                     advancers = select_heat_advancers(selected_heat)
                     print(f"\n[OK] {selected_heat['round_name']} completed")
@@ -1442,7 +1440,10 @@ def single_event_menu():
                     print("\nERROR: Generate bracket first (Option 10)")
                     input("\nPress Enter to return to menu...")
                     continue
-                tournament_state = sequential_match_entry_workflow(tournament_state)
+                tournament_state = sequential_match_entry_workflow(
+                    tournament_state,
+                    save_callback=auto_save_state,
+                )
                 continue
 
             # REGULAR MODE: Print Schedule (Export to File)

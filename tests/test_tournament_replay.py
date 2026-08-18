@@ -24,8 +24,11 @@ from woodchopping.ui.bracket_ui import (
 from woodchopping.ui.multi_event_ui import (
     complete_event_round,
     generate_complete_day_schedule,
+    generate_tournament_summary,
     get_next_incomplete_round,
+    sequential_results_workflow,
 )
+from woodchopping.ui.payout_ui import display_single_event_final_results
 from woodchopping.ui.state_persistence import (
     load_multi_event_tournament,
     load_tournament_state,
@@ -33,6 +36,7 @@ from woodchopping.ui.state_persistence import (
     save_tournament_state,
 )
 from woodchopping.ui.tournament_ui import (
+    complete_recorded_round,
     current_stage_rounds,
     distribute_competitors_into_heats,
     generate_next_round,
@@ -128,7 +132,7 @@ def test_single_event_replay_records_resumes_and_completes(tmp_path, monkeypatch
 
     first_heat = state["rounds"][0]
     _script_input(monkeypatch, ["2", "30", "33", ""])
-    append_results_to_excel(None, wood, round_object=first_heat, tournament_state=state)
+    assert append_results_to_excel(None, wood, round_object=first_heat, tournament_state=state)
     select_heat_advancers(first_heat)
     save_tournament_state(state, str(state_path))
     state = load_tournament_state(str(state_path))
@@ -136,7 +140,7 @@ def test_single_event_replay_records_resumes_and_completes(tmp_path, monkeypatch
 
     second_heat = state["rounds"][1]
     _script_input(monkeypatch, ["2", "31", "34", ""])
-    append_results_to_excel(None, wood, round_object=second_heat, tournament_state=state)
+    assert append_results_to_excel(None, wood, round_object=second_heat, tournament_state=state)
     select_heat_advancers(second_heat)
 
     stage_type, stage_rounds = current_stage_rounds(state["rounds"])
@@ -146,8 +150,8 @@ def test_single_event_replay_records_resumes_and_completes(tmp_path, monkeypatch
     state["rounds"].append(final)
 
     _script_input(monkeypatch, ["2", "29", "31"])
-    append_results_to_excel(None, wood, round_object=final, tournament_state=state)
-    final["status"] = "completed"
+    write_succeeded = append_results_to_excel(None, wood, round_object=final, tournament_state=state)
+    assert complete_recorded_round(state, final, write_succeeded)
     save_tournament_state(state, str(state_path))
     reloaded = load_tournament_state(str(state_path))
 
@@ -158,6 +162,22 @@ def test_single_event_replay_records_resumes_and_completes(tmp_path, monkeypatch
     assert workbook["Results"].max_row == 7  # header + four heats + two finalists
     workbook.close()
     assert len(store.rows) == 6
+
+
+def test_failed_result_entry_keeps_terminal_round_retryable():
+    final = {
+        "round_name": "Final",
+        "round_type": "final",
+        "competitors": ["Alice", "Bob"],
+        "competitors_df": _competitors(["Alice", "Bob"]),
+        "status": "pending",
+        "finish_order": {},
+    }
+    state = {"format": "heats_to_finals", "rounds": [final]}
+
+    assert not complete_recorded_round(state, final, entry_succeeded=False)
+    assert final["status"] == "pending"
+    assert "final_results" not in state
 
 
 def test_current_stage_ignores_completed_prior_rounds():
@@ -242,6 +262,166 @@ def test_multi_event_schedule_rejects_legacy_bracket_state(monkeypatch, capsys):
     assert returned is tournament
     assert event["rounds"] == []
     assert "single-event tournament" in capsys.readouterr().out
+
+
+def test_multi_event_results_reject_legacy_bracket_before_result_writes(monkeypatch, capsys):
+    event = {
+        "event_name": "Bracket SB",
+        "event_type": "bracket",
+        "format": "bracket",
+        "status": "in_progress",
+        "rounds": [
+            {
+                "round_name": "Heat 1",
+                "round_type": "heat",
+                "competitors": ["Alice", "Bob"],
+                "status": "pending",
+            }
+        ],
+    }
+    tournament = {"events": [event]}
+    monkeypatch.setattr(
+        "woodchopping.ui.multi_event_ui.append_results_to_excel",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("canonical writer reached")),
+    )
+    _script_input(monkeypatch, [""])
+
+    returned = sequential_results_workflow(tournament, {}, pd.DataFrame())
+
+    assert returned is tournament
+    assert event["rounds"][0]["status"] == "pending"
+    assert "single-event tournament" in capsys.readouterr().out
+
+
+def test_multi_event_heats_to_final_replays_through_save_boundaries(tmp_path, monkeypatch):
+    names = ["Alice", "Bob", "Carol", "Drew"]
+    roster = _competitors(names)
+    heats = distribute_competitors_into_heats(roster, _handicaps(names), 2, 2)
+    for heat in heats:
+        heat["num_to_advance"] = 1
+    event = {
+        "event_name": "Replay Championship",
+        "event_order": 1,
+        "event_type": "championship",
+        "event_code": "SB",
+        "format": "heats_to_finals",
+        "status": "in_progress",
+        "wood_species": "S01",
+        "wood_diameter": 300,
+        "wood_quality": 5,
+        "num_stands": 2,
+        "all_competitors": names,
+        "all_competitors_df": roster,
+        "rounds": heats,
+    }
+    tournament = {
+        "tournament_name": "Replay Day",
+        "tournament_date": "2026-08-18",
+        "events": [event],
+        "total_events": 1,
+        "events_completed": 0,
+        "current_event_index": 0,
+    }
+    state_path = tmp_path / "multi_tournament_state.json"
+
+    def record_results(_heat_df, _wood, round_object=None, **_kwargs):
+        assert round_object is not None
+        round_object["finish_order"] = {name: position for position, name in enumerate(round_object["competitors"], 1)}
+        round_object["actual_results"] = {
+            name: 29.0 + position for position, name in enumerate(round_object["competitors"], 1)
+        }
+        round_object["status"] = "in_progress"
+        return True
+
+    monkeypatch.setattr("woodchopping.ui.multi_event_ui.append_results_to_excel", record_results)
+    monkeypatch.setattr(
+        "woodchopping.ui.multi_event_ui.auto_save_multi_event",
+        lambda state: save_multi_event_tournament(state, str(state_path)),
+    )
+
+    for _stage in range(2):
+        _script_input(monkeypatch, ["1", "", "", "4"])
+        sequential_results_workflow(tournament, {}, pd.DataFrame())
+        tournament = load_multi_event_tournament(str(state_path))
+        assert tournament is not None
+
+    finals = [
+        round_object for round_object in tournament["events"][0]["rounds"] if round_object["round_type"] == "final"
+    ]
+    assert len(finals) == 1
+
+    _script_input(monkeypatch, ["1", "", ""])
+    sequential_results_workflow(tournament, {}, pd.DataFrame())
+    tournament = load_multi_event_tournament(str(state_path))
+
+    assert tournament is not None
+    assert tournament["events_completed"] == 1
+    assert tournament["events"][0]["status"] == "completed"
+    assert tournament["events"][0]["final_results"]["first_place"]
+
+
+def test_multi_event_single_heat_summary_uses_completed_heat(monkeypatch, capsys):
+    event = {
+        "event_name": "300mm SB",
+        "event_order": 1,
+        "event_type": "championship",
+        "event_code": "SB",
+        "format": "single_heat",
+        "status": "in_progress",
+        "wood_species": "S01",
+        "wood_diameter": 300,
+        "wood_quality": 5,
+        "all_competitors": ["Alice", "Bob"],
+        "rounds": [
+            {
+                "round_name": "Heat 1",
+                "round_type": "heat",
+                "competitors": ["Alice", "Bob"],
+                "status": "in_progress",
+                "finish_order": {"Alice": 1, "Bob": 2},
+                "actual_results": {"Alice": 30.0, "Bob": 32.0},
+            }
+        ],
+    }
+    tournament = {
+        "tournament_name": "Replay Day",
+        "tournament_date": "2026-08-18",
+        "events": [event],
+        "total_events": 1,
+        "events_completed": 0,
+    }
+    complete_event_round(tournament, event, event["rounds"][0])
+    _script_input(monkeypatch, [""])
+
+    generate_tournament_summary(tournament)
+
+    output = capsys.readouterr().out
+    assert "1st Place: Alice (30.00s)" in output
+
+
+def test_single_event_single_heat_final_summary_uses_completed_heat(monkeypatch, capsys):
+    state = {
+        "event_name": "Single Heat Championship",
+        "format": "single_heat",
+        "rounds": [
+            {
+                "round_name": "Heat 1",
+                "round_type": "heat",
+                "competitors": ["Alice", "Bob"],
+                "status": "in_progress",
+                "finish_order": {"Alice": 1, "Bob": 2},
+                "actual_results": {"Alice": 30.0, "Bob": 32.0},
+            }
+        ],
+    }
+    assert complete_recorded_round(state, state["rounds"][0], entry_succeeded=True)
+    _script_input(monkeypatch, [""])
+
+    display_single_event_final_results(state)
+
+    output = capsys.readouterr().out
+    assert "1st" in output
+    assert "Alice" in output
 
 
 def test_bracket_with_byes_resumes_to_champion_without_result_writes(tmp_path):

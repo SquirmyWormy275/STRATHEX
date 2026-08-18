@@ -15,7 +15,7 @@ import math
 import os
 import webbrowser
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -105,10 +105,11 @@ def calculate_bye_structure(num_competitors: int) -> Dict:
 
 
 def generate_standard_bracket_pairings(seeds: List[int]) -> List[Tuple[int, int]]:
-    """Generate standard tournament bracket pairings.
+    """Generate canonical first-round pairings for a power-of-two seed field.
 
-    Standard bracket: 1 vs N, 2 vs N-1, 3 vs N-2, etc.
-    This ensures top seeds don't meet until later rounds.
+    The returned order matters: adjacent matches feed the same next-round
+    match.  Recursively reflecting the seed positions keeps the top two seeds
+    in opposite halves and the top four seeds in separate quarters.
 
     Args:
         seeds: List of seed numbers (already sorted 1, 2, 3, ...)
@@ -117,18 +118,20 @@ def generate_standard_bracket_pairings(seeds: List[int]) -> List[Tuple[int, int]
         List of (seed1, seed2) tuples representing first round matchups
 
     Example:
-        8 seeds: [(1,8), (2,7), (3,6), (4,5)]
-        16 seeds: [(1,16), (2,15), (3,14), (4,13), (5,12), (6,11), (7,10), (8,9)]
+        8 seeds: [(1,8), (4,5), (2,7), (3,6)]
     """
     n = len(seeds)
-    pairings = []
+    if n < 2 or n & (n - 1):
+        raise ValueError("Bracket pairings require a power-of-two seed field")
 
-    for i in range(n // 2):
-        seed1 = seeds[i]
-        seed2 = seeds[n - 1 - i]
-        pairings.append((seed1, seed2))
+    positions = [1, 2]
+    current_size = 2
+    while current_size < n:
+        current_size *= 2
+        positions = [seed for position in positions for seed in (position, current_size + 1 - position)]
 
-    return pairings
+    positioned_seeds = [seeds[position - 1] for position in positions]
+    return list(zip(positioned_seeds[::2], positioned_seeds[1::2]))
 
 
 def generate_bracket_with_byes(predictions: Dict) -> List[Dict]:
@@ -153,58 +156,35 @@ def generate_bracket_with_byes(predictions: Dict) -> List[Dict]:
     rounds = []
     round1_matches = []
 
-    match_counter = 1
+    bracket_seeds = list(range(1, bye_info["bracket_size"] + 1))
+    pairings = generate_standard_bracket_pairings(bracket_seeds)
 
-    # Byes for top seeds
-    for seed in bye_info["seeds_with_byes"]:
+    for match_counter, (position1, position2) in enumerate(pairings, 1):
+        seed1 = position1 if position1 <= num_competitors else None
+        seed2 = position2 if position2 <= num_competitors else None
+        competitor1 = seed_to_name.get(seed1)
+        competitor2 = seed_to_name.get(seed2)
+        winner = competitor1 or competitor2
+        is_bye = competitor1 is None or competitor2 is None
         round1_matches.append(
             {
                 "match_id": f"R1-M{match_counter}",
                 "match_number": match_counter,
-                "competitor1": seed_to_name[seed],
-                "competitor2": None,  # Bye
-                "seed1": seed,
-                "seed2": None,
-                "winner": seed_to_name[seed],  # Auto-advance
-                "loser": None,
-                "time1": None,
-                "time2": None,
-                "finish_position1": None,
-                "finish_position2": None,
-                "status": "bye",
-                "advances_to": None,  # Set later when building bracket tree
-                "feeds_from": [],
-            }
-        )
-        match_counter += 1
-
-    # Actual first-round matches (remaining competitors)
-    # Use standard bracket pairing for non-bye competitors
-    remaining_seeds = [s for s in range(1, num_competitors + 1) if s not in bye_info["seeds_with_byes"]]
-
-    pairings = generate_standard_bracket_pairings(remaining_seeds)
-
-    for seed1, seed2 in pairings:
-        round1_matches.append(
-            {
-                "match_id": f"R1-M{match_counter}",
-                "match_number": match_counter,
-                "competitor1": seed_to_name[seed1],
-                "competitor2": seed_to_name[seed2],
+                "competitor1": competitor1,
+                "competitor2": competitor2,
                 "seed1": seed1,
                 "seed2": seed2,
-                "winner": None,
+                "winner": winner if is_bye else None,
                 "loser": None,
                 "time1": None,
                 "time2": None,
                 "finish_position1": None,
                 "finish_position2": None,
-                "status": "pending",
+                "status": "bye" if is_bye else "pending",
                 "advances_to": None,
                 "feeds_from": [],
             }
         )
-        match_counter += 1
 
     round_info = get_round_info(1, bye_info["total_rounds"])
     rounds.append(
@@ -1200,11 +1180,23 @@ def enter_match_results_interactive(bracket_state: Dict) -> Dict:
     return bracket_state
 
 
-def sequential_match_entry_workflow(bracket_state: Dict) -> Dict:
+def sequential_match_entry_workflow(
+    bracket_state: Dict,
+    save_callback: Optional[Callable[[Dict], bool]] = None,
+) -> Dict:
     """Complete workflow for entering all bracket results sequentially.
 
     Continues until all matches completed or user exits.
+
+    Args:
+        bracket_state: Complete bracket state.
+        save_callback: Optional persistence function called after each newly
+            recorded match. It returns True only when persistence succeeds.
+            Without one, the caller remains responsible for saving from its
+            tournament menu.
     """
+    progress_saved = False
+
     while True:
         current_match = get_current_match(bracket_state)
 
@@ -1218,7 +1210,13 @@ def sequential_match_entry_workflow(bracket_state: Dict) -> Dict:
         print(f"{'=' * 70}")
 
         # Enter results for current match
+        was_completed = current_match.get("status") == "completed"
         bracket_state = enter_match_results_interactive(bracket_state)
+        match_recorded = not was_completed and current_match.get("status") == "completed"
+        if match_recorded and save_callback is not None:
+            progress_saved = save_callback(bracket_state)
+            if not progress_saved:
+                print("\n[WARN] Bracket progress could not be saved. Retry from the tournament menu.")
 
         # Ask to continue
         print("\n" + "=" * 70)
@@ -1230,7 +1228,12 @@ def sequential_match_entry_workflow(bracket_state: Dict) -> Dict:
             else:
                 render_bracket_tree_ascii(bracket_state)
         elif choice == "3":
-            print("\nExiting match entry. Progress saved.")
+            if save_callback is None:
+                print("\nExiting match entry. Save from the tournament menu before closing.")
+            elif progress_saved:
+                print("\nExiting match entry. Progress saved.")
+            else:
+                print("\nExiting match entry. No newly recorded progress to save.")
             break
 
     return bracket_state

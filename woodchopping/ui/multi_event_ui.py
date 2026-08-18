@@ -2122,6 +2122,9 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
     Returns:
         dict: Updated tournament_state with recorded results
     """
+    if _reject_unsupported_bracket_events(tournament_state):
+        return tournament_state
+
     print(f"\n{'?' + '?' * 68 + '?'}")
     title = "SEQUENTIAL RESULTS ENTRY".center(68)
     print(f"{'?'}{title}{'?'}")
@@ -2180,13 +2183,19 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
             }
 
             # Record results using existing function
-            append_results_to_excel(
+            entry_succeeded = append_results_to_excel(
                 heat_assignment_df,  # Legacy param (not used)
                 event_wood,
                 round_object=round_obj,
                 tournament_state=None,  # Pass None to avoid single-event logic
                 event_name=event_obj["event_name"],  # Pass event name for HeatID
             )
+
+            if not entry_succeeded:
+                print("\n[WARN] Results were not saved. This round remains open for retry.")
+                auto_save_multi_event(tournament_state)
+                input("\nPress Enter to continue...")
+                continue
 
             # Mark round in progress
             round_obj["status"] = "in_progress"
@@ -2330,14 +2339,7 @@ def extract_event_placements(event_obj: Dict) -> Dict:
     """
     # Find final round. Single-heat events intentionally have no synthetic
     # ``final`` stage, so their completed heat is the placement authority.
-    rounds = event_obj.get("rounds", [])
-    final_round = next((round_object for round_object in rounds if round_object["round_type"] == "final"), None)
-
-    if final_round is None and event_obj.get("format") == "single_heat":
-        final_round = next(
-            (round_object for round_object in rounds if round_object.get("status") == "completed"),
-            None,
-        )
+    final_round = _event_result_round(event_obj)
 
     if final_round is None:
         return {
@@ -2366,6 +2368,21 @@ def extract_event_placements(event_obj: Dict) -> Dict:
         "third_place": sorted_placements[2][0] if len(sorted_placements) > 2 else None,
         "all_placements": finish_order,
     }
+
+
+def _event_result_round(event_obj: Dict) -> Optional[Dict]:
+    """Return the completed round that authoritatively supplies placements."""
+    rounds = event_obj.get("rounds", [])
+    final_round = next(
+        (round_object for round_object in rounds if round_object.get("round_type") == "final"),
+        None,
+    )
+    if final_round is None and event_obj.get("format") == "single_heat":
+        final_round = next(
+            (round_object for round_object in rounds if round_object.get("status") == "completed"),
+            None,
+        )
+    return final_round
 
 
 def generate_tournament_summary(tournament_state: Dict) -> None:
@@ -2416,7 +2433,10 @@ def generate_tournament_summary(tournament_state: Dict) -> None:
             continue
 
         # Find final round to get times
-        final_round = [r for r in event["rounds"] if r["round_type"] == "final"][0]
+        final_round = _event_result_round(event)
+        if final_round is None:
+            print("\n[WARN] No completed result round is available")
+            continue
         actual_results = final_round.get("actual_results", {})
 
         print(f"\n{'-' * 70}")

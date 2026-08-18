@@ -361,8 +361,12 @@ def display_single_event_final_results(tournament_state: Dict) -> None:
         input("\nPress Enter to continue...")
         return
 
-    # Find final round
+    # Find the authoritative result round. Single-heat tournaments intentionally
+    # complete their only heat without creating a synthetic final.
     finals = [r for r in tournament_state["rounds"] if r.get("round_type") == "final"]
+
+    if not finals and tournament_state.get("format") == "single_heat":
+        finals = [r for r in tournament_state["rounds"] if r.get("status") == "completed"]
 
     if not finals:
         print("\n[WARN] Final round not yet run")
