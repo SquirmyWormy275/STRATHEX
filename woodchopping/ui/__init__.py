@@ -161,6 +161,22 @@ from woodchopping.ui.wood_ui import (
     wood_menu,
 )
 
+# Replace the legacy direct JSON writers after all UI modules have loaded. This
+# keeps existing imports and call signatures intact while making every later
+# import resolve to the crash-safe implementations.
+import woodchopping.ui.multi_event_ui as _multi_event_ui
+import woodchopping.ui.tournament_ui as _tournament_ui
+from woodchopping.ui.state_persistence import install_persistence_guards
+
+install_persistence_guards()
+
+save_tournament_state = _tournament_ui.save_tournament_state
+load_tournament_state = _tournament_ui.load_tournament_state
+auto_save_state = _tournament_ui.auto_save_state
+save_multi_event_tournament = _multi_event_ui.save_multi_event_tournament
+load_multi_event_tournament = _multi_event_ui.load_multi_event_tournament
+auto_save_multi_event = _multi_event_ui.auto_save_multi_event
+
 __all__ = [
     # Tournament UI
     "calculate_tournament_scenarios",
@@ -272,21 +288,3 @@ __all__ = [
     "check_competitor_status",
     "get_scratch_count",
 ]
-
-# Replace the legacy direct JSON writers after all UI modules have loaded. This
-# keeps existing imports and call signatures intact while making every later
-# import resolve to the crash-safe implementations.
-from woodchopping.ui.state_persistence import install_persistence_guards
-
-install_persistence_guards()
-
-from woodchopping.ui.multi_event_ui import (
-    auto_save_multi_event,
-    load_multi_event_tournament,
-    save_multi_event_tournament,
-)
-from woodchopping.ui.tournament_ui import (
-    auto_save_state,
-    load_tournament_state,
-    save_tournament_state,
-)
