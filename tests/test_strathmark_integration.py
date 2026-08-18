@@ -195,9 +195,7 @@ def test_calculation_trains_ml_selects_by_expected_error_and_reuses_predictions(
     assert all(call["ml_model"] is calls["train"][0][2] for call in calls["all_predictions"])
     assert all(call["results_df"] is results_df for call in calls["all_predictions"])
     assert all(call["wood_df"] is wood_df for call in calls["all_predictions"])
-    assert all(
-        call["llm_client"]["url"] == "http://localhost:11434" for call in calls["all_predictions"]
-    )
+    assert all(call["llm_client"]["url"] == "http://localhost:11434" for call in calls["all_predictions"])
 
     bridge_call = calls["calculator"][1]
     assert bridge_call["manual_overrides"] == {
