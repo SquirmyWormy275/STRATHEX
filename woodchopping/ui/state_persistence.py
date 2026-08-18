@@ -177,7 +177,7 @@ def _validate_multi_state(payload: Any) -> None:
         raise ValueError("Multi-event tournament state must be a JSON object")
     if "events" not in payload or not isinstance(payload["events"], list):
         raise ValueError("Multi-event tournament state requires an 'events' list")
-    if "total_events" in payload and not isinstance(payload["total_events"], int):
+    if "total_events" in payload and not isinstance(payload["total_events"], (int, np.integer)):
         raise ValueError("Multi-event tournament state 'total_events' must be an integer")
 
 
