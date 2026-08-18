@@ -54,10 +54,7 @@ def _file_digest(path: str) -> str:
 def _snapshot_round_state(round_object) -> dict[str, tuple[bool, Any]] | None:
     if not isinstance(round_object, dict):
         return None
-    return {
-        key: (key in round_object, copy.deepcopy(round_object.get(key)))
-        for key in _ROUND_STATE_KEYS
-    }
+    return {key: (key in round_object, copy.deepcopy(round_object.get(key))) for key in _ROUND_STATE_KEYS}
 
 
 def _restore_round_state(
