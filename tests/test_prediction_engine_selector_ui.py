@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 import pytest
 
 import explanation_system_functions as explanations
+from woodchopping.strathmark_v3_client import V3RecoveryRequired
 from woodchopping.ui import multi_event_ui
-from woodchopping.ui.prediction_context import PredictionAuthorityStore
+from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
 
 
 @pytest.fixture
@@ -194,3 +195,133 @@ def test_engine_help_explains_scope_lock_modes_and_no_fallback(capsys):
     assert "no silent fallback" in output.lower()
     assert "rehearsal" in output.lower()
     assert "mark 3" in output.lower()
+
+
+def test_ambiguous_v3_command_requires_deliberate_exact_recovery(authority_store, capsys):
+    created = authority_store.create_scope(owner_kind="single_event", scope_id="tournament:show")
+    selected = authority_store.select_engine(
+        created.reference,
+        engine="v3",
+        actor="actor:judge-one",
+        selected_at="2026-08-27T16:00:00.000Z",
+        reason_code="judge_selection",
+        mode="rehearsal",
+        contract_identity="contract:v3",
+        source_identity="c" * 40,
+    )
+    locked = authority_store.lock(
+        selected.reference,
+        boundary="first_authoritative_numeric_action",
+        locked_at="2026-08-27T16:00:01.000Z",
+    )
+    state = {}
+    attach_authority_reference(state, locked.reference)
+    attempts = 0
+
+    def action():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise V3RecoveryRequired("strathex-command-one")
+        return "complete"
+
+    class Adapter:
+        recovered = []
+
+        def retry_recovery(self, command_key, context):
+            self.recovered.append((command_key, context.scope_id))
+            return {"status": "recovered"}
+
+    adapter = Adapter()
+    result = multi_event_ui.execute_with_v3_recovery(
+        action,
+        root_state=state,
+        authority_store=authority_store,
+        v3_adapter=adapter,
+        input_fn=lambda _prompt: "r",
+    )
+
+    assert result == "complete"
+    assert adapter.recovered == [("strathex-command-one", "tournament:show")]
+    output = capsys.readouterr().out
+    assert "RECOVERY REQUIRED" in output
+    assert "No marks were accepted" in output
+    assert "V2 fallback remains forbidden" in output
+
+
+def test_v3_review_batches_ordinary_fields_and_singles_out_flagged(authority_store, capsys):
+    created = authority_store.create_scope(owner_kind="tournament", scope_id="tournament:review")
+    selected = authority_store.select_engine(
+        created.reference,
+        engine="v3",
+        actor="actor:judge-one",
+        selected_at="2026-08-27T16:00:00.000Z",
+        reason_code="judge_selection",
+        mode="rehearsal",
+        contract_identity="contract:v3",
+        source_identity="c" * 40,
+    )
+    locked = authority_store.lock(
+        selected.reference,
+        boundary="first_authoritative_numeric_action",
+        locked_at="2026-08-27T16:00:01.000Z",
+    )
+    state = {}
+    attach_authority_reference(state, locked.reference)
+
+    def row(name, *, ordinary=False, lane="integrity_blocked"):
+        return {
+            "field_id": f"field:{name}",
+            "receipt_id": f"receipt:{name}",
+            "receipt_content_digest": name[0] * 64,
+            "receipt_revision": 1,
+            "upstream_field_revision": 1,
+            "row_digest": name[-1] * 64,
+            "call_order": 1,
+            "decision_state": "undecided",
+            "ordinary_batch_eligible": ordinary,
+            "degraded_batch_eligible": False,
+            "lane": lane,
+            "causal_rule_codes": ["large_disagreement"] if not ordinary else [],
+            "affected_competitors": ["competitor:a"],
+        }
+
+    pages = iter(
+        [
+            {"snapshot_id": "approval_snapshot:" + "1" * 64, "rows": [row("apple", ordinary=True)]},
+            {"snapshot_id": "approval_snapshot:" + "2" * 64, "rows": [row("banana")]},
+            {"snapshot_id": "approval_snapshot:" + "3" * 64, "rows": []},
+        ]
+    )
+
+    class Adapter:
+        payloads = []
+
+        def approval_page(self, _context, **_query):
+            return next(pages)
+
+        def approval_detail(self, _context, **_query):
+            return {"detail": {"why": "flagged"}}
+
+        def decide_approval(self, _context, payload):
+            self.payloads.append(payload)
+            return {"action": payload["action"]}
+
+    answers = iter(["y", "a"])
+    adapter = Adapter()
+    decisions = multi_event_ui.review_v3_approval_queue(
+        state,
+        authority_store=authority_store,
+        v3_adapter=adapter,
+        input_fn=lambda _prompt: next(answers),
+    )
+
+    assert [item["action"] for item in decisions] == [
+        "ordinary_batch_accept",
+        "individual_accept",
+    ]
+    assert len(adapter.payloads[0]["selected"]) == 1
+    assert adapter.payloads[1]["selected"][0]["field_id"] == "field:banana"
+    output = capsys.readouterr().out
+    assert "1 ordinary" in output
+    assert "FLAGGED FIELD field:banana" in output

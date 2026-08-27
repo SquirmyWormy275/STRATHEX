@@ -206,6 +206,142 @@ def display_inherited_prediction_engine(tournament_state: Mapping[str, Any], aut
     print("It cannot be changed per event; create a new tournament scope to choose differently.")
 
 
+def execute_with_v3_recovery(
+    action: Callable[[], Any],
+    *,
+    root_state: Mapping[str, Any],
+    authority_store: Any,
+    v3_adapter: Any,
+    input_fn: Callable[[str], str] | None = None,
+) -> Any | None:
+    """Run one V3 action with deliberate, visible exact-command recovery."""
+    from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    ask = input if input_fn is None else input_fn
+    while True:
+        try:
+            return action()
+        except V3RecoveryRequired as error:
+            print("\n[RECOVERY REQUIRED] STRATHMARK V3 returned an ambiguous outcome.")
+            print(f"Command: {error.command_key}")
+            print("No marks were accepted and V2 fallback remains forbidden.")
+            print("R. Retry this exact durable command")
+            print("C. Cancel and leave the competition blocked")
+            if ask("Choose R or C: ").strip().lower() != "r":
+                return None
+            context = build_prediction_execution_context(root_state, authority_store)
+            try:
+                v3_adapter.retry_recovery(error.command_key, context)
+            except V3RecoveryRequired:
+                print("[WARN] The exact command is still ambiguous; no conflicting work was started.")
+                continue
+        except V3ClientError as error:
+            print(f"\n[BLOCKED] Selected V3 engine could not complete: {error}")
+            print("No V2 fallback occurred and no partial mark sheet was accepted.")
+            return None
+
+
+def review_v3_approval_queue(
+    state: Mapping[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    input_fn: Callable[[str], str] | None = None,
+) -> list[dict[str, Any]]:
+    """Batch ordinary fields and force exception fields through individual review."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    ask = input if input_fn is None else input_fn
+    context = build_prediction_execution_context(state, authority_store)
+    decisions: list[dict[str, Any]] = []
+
+    def binding(row: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "field_id": row["field_id"],
+            "receipt_id": row["receipt_id"],
+            "receipt_digest": row["receipt_content_digest"],
+            "receipt_revision": row["receipt_revision"],
+            "upstream_field_revision": row["upstream_field_revision"],
+            "row_digest": row["row_digest"],
+            "call_order": row["call_order"],
+        }
+
+    while True:
+        page = v3_adapter.approval_page(
+            context,
+            tournament_id=context.scope_id,
+            offset=0,
+            limit=100,
+        )
+        rows = [row for row in page.get("rows", []) if row.get("decision_state") == "undecided"]
+        if not rows:
+            print("\n[OK] No undecided V3 fields remain in the approval queue.")
+            return decisions
+        ordinary = [row for row in rows if row.get("ordinary_batch_eligible") is True]
+        degraded = [row for row in rows if row.get("degraded_batch_eligible") is True]
+        flagged = [row for row in rows if row not in ordinary and row not in degraded]
+        print(f"\nV3 APPROVAL QUEUE: {len(ordinary)} ordinary | {len(degraded)} degraded | {len(flagged)} flagged")
+
+        selected: list[Mapping[str, Any]]
+        action: str
+        reason_code: str
+        if ordinary:
+            if (
+                ask(f"Approve {len(ordinary)} ordinary green/amber field(s) as one batch? (y/n): ").strip().lower()
+                != "y"
+            ):
+                return decisions
+            selected = ordinary
+            action = "ordinary_batch_accept"
+            reason_code = "judge_batch_review"
+        elif degraded:
+            if ask(f"Approve {len(degraded)} degraded field(s) as one explicit batch? (y/n): ").strip().lower() != "y":
+                return decisions
+            selected = degraded
+            action = "degraded_batch_accept"
+            reason_code = "judge_degraded_review"
+        else:
+            row = flagged[0]
+            detail = v3_adapter.approval_detail(
+                context,
+                tournament_id=context.scope_id,
+                snapshot_id=page["snapshot_id"],
+                receipt_id=row["receipt_id"],
+            )
+            print(f"\nFLAGGED FIELD {row['field_id']} | lane={row.get('lane', 'unknown')}")
+            print(f"Rules: {', '.join(row.get('causal_rule_codes', [])) or 'none'}")
+            print(f"Affected competitors: {len(row.get('affected_competitors', []))}")
+            print(f"Detail evidence loaded: {bool(detail.get('detail'))}")
+            choice = ask("A=accept, X=exclude, D=defer, C=cancel: ").strip().lower()
+            if choice == "c":
+                return decisions
+            actions = {"a": "individual_accept", "x": "exclude", "d": "defer"}
+            if choice not in actions:
+                print("[WARN] No decision recorded; choose A, X, D, or C.")
+                continue
+            selected = [row]
+            action = actions[choice]
+            reason_code = f"judge_{action}"
+        payload = {
+            "schema_version": "strathmark-v3-approval-decision-request-v1",
+            "tournament_id": context.scope_id,
+            "snapshot_id": page["snapshot_id"],
+            "action": action,
+            "selected": [binding(row) for row in selected],
+            "excluded": [],
+            "actor_metadata": {
+                "asserted_actor_id": context.selected_by_actor_id,
+                "trust_model": "local_os_user",
+            },
+            "reason_code": reason_code,
+            "superseded_receipt_id": None,
+            "decided_at_utc": _utc_milliseconds(),
+            "deadline_ms": 10_000,
+        }
+        decisions.append(v3_adapter.decide_approval(context, payload))
+
+
 def _reject_unsupported_bracket_events(tournament_state: Dict) -> bool:
     """Pause and reject legacy bracket entries in a multi-event day."""
     has_bracket = any(
@@ -2120,7 +2256,20 @@ def generate_complete_day_schedule(
                     "advancers": [],
                 }
             ]
-            heats = materialize_v3_marks(heats)
+            if authority_store is not None and engine_router is not None:
+                v3_adapter = getattr(engine_router, "v3_adapter", None)
+                if v3_adapter is not None:
+                    recovered = execute_with_v3_recovery(
+                        lambda: materialize_v3_marks(heats),
+                        root_state=tournament_state,
+                        authority_store=authority_store,
+                        v3_adapter=v3_adapter,
+                    )
+                    if recovered is None:
+                        return tournament_state
+                    heats = recovered
+                else:
+                    heats = materialize_v3_marks(heats)
 
             # Display detailed stand assignments
             print(f"\n{'-' * 70}")
@@ -2164,7 +2313,20 @@ def generate_complete_day_schedule(
                 stands_per_heat,  # Use optimal stands per heat, not total available stands
                 num_heats,
             )
-            heats = materialize_v3_marks(heats)
+            if authority_store is not None and engine_router is not None:
+                v3_adapter = getattr(engine_router, "v3_adapter", None)
+                if v3_adapter is not None:
+                    recovered = execute_with_v3_recovery(
+                        lambda: materialize_v3_marks(heats),
+                        root_state=tournament_state,
+                        authority_store=authority_store,
+                        v3_adapter=v3_adapter,
+                    )
+                    if recovered is None:
+                        return tournament_state
+                    heats = recovered
+                else:
+                    heats = materialize_v3_marks(heats)
 
             # Display detailed heat assignments with stand numbers
             for heat in heats:

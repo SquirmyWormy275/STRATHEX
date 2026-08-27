@@ -77,11 +77,13 @@ from woodchopping.ui.multi_event_ui import (
     calculate_all_event_handicaps,
     create_multi_event_tournament,
     display_prediction_engine_banner,
+    execute_with_v3_recovery,
     generate_complete_day_schedule,
     generate_tournament_summary,
     load_multi_event_tournament,
     remove_event_from_tournament,
     resolve_prediction_engine,
+    review_v3_approval_queue,
     save_multi_event_tournament,
     select_prediction_engine_for_scope,
     sequential_results_workflow,
@@ -1102,6 +1104,23 @@ def single_event_menu():
                 print("Marks are field-relative and will be calculated after Option 9 creates exact heats.")
                 input("\nPress Enter to return to menu...")
                 continue
+            authority = resolve_prediction_engine(tournament_state, _prediction_authority_store)
+            if authority.engine == "v3":
+                if _v3_engine_adapter is None:
+                    print("\n[BLOCKED] Selected V3 engine is unavailable; no V2 fallback is permitted.")
+                else:
+                    execute_with_v3_recovery(
+                        lambda: review_v3_approval_queue(
+                            tournament_state,
+                            authority_store=_prediction_authority_store,
+                            v3_adapter=_v3_engine_adapter,
+                        ),
+                        root_state=tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+                input("\nPress Enter to return to menu...")
+                continue
 
             # PHASE 1: Display initial handicap marks with basic prediction table
             display_basic_prediction_table(tournament_state["handicap_results_all"], wood_selection)
@@ -1265,7 +1284,19 @@ def single_event_menu():
                     }
                 ]
 
-                heats = materialize_exact_heat_marks(heats)
+                if _v3_engine_adapter is not None:
+                    recovered_heats = execute_with_v3_recovery(
+                        lambda: materialize_exact_heat_marks(heats),
+                        root_state=tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+                    if recovered_heats is None:
+                        input("\nPress Enter to return to menu...")
+                        continue
+                    heats = recovered_heats
+                else:
+                    heats = materialize_exact_heat_marks(heats)
                 tournament_state["rounds"] = heats
 
                 # Display heat assignment
@@ -1295,7 +1326,19 @@ def single_event_menu():
                     num_heats,
                 )
 
-                heats = materialize_exact_heat_marks(heats)
+                if _v3_engine_adapter is not None:
+                    recovered_heats = execute_with_v3_recovery(
+                        lambda: materialize_exact_heat_marks(heats),
+                        root_state=tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+                    if recovered_heats is None:
+                        input("\nPress Enter to return to menu...")
+                        continue
+                    heats = recovered_heats
+                else:
+                    heats = materialize_exact_heat_marks(heats)
                 tournament_state["rounds"] = heats
 
                 # Display heat assignments
@@ -1946,7 +1989,26 @@ def multi_event_tournament_menu():
                 )
                 continue
 
-            approve_event_handicaps(multi_event_tournament_state)
+            authority = resolve_prediction_engine(
+                multi_event_tournament_state,
+                _prediction_authority_store,
+            )
+            if authority.engine == "v3":
+                if _v3_engine_adapter is None:
+                    print("\n[BLOCKED] Selected V3 engine is unavailable; no V2 fallback is permitted.")
+                else:
+                    execute_with_v3_recovery(
+                        lambda: review_v3_approval_queue(
+                            multi_event_tournament_state,
+                            authority_store=_prediction_authority_store,
+                            v3_adapter=_v3_engine_adapter,
+                        ),
+                        root_state=multi_event_tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+            else:
+                approve_event_handicaps(multi_event_tournament_state)
 
         elif menu_choice == "9":
             # Generate Complete Day Schedule

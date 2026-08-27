@@ -175,6 +175,11 @@ class EngineRouter:
         self._v2_adapter: Callable[..., EngineProjection] = v2_adapter
         self._v3_adapter: Callable[..., EngineProjection] | None = v3_adapter
 
+    @property
+    def v3_adapter(self) -> V3FieldAdapter | None:
+        """Expose the selected adapter only for explicit recovery orchestration."""
+        return self._v3_adapter
+
     def calculate_field(
         self,
         execution_context: PredictionExecutionContext,
