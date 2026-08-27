@@ -120,6 +120,8 @@ def _build_engine_request(
     upstream_field_revision: int,
     numeric_options: Mapping[str, Any],
 ) -> Dict[str, Any]:
+    from datetime import datetime, timedelta, timezone
+
     from woodchopping.ui.prediction_context import derive_scope_identity
 
     names = competitors_df["competitor_name"].astype(str).tolist()
@@ -129,6 +131,40 @@ def _build_engine_request(
     competitor_ids = [derive_scope_identity(context.scope_id, "competitor", local_id) for local_id in local_ids]
     if len(set(competitor_ids)) != len(competitor_ids):
         raise ValueError("numeric field contains duplicate competitor identities")
+    requested_at = numeric_options.get("requested_at_utc")
+    if requested_at is None:
+        now = datetime.now(timezone.utc)
+        requested_at = now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    else:
+        now = datetime.fromisoformat(str(requested_at).replace("Z", "+00:00"))
+    hard_deadline_at = numeric_options.get("hard_deadline_at")
+    if hard_deadline_at is None:
+        hard_deadline_at = (now + timedelta(minutes=2)).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    round_local_id = str(numeric_options.get("round_local_id", field_local_id.split(":", 1)[0]))
+    stand_local_ids = numeric_options.get("stand_local_ids")
+    if stand_local_ids is None:
+        stand_local_ids = [f"position-{index + 1}" for index in range(len(competitor_ids))]
+    if len(stand_local_ids) != len(competitor_ids):
+        raise ValueError("numeric field requires one stand assignment per competitor")
+    target_context = numeric_options.get(
+        "target_context",
+        {
+            "schema_version": "strathmark-v3-target-context-v1",
+            "event_code": str(event_code).strip().lower(),
+            "size_mm": int(wood_diameter),
+            "material_code": str(wood_species).strip().lower(),
+            "taxonomy_version": "strathex:v1",
+            "conversion_version": "strathex:v1",
+            "properties": [
+                {
+                    "code": "wood_quality",
+                    "value": str(int(wood_quality)),
+                    "unit": "score",
+                    "missing_reason": None,
+                }
+            ],
+        },
+    )
     request = {
         "competitors_df": competitors_df,
         "wood_species": wood_species,
@@ -137,9 +173,23 @@ def _build_engine_request(
         "event_code": event_code,
         "results_df": results_df,
         "field_id": derive_scope_identity(context.scope_id, "field", field_local_id),
+        "tournament_id": context.scope_id,
+        "round_id": derive_scope_identity(context.scope_id, "round", round_local_id),
         "upstream_field_revision": upstream_field_revision,
         "ordered_competitor_ids": competitor_ids,
         "competitor_names": dict(zip(competitor_ids, names)),
+        "stand_ids": [derive_scope_identity(context.scope_id, "stand", str(item)) for item in stand_local_ids],
+        "target_context": target_context,
+        "historical_cutoff_key": str(
+            numeric_options.get(
+                "historical_cutoff_key",
+                f"history:before-{numeric_options.get('prediction_as_of', 'competition')}",
+            )
+        ),
+        "requested_at_utc": requested_at,
+        "hard_deadline_at": hard_deadline_at,
+        "round_ordinal": int(numeric_options.get("round_ordinal", 1)),
+        "epoch_revision": int(numeric_options.get("epoch_revision", 1)),
     }
     request.update(numeric_options)
     return request
@@ -192,7 +242,7 @@ def calculate_authoritative_seeding(
         "results_df",
         "upstream_field_revision",
     }
-    request = _build_engine_request(
+    field_identity = _build_engine_request(
         context=context,
         field_local_id=field_request["field_local_id"],
         competitors_df=field_request["competitors_df"],
@@ -208,6 +258,19 @@ def calculate_authoritative_seeding(
             if key not in known | {"root_state", "authority_store", "engine_router", "child"}
         },
     )
+    request = {
+        "tournament_id": field_identity["tournament_id"],
+        "round_id": field_identity["round_id"],
+        "forecast_set_revision": int(field_request.get("forecast_set_revision", 1)),
+        "ordered_competitor_ids": field_identity["ordered_competitor_ids"],
+        "competitor_names": field_identity["competitor_names"],
+        "target_context": field_identity["target_context"],
+        "hard_deadline_at": field_identity["hard_deadline_at"],
+        "requested_at_utc": field_identity["requested_at_utc"],
+        "deadline_ms": int(field_request.get("deadline_ms", 5_000)),
+        "historical_cutoff_key": field_identity["historical_cutoff_key"],
+        "round_ordinal": field_identity["round_ordinal"],
+    }
     projection = forecast_adapter(execution_context=context, **request)
     if not isinstance(projection, list) or any(
         not isinstance(row, Mapping) or not str(row.get("engine_version", "")).startswith("3.") for row in projection

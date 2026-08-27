@@ -18,7 +18,7 @@ from uuid import uuid4
 _ENGINES = frozenset({"v2", "v3"})
 _MODES = frozenset({"production", "rehearsal"})
 _OWNER_KINDS = frozenset({"single_event", "tournament"})
-_IDENTITY_KINDS = frozenset({"tournament", "round", "field", "competitor", "command"})
+_IDENTITY_KINDS = frozenset({"tournament", "round", "field", "stand", "competitor", "command"})
 _REFERENCE_KEYS = frozenset({"authority_store_id", "scope_id", "revision", "digest", "save_id"})
 
 
@@ -113,7 +113,7 @@ def derive_scope_identity(scope_id: str, kind: str, local_id: str, *, revision: 
     if not isinstance(revision, int) or isinstance(revision, bool) or revision < 1:
         raise AuthorityStateError("identity revision must be a positive integer")
     material = f"{scope_id}\0{kind}\0{local_id}\0{revision}".encode()
-    return f"strathex:{kind}:{hashlib.sha256(material).hexdigest()}"
+    return f"{kind}:{hashlib.sha256(material).hexdigest()}"
 
 
 class PredictionAuthorityStore:
@@ -225,7 +225,7 @@ class PredictionAuthorityStore:
     def create_scope(self, *, owner_kind: str, scope_id: str | None = None) -> SelectionReceipt:
         if owner_kind not in _OWNER_KINDS:
             raise AuthorityStateError(f"unsupported owner_kind: {owner_kind}")
-        scope_id = scope_id or f"strathex:{uuid4()}"
+        scope_id = scope_id or f"tournament:{uuid4()}"
         scope_id = _required_text(scope_id, "scope_id")
         payload = {
             "scope_id": scope_id,

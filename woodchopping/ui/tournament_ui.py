@@ -224,8 +224,15 @@ def distribute_competitors_into_heats(
         list: List of round_object dictionaries, one for each heat
     """
 
-    # Sort competitors by mark (descending: highest mark first = front markers)
-    sorted_competitors = sorted(handicap_results, key=lambda x: x["mark"], reverse=True)
+    # V2 seeds from issued initial marks. V3's field-independent forecast has no
+    # mark by design, so seed slowest-to-fastest by p50 time before exact fields
+    # exist. Exact heat marks replace these rows after assignment.
+    if all("mark" in item for item in handicap_results):
+        sorted_competitors = sorted(handicap_results, key=lambda x: x["mark"], reverse=True)
+    elif all("predicted_time" in item and "mark" not in item for item in handicap_results):
+        sorted_competitors = sorted(handicap_results, key=lambda x: x["predicted_time"], reverse=True)
+    else:
+        raise ValueError("seeding evidence mixes issued marks with pre-field forecasts")
 
     # Initialize empty heats
     heats = []

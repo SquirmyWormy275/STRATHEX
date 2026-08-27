@@ -65,6 +65,7 @@ from woodchopping.ui.error_display import (
 from woodchopping.ui.handicap_ui import (
     build_engine_router,
     calculate_authoritative_field,
+    calculate_authoritative_seeding,
     judge_approval,
     manual_adjust_handicaps,
     normalize_actor_identifier,
@@ -80,6 +81,7 @@ from woodchopping.ui.multi_event_ui import (
     generate_tournament_summary,
     load_multi_event_tournament,
     remove_event_from_tournament,
+    resolve_prediction_engine,
     save_multi_event_tournament,
     select_prediction_engine_for_scope,
     sequential_results_workflow,
@@ -593,6 +595,46 @@ def single_event_menu():
     heat_assignment_df = pd.DataFrame()
     heat_assignment_names = []
 
+    def materialize_exact_heat_marks(heats):
+        """Replace V3 seed forecasts with exact field-relative marks."""
+        authority = resolve_prediction_engine(tournament_state, _prediction_authority_store)
+        if authority.engine != "v3":
+            return heats
+        results_df = load_results_df()
+        prediction_as_of = ensure_prediction_as_of(tournament_state)
+        materialized = []
+        for heat_index, heat in enumerate(heats, 1):
+            ordered = (
+                tournament_state["all_competitors_df"]
+                .set_index("competitor_name")
+                .loc[heat["competitors"]]
+                .reset_index()
+            )
+            marks = calculate_authoritative_field(
+                root_state=tournament_state,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+                field_local_id=f"single-event:heat-{heat_index}",
+                round_local_id="single-event",
+                round_ordinal=1,
+                stand_local_ids=[f"heat-{heat_index}-stand-{item + 1}" for item in range(len(ordered))],
+                competitors_df=ordered,
+                wood_species=wood_selection["species"],
+                wood_diameter=wood_selection["size_mm"],
+                wood_quality=wood_selection["quality"],
+                event_code=wood_selection["event"],
+                results_df=results_df,
+                prediction_as_of=prediction_as_of,
+            )
+            if len(marks) != len(ordered) or any("mark" not in item for item in marks):
+                raise RuntimeError("V3 did not return a complete exact-field mark sheet")
+            updated = dict(heat)
+            updated["competitors_df"] = ordered
+            updated["handicap_results"] = marks
+            materialized.append(updated)
+        tournament_state["handicap_results_all"] = [item for heat in materialized for item in heat["handicap_results"]]
+        return materialized
+
     # A single event owns one deliberate choice for all of its rounds. The
     # authority remains unlocked until the first numeric action in U5.
     select_prediction_engine_for_scope(
@@ -1011,7 +1053,7 @@ def single_event_menu():
             # Use existing calculate_ai_enhanced_handicaps function with progress
             results_df = load_results_df()
             prediction_as_of = ensure_prediction_as_of(tournament_state)
-            handicap_results = calculate_authoritative_field(
+            handicap_results = calculate_authoritative_seeding(
                 root_state=tournament_state,
                 authority_store=_prediction_authority_store,
                 engine_router=_prediction_engine_router,
@@ -1024,6 +1066,7 @@ def single_event_menu():
                 results_df=results_df,
                 progress_callback=show_progress,
                 prediction_as_of=prediction_as_of,
+                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
             )
 
             if not handicap_results:
@@ -1052,6 +1095,11 @@ def single_event_menu():
             # View handicaps + comprehensive analysis (NEW 5-PHASE FLOW - REGULAR MODE ONLY)
             if not tournament_state.get("handicap_results_all"):
                 print("\nERROR: Calculate handicaps first (Option 5)")
+                input("\nPress Enter to return to menu...")
+                continue
+            if any("mark" not in row for row in tournament_state["handicap_results_all"]):
+                print("\nV3 pre-field forecasts are ready for balanced heat generation.")
+                print("Marks are field-relative and will be calculated after Option 9 creates exact heats.")
                 input("\nPress Enter to return to menu...")
                 continue
 
@@ -1217,6 +1265,7 @@ def single_event_menu():
                     }
                 ]
 
+                heats = materialize_exact_heat_marks(heats)
                 tournament_state["rounds"] = heats
 
                 # Display heat assignment
@@ -1246,6 +1295,7 @@ def single_event_menu():
                     num_heats,
                 )
 
+                heats = materialize_exact_heat_marks(heats)
                 tournament_state["rounds"] = heats
 
                 # Display heat assignments
@@ -1332,7 +1382,7 @@ def single_event_menu():
                         authority_store=_prediction_authority_store,
                         engine_router=_prediction_engine_router,
                         forecast_adapter=(
-                            _v3_engine_adapter.pre_field_forecast if _v3_engine_adapter is not None else None
+                            _v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None
                         ),
                     )
                 except (ValueError, RuntimeError) as error:
@@ -1873,6 +1923,7 @@ def multi_event_tournament_menu():
                 results_df,
                 authority_store=_prediction_authority_store,
                 engine_router=_prediction_engine_router,
+                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
             )
 
         elif menu_choice == "7":
@@ -1906,7 +1957,11 @@ def multi_event_tournament_menu():
                 display_blocking_error("CANNOT GENERATE SCHEDULE", errors)
                 continue
 
-            multi_event_tournament_state = generate_complete_day_schedule(multi_event_tournament_state)
+            multi_event_tournament_state = generate_complete_day_schedule(
+                multi_event_tournament_state,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+            )
 
         elif menu_choice == "10":
             # Manage Scratches/Withdrawals - FULLY IMPLEMENTED
@@ -2042,7 +2097,7 @@ def championship_simulator_menu():
         prediction_state=prediction_state,
         authority_store=_prediction_authority_store,
         engine_router=_prediction_engine_router,
-        forecast_adapter=(_v3_engine_adapter.pre_field_forecast if _v3_engine_adapter is not None else None),
+        forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
     )
 
 

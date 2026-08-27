@@ -206,9 +206,17 @@ def test_deterministic_child_identities_are_stable_and_revision_sensitive():
     first = derive_scope_identity("strathex:root-001", "round", "final", revision=1)
 
     assert first == derive_scope_identity("strathex:root-001", "round", "final", revision=1)
-    assert first.startswith("strathex:round:")
+    assert first.startswith("round:")
     assert first != derive_scope_identity("strathex:root-001", "round", "final", revision=2)
     assert first != derive_scope_identity("strathex:other-root", "round", "final", revision=1)
+
+
+def test_new_authority_scope_uses_strathmark_tournament_namespace(tmp_path):
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+
+    created = store.create_scope(owner_kind="single_event")
+
+    assert created.reference.scope_id.startswith("tournament:")
 
 
 def test_unselected_scope_and_legacy_states_block_numeric_resolution(tmp_path):

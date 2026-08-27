@@ -68,6 +68,9 @@ class PredictionExecutionContext:
     mode: str
     contract_identity: str
     source_identity: str
+    selected_by_actor_id: str
+    selected_at_utc: str
+    reason_code: str
     locked: bool
     lock_boundary: str
     locked_at: str
@@ -81,6 +84,9 @@ class PredictionExecutionContext:
             "mode",
             "contract_identity",
             "source_identity",
+            "selected_by_actor_id",
+            "selected_at_utc",
+            "reason_code",
             "lock_boundary",
             "locked_at",
         ):
@@ -124,6 +130,9 @@ class PredictionExecutionContext:
             mode=receipt.mode or "",
             contract_identity=receipt.contract_identity or "",
             source_identity=receipt.source_identity or "",
+            selected_by_actor_id=receipt.actor or "",
+            selected_at_utc=receipt.selected_at or "",
+            reason_code=receipt.reason_code or "",
             locked=receipt.locked,
             lock_boundary=receipt.lock_boundary or "",
             locked_at=receipt.locked_at or "",

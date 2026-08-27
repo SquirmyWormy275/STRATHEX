@@ -101,7 +101,7 @@ def test_authoritative_field_routes_v3_without_v2_fallback(tmp_path):
     assert len(calls) == 1
     context, request = calls[0]
     assert context.selected_engine == "v3"
-    assert request["field_id"].startswith("strathex:field:")
+    assert request["field_id"].startswith("field:")
     assert len(request["ordered_competitor_ids"]) == 2
     assert set(request["competitor_names"].values()) == {"Alice", "Bob"}
 
@@ -232,7 +232,24 @@ def test_v3_seeding_requires_forecast_capability_and_never_calls_field_router(tm
     result = calculate_authoritative_seeding(**request, forecast_adapter=forecast)
     assert result[0]["name"] == "Alice"
     assert calls[0][1]["ordered_competitor_ids"]
-    assert calls[0][1]["field_id"].startswith("strathex:field:")
+    assert calls[0][1]["round_id"].startswith("round:")
+    assert "field_id" not in calls[0][1]
+
+
+def test_pre_field_forecasts_seed_heats_without_masquerading_as_marks():
+    from woodchopping.ui.tournament_ui import distribute_competitors_into_heats
+
+    roster = pd.DataFrame({"competitor_name": ["Fast", "Middle", "Slow"]})
+    forecasts = [
+        {"name": "Fast", "predicted_time": 20.0},
+        {"name": "Middle", "predicted_time": 30.0},
+        {"name": "Slow", "predicted_time": 40.0},
+    ]
+
+    heats = distribute_competitors_into_heats(roster, forecasts, 2, 2)
+
+    assert heats[0]["competitors"][0] == "Slow"
+    assert all("mark" not in row for heat in heats for row in heat["handicap_results"])
 
 
 def test_championship_predictions_keep_fixed_mark_distinct_from_engine_output(tmp_path):

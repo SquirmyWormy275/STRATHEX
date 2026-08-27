@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import FrozenInstanceError
 
 import pytest
@@ -182,3 +183,72 @@ def test_returned_engine_mismatch_aborts_the_field(
 
     with pytest.raises(EngineResultMismatchError, match="selected engine"):
         router.calculate_field(context)
+
+
+def test_real_v3_client_is_a_router_adapter_without_v2_fallback(tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from woodchopping.strathmark_v3_client import (
+        FROZEN_V3_CONTRACT_DIGEST,
+        FROZEN_V3_SOURCE_COMMIT,
+        V3HttpClient,
+    )
+    from woodchopping.v3_authority_store import V3CommandStore
+
+    context = replace(
+        _context(tmp_path, engine="v3", mode="rehearsal"),
+        contract_identity=FROZEN_V3_CONTRACT_DIGEST,
+        source_identity=FROZEN_V3_SOURCE_COMMIT,
+    )
+    client = V3HttpClient(
+        base_url="http://127.0.0.1:8787",
+        credential_provider=lambda: "credential",
+        command_store=V3CommandStore(tmp_path / "commands.db"),
+    )
+    monkeypatch.setattr(
+        client,
+        "assemble_field",
+        lambda _context, _payload: {
+            "receipt_id": "receipt:one",
+            "receipt_digest": "c" * 64,
+            "canonical_receipt_json": json.dumps(
+                {
+                    "receipt_id": "receipt:one",
+                    "ordered_competitor_ids": ["competitor:a", "competitor:b"],
+                    "engine_authority": {
+                        "scope_id": context.scope_id,
+                        "engine": "v3",
+                        "mode": context.mode,
+                        "selection_digest": "d" * 64,
+                        "consumer_contract_digest": context.contract_identity,
+                        "source_commit": context.source_identity,
+                    },
+                    "marks": [
+                        {"competitor_id": "competitor:a", "mark": 3},
+                        {"competitor_id": "competitor:b", "mark": 8},
+                    ],
+                    "sections": [
+                        {
+                            "kind": "optimizer_frontier",
+                            "payload_type": "inline",
+                            "payload": {
+                                "canonical_json": '{"expected_times_ms":[["competitor:a",30000],["competitor:b",35000]]}'
+                            },
+                        }
+                    ],
+                }
+            ),
+        },
+    )
+
+    result = EngineRouter(
+        v2_adapter=lambda **_request: pytest.fail("V2 fallback is forbidden"),
+        v3_adapter=client,
+    ).calculate_field(
+        context,
+        field_id="field:one",
+        upstream_field_revision=1,
+        ordered_competitor_ids=["competitor:a", "competitor:b"],
+    )
+
+    assert [row["engine_version"] for row in result] == ["3.0.0", "3.0.0"]

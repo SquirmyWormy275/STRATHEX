@@ -694,6 +694,7 @@ def calculate_all_event_handicaps(
     *,
     authority_store: Any = None,
     engine_router: Any = None,
+    forecast_adapter: Any = None,
 ) -> Dict:
     """Calculate handicaps for ALL events in the tournament (BATCH OPERATION).
 
@@ -826,7 +827,7 @@ def calculate_all_event_handicaps(
         # Calculate handicaps for this event
         staged_event = dict(event)
         event_cutoff = ensure_prediction_as_of(staged_event, fallback=tournament_cutoff)
-        from woodchopping.ui.handicap_ui import calculate_authoritative_field
+        from woodchopping.ui.handicap_ui import calculate_authoritative_seeding
 
         if authority_store is None or engine_router is None:
             handicap_results = calculate_ai_enhanced_handicaps(
@@ -840,12 +841,13 @@ def calculate_all_event_handicaps(
                 prediction_as_of=event_cutoff,
             )
         else:
-            handicap_results = calculate_authoritative_field(
+            handicap_results = calculate_authoritative_seeding(
                 root_state=tournament_state,
                 child=event,
                 authority_store=authority_store,
                 engine_router=engine_router,
                 field_local_id=f"event:{event.get('event_id', event.get('event_name', event_idx))}:initial",
+                round_local_id=f"event-{event.get('event_id', event.get('event_name', event_idx))}",
                 competitors_df=event["all_competitors_df"],
                 wood_species=event["wood_species"],
                 wood_diameter=event["wood_diameter"],
@@ -854,6 +856,7 @@ def calculate_all_event_handicaps(
                 results_df=results_df,
                 progress_callback=show_progress,
                 prediction_as_of=event_cutoff,
+                forecast_adapter=forecast_adapter,
             )
 
         if not handicap_results:
@@ -950,6 +953,11 @@ def analyze_single_event(event: Dict, event_index: int, tournament_state: Dict) 
 
     if not event["handicap_results_all"]:
         print("\n[WARN] No handicaps calculated for this event.")
+        input("\nPress Enter to continue...")
+        return
+    if event.get("event_type") != "championship" and any("mark" not in row for row in event["handicap_results_all"]):
+        print("\nV3 pre-field forecasts are ready for schedule generation.")
+        print("Exact field-relative marks are created only after the event's heats and stands exist.")
         input("\nPress Enter to continue...")
         return
 
@@ -1984,7 +1992,12 @@ def assign_competitors_to_events(tournament_state: Dict) -> Dict:
     return tournament_state
 
 
-def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
+def generate_complete_day_schedule(
+    tournament_state: Dict,
+    *,
+    authority_store: Any = None,
+    engine_router: Any = None,
+) -> Dict:
     """Generate initial heats for ALL events in tournament.
 
     For each event:
@@ -2046,6 +2059,49 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
         num_competitors = len(event["all_competitors"])
         num_stands = event["num_stands"]
 
+        def materialize_v3_marks(heats):
+            if authority_store is None or engine_router is None:
+                return heats
+            authority = resolve_prediction_engine(tournament_state, authority_store)
+            if authority.engine != "v3" or event_type == "championship":
+                return heats
+            from woodchopping.data import load_results_df
+            from woodchopping.ui.handicap_ui import calculate_authoritative_field
+
+            event_id = event.get("event_id", event.get("event_name", "event"))
+            results_df = load_results_df()
+            materialized = []
+            for heat_index, heat in enumerate(heats, 1):
+                ordered = (
+                    event["all_competitors_df"].set_index("competitor_name").loc[heat["competitors"]].reset_index()
+                )
+                marks = calculate_authoritative_field(
+                    root_state=tournament_state,
+                    child=event,
+                    authority_store=authority_store,
+                    engine_router=engine_router,
+                    field_local_id=f"event:{event_id}:heat-{heat_index}",
+                    round_local_id=f"event-{event_id}",
+                    stand_local_ids=[
+                        f"event-{event_id}-heat-{heat_index}-stand-{ordinal + 1}" for ordinal in range(len(ordered))
+                    ],
+                    competitors_df=ordered,
+                    wood_species=event["wood_species"],
+                    wood_diameter=event["wood_diameter"],
+                    wood_quality=event["wood_quality"],
+                    event_code=event["event_code"],
+                    results_df=results_df,
+                    prediction_as_of=event.get("prediction_as_of", tournament_state.get("prediction_as_of")),
+                )
+                if len(marks) != len(ordered) or any("mark" not in item for item in marks):
+                    raise RuntimeError("V3 did not return a complete exact-field mark sheet")
+                updated = dict(heat)
+                updated["competitors_df"] = ordered
+                updated["handicap_results"] = marks
+                materialized.append(updated)
+            event["handicap_results_all"] = [item for heat in materialized for item in heat["handicap_results"]]
+            return materialized
+
         # Check format
         if event["format"] == "single_heat":
             # Single heat mode
@@ -2064,6 +2120,7 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
                     "advancers": [],
                 }
             ]
+            heats = materialize_v3_marks(heats)
 
             # Display detailed stand assignments
             print(f"\n{'-' * 70}")
@@ -2107,6 +2164,7 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
                 stands_per_heat,  # Use optimal stands per heat, not total available stands
                 num_heats,
             )
+            heats = materialize_v3_marks(heats)
 
             # Display detailed heat assignments with stand numbers
             for heat in heats:
@@ -2148,7 +2206,10 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
     print("All events ready for competition!")
 
     # Auto-save
-    auto_save_multi_event(tournament_state)
+    if authority_store is None:
+        auto_save_multi_event(tournament_state)
+    else:
+        auto_save_multi_event(tournament_state, authority_store=authority_store)
 
     input("\nPress Enter to continue...")
     return tournament_state
