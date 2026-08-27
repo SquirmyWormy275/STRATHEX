@@ -3,7 +3,7 @@
 ## Entry point
 
 - `MainProgramV5_2.py` — terminal menus, startup, single-event orchestration, and save/load.
-- `explanation_system_functions.py` — concise operator help for the live v2 contract.
+- `explanation_system_functions.py` — concise operator help for engine selection and live contracts.
 
 ## Live package
 
@@ -15,17 +15,21 @@ woodchopping/
     history_merge.py         de-duplicated Excel/store evidence
     store_registry.py        process-local ResultStore registry
   handicaps/
-    calculator.py            live field preparation and v2 call
+    calculator.py            live field preparation and routed calculation
   simulation/                local Monte Carlo and fairness display
   ui/
-    bracket_ui.py            brackets and v2 seeding
-    championship_simulator.py v2 raw-time championship simulation
+    bracket_ui.py            brackets and selected-engine seeding
+    championship_simulator.py selected-engine forecasts with fixed Mark 3
     multi_event_ui.py        multi-event workflow
-    prediction_display.py    v2 evidence tables
+    prediction_display.py    requested and returned engine evidence
+    prediction_context.py    canonical SQLite engine authority
     state_persistence.py     atomic JSON save and recovery
     tournament_ui.py         heat progression
+  engine_selection.py        immutable no-fallback engine router
   prediction_context.py      persisted exclusive evidence cutoff
   strathmark_adapter.py      Python/HTTP v2 boundary and persistence facades
+  strathmark_v3_client.py    authenticated V3 lifecycle and receipt validation
+  v3_authority_store.py      durable V3 command/recovery ledger
 ```
 
 ## Compatibility code
@@ -42,6 +46,9 @@ Current release-critical tests cover:
 - identity and metadata mapping;
 - API version and transport security;
 - prediction cutoff state;
+- no-default selection, root inheritance, locking, and migration;
+- V3 pre-field forecasts, exact-field marks, review, and recovery;
+- requested/returned engine identity and no-fallback routing;
 - bracket v2 seeding and bye propagation;
 - single/multi-event replay;
 - atomic state persistence and recovery;
@@ -56,6 +63,7 @@ Standalone scripts and archived validation programs are not automatically releas
 - configured live workbook — judge-canonical operational data.
 - `saves/` — recoverable single/multi-event state.
 - STRATHMARK ResultStore — derived local history, not the canonical judge record.
-- STRATHMARK PredictionLedger — separate receipt/settlement facility, not used by the public v7 calculation route.
+- STRATHMARK V2 PredictionLedger — separate from the public V2 calculation route.
+- STRATHMARK V3 receipts — used only by a V3-selected scope through the authenticated lifecycle.
 
 Tests must use copied workbooks and explicit disposable database paths.

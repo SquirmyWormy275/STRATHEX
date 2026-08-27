@@ -2,7 +2,15 @@
 
 ## Does STRATHEX call the STRATHMARK API?
 
-By default it calls STRATHMARK 2 directly in Python so an event laptop remains offline-capable. The demo can explicitly use FastAPI `POST /calculate` by setting `STRATHMARK_TRANSPORT=http` and `STRATHMARK_API_URL`. HTTP mode is version-checked and never silently falls back.
+For a V2-selected scope, STRATHEX calls STRATHMARK 2 directly in Python by default so an event laptop remains offline-capable. The demo can explicitly use FastAPI `POST /calculate`. A V3-selected scope uses its separate authenticated loopback lifecycle API. Neither transport nor engine silently falls back.
+
+## Where do I choose V2 or V3?
+
+A single event chooses once during setup. A multi-event tournament chooses once at creation, and every child event and round inherits it. There is no default and no per-event tournament override.
+
+## Why does V3 show a prediction but no mark before heats exist?
+
+That is intentional. The signed pre-field forecast is for seeding and must not contain a mark. V3 can calculate field-relative marks only after exact heat membership and stand assignments exist.
 
 ## Why did marks change from v6?
 
@@ -18,7 +26,7 @@ No. The field is recalculated under the original exclusive cutoff. Same-day resu
 
 ## Is there still an LLM or XGBoost predictor?
 
-Not in live numeric calculation. Historical modules and reports remain for audit context. STRATHMARK's v2 core is the authority.
+Not as a hidden STRATHEX-side selector. Historical modules and reports remain for audit context. The deliberately selected STRATHMARK engine is authoritative for the competition.
 
 ## What is the difference between interval and standard deviation?
 
@@ -30,7 +38,7 @@ No. Excel is canonical and is written first. ResultStore is a best-effort second
 
 ## Is the public calculation API authenticated?
 
-No. It is stateless and public. Bind the demo to loopback. Remote use needs a deliberate HTTPS and access-control boundary.
+The V2 `POST /calculate` demo route is stateless and unauthenticated. Bind it to loopback. The separate V3 lifecycle requires an externally supplied credential and accepts loopback only in this demo.
 
 ## Why are some historical rows excluded?
 

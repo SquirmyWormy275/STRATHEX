@@ -2,7 +2,9 @@
 
 STRATHEX is the terminal application judges use to run woodchopping events. It handles rosters, wood setup, handicap and championship fields, brackets, multi-event days, schedules, results, autosave, and exports.
 
-Numeric prediction and handicap marks come from STRATHMARK 2.0. STRATHEX uses direct Python by default for offline event operation and can explicitly call STRATHMARK's stateless FastAPI `POST /calculate` endpoint for the demo. HTTP mode is selected, version-checked, and never silently falls back.
+Numeric prediction and handicap marks come from the STRATHMARK engine deliberately selected for that competition. V2 remains the production baseline. V3 is opt-in only when its exact authenticated readiness evidence permits it; rehearsal stays visibly labeled and is not a global cutover.
+
+Read [Choosing the Prediction Engine](Choosing-the-Prediction-Engine) before operating V3.
 
 ## Live prediction contract
 

@@ -15,11 +15,19 @@ Remote plaintext is intentionally blocked. Use HTTPS, or run the demo on `localh
 
 ## Version mismatch
 
-STRATHEX 7 requires the audited STRATHMARK 2.0.0 `/calculate` schema and validates every result's audit metadata. Install the pinned commit from `pyproject.toml`; do not follow an unpinned branch.
+A V2-selected scope requires the audited STRATHMARK 2.0.0 `/calculate` schema. A V3-selected scope requires the exact consumer-contract digest and source commit displayed by readiness. Do not follow an unpinned branch or translate an active scope to a different contract.
 
 ## API unavailable
 
 HTTP mode fails closed and will not switch to Python. Either restore the API or explicitly change `STRATHMARK_TRANSPORT=python` and recalculate as an operator decision.
+
+## V3 is unavailable or a command timed out
+
+Do not recalculate with V2. The V3-selected scope remains V3-owned. Restore the exact compatible local service. If the outcome is ambiguous, use the displayed durable command ID and choose the exact retry action; otherwise leave the scope blocked for later recovery.
+
+## V3 says rehearsal
+
+That is an eligibility result, not a cosmetic warning. The competition remains permanently labeled `V3 REHEARSAL`. It does not enable production mode or cut over other competitions.
 
 ## Degraded result or optimizer warning
 

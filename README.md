@@ -2,7 +2,21 @@
 
 STRATHEX is the judge-facing woodchopping tournament application. It manages rosters, wood setup, handicap and championship fields, brackets, multi-event days, result entry, autosave, and Excel exports. Numeric prediction and mark assignment are owned by [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK).
 
-## Current runtime
+## Prediction-engine choice
+
+Every new competition begins with no prediction engine selected. The judge must deliberately choose STRATHMARK V2 or V3:
+
+- a single event chooses once during event setup;
+- a multi-event tournament chooses once at tournament creation, and every child event and round inherits it;
+- no child event can override the tournament choice;
+- the choice locks at the first numeric operation;
+- an outage or incompatible response blocks work rather than calling the other engine.
+
+V2 remains the established production baseline. V3 is selectable only when its authenticated loopback service proves an exact reviewed contract and source identity. The currently supported V3 path is rehearsal-only unless installation-owned production evidence says otherwise; selecting it does not enable a global V3 cutover.
+
+V3 uses a two-stage workflow. A signed pre-field forecast supplies raw-time estimates for seeding before heats exist and is forbidden from carrying a mark. After STRATHEX creates exact heats and stand assignments, V3 assembles the complete field-relative mark sheet. See [Choosing the Prediction Engine](wiki/Choosing-the-Prediction-Engine.md).
+
+## V2 production baseline
 
 STRATHEX 7 is integrated with the [STRATHMARK 2.0.0 release](https://github.com/SquirmyWormy275/STRATHMARK/releases/tag/v2.0.0) at exact commit `a231ad65fe82317516cc82a282761d73adb0c0e3`. STRATHMARK 2.0.0 is distributed through GitHub rather than PyPI, so the Git dependency remains commit-pinned for reproducibility.
 
@@ -17,7 +31,7 @@ The live calculation contract is:
 - no numeric LLM prediction, no local XGBoost selection cascade, and no 97/3 same-tournament reweighting;
 - wood quality and same-tournament times retained as compatibility context but ignored by v2 numerics.
 
-Bracket seeding, championship predictions, single-event handicaps, and multi-event handicaps all use this boundary.
+V2-selected bracket seeding, championship predictions, single-event handicaps, and multi-event handicaps use this boundary unchanged.
 
 ## Transports
 
@@ -75,6 +89,7 @@ The cache flags are needed only in restricted nested worktrees. Never point test
 ## Documentation
 
 - [Current runtime contract](docs/CURRENT_RUNTIME_CONTRACT.md)
+- [Choosing the prediction engine](wiki/Choosing-the-Prediction-Engine.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Handicap system](docs/HANDICAP_SYSTEM_EXPLAINED.md)
 - [STRATHMARK 2 migration decision](docs/STRATHMARK_2_COMPATIBILITY_EVALUATION.md)

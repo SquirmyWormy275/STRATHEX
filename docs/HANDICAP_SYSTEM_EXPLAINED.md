@@ -1,6 +1,8 @@
 # Handicap System Explained
 
-STRATHEX 7 delegates prediction and mark arithmetic to STRATHMARK 2.0. This page describes the live system.
+STRATHEX delegates prediction and mark arithmetic to the STRATHMARK engine deliberately selected for the competition. V2 remains the production baseline; V3 is an opt-in, readiness-gated rehearsal mechanism until installation-owned production evidence exists.
+
+The choice is made once for a single event or once at tournament creation. Tournament children inherit it. The selected engine is the numeric authority for that scope, and failures never invoke the other engine.
 
 ## 1. Evidence cutoff
 
@@ -11,9 +13,9 @@ Twenty currently tracked historical rows are undated and are therefore excluded 
 
 ## 2. Prediction
 
-STRATHMARK's hierarchical core estimates a predictive distribution for each competitor under one immutable field snapshot. The live 2.0 model is the authority unless a judge supplies an explicit manual override.
+V2's hierarchical core estimates a predictive distribution for each competitor under one immutable field snapshot. V3 combines reviewed component forecasts under its own signed lifecycle. Either is authoritative only when selected for the competition; a judge may still supply an explicit, separately recorded manual override.
 
-The former STRATHEX numeric LLM, local XGBoost model, expected-error selector, QAA scaling cascade, and 97/3 same-tournament blend are not part of the v7 calculation.
+The former STRATHEX numeric LLM, local XGBoost model, expected-error selector, QAA scaling cascade, and 97/3 same-tournament blend are not part of the V2 calculation and are not silently substituted for V3.
 
 STRATHMARK accepts some older context fields for compatibility. In v2, wood quality, same-tournament times, division, heat, and field strength do not change the numeric prediction. The result lists ignored factors so the UI can be honest.
 
@@ -25,21 +27,23 @@ Performance standard deviation answers: “How much might this competitor vary f
 
 The two values are not interchangeable.
 
-## 4. Joint mark optimization
+## 4. Forecasting before fields and joint mark optimization
 
-Marks are assigned for the whole field, not by independently rounding each time gap. STRATHMARK v2 uses a deterministic common-random-number optimizer over 2,048 posterior samples and enforces mark limits. Its optimizer name and metadata are returned with the result.
+V3 separates prediction-based seeding from handicapping. Its pre-field receipt estimates raw completion time and must say `issued_mark=false`; it cannot be approved, printed, or treated as a mark. Only after STRATHEX creates exact heat membership and stand assignments may V3 assemble complete field-relative marks.
+
+Marks are assigned for the whole field, not by independently rounding each time gap. V2 uses its deterministic common-random-number optimizer over 2,048 posterior samples. V3 uses its reviewed complete-field assembly. Both enforce legal mark limits and return auditable optimizer or receipt evidence.
 
 The legacy rounded-gap method is only a fallback. Any fallback or degraded state must remain visible to the judge.
 
 ## 5. Later rounds
 
-Semis and finals recalculate the smaller advancing field because joint marks depend on the competitors in that field. They reuse the original event cutoff and prior evidence. Completed-round times are shown for reference but do not receive special prediction weight.
+Semis and finals recalculate the smaller advancing field because joint marks depend on the competitors in that field. They inherit the root engine choice. V2 reuses the original event cutoff and prior evidence; V3 follows its frozen-round evidence lifecycle. Completed-round times do not silently change the engine or become an undocumented weighting rule.
 
 ## 6. Championship and bracket modes
 
-Championship mode groups competitors that share target wood/history context, uses v2 predicted raw times and performance spread, then sets every mark to 3. Its local Monte Carlo count adapts to field size to protect desktop memory.
+Championship mode uses forecasts from the selected engine, then sets every mark to 3. Its local Monte Carlo count adapts to field size to protect desktop memory.
 
-Bracket mode obtains one v2 field calculation and seeds fastest predicted time as seed 1. Stable IDs and the same cutoff contract apply.
+Bracket mode obtains selected-engine forecasts and seeds fastest predicted time as seed 1. V3 uses a mark-free pre-field forecast for this purpose. Stable IDs and the owning competition authority apply.
 
 ## 7. Manual authority
 
@@ -59,5 +63,7 @@ For each competitor STRATHEX retains:
 - optimizer and metadata;
 - warnings and degraded state;
 - provenance and ignored factors.
+
+V3 additionally retains the requested engine separately from returned engine/model evidence, readiness mode, source/contract identity, signed receipt identity, review disposition, and any durable recovery command identity.
 
 That evidence, plus Monte Carlo fairness output, supports review. It is not a guarantee that every competitor has equal win probability.

@@ -2,6 +2,7 @@
 
 - [Home](Home)
 - [Quick Start](Quick-Start)
+- [Choosing the Prediction Engine](Choosing-the-Prediction-Engine)
 - [Architecture](Architecture)
 - [Prediction Methods](Prediction-Methods)
 - [Handicap System](Handicap-System-Explained)

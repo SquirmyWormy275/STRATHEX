@@ -12,15 +12,15 @@ STRATHEX terminal application
   |-- atomic JSON state + backup recovery
   |-- best-effort local ResultStore history
   |
-  +-- explicit calculation transport -------------------+
+  +-- competition-scoped engine router -----------------+
       |                                                 |
-      +-- direct Python (default, offline)               |
-      +-- HTTP POST /calculate (explicit demo mode)      |
+      +-- V2 direct Python or POST /calculate            |
+      +-- V3 authenticated loopback lifecycle API        |
                                                         v
-                                              STRATHMARK 2.0
-                                              prior-only core
-                                              calibrated interval
-                                              joint mark optimizer
+                                              STRATHMARK
+                                              V2 baseline or V3 ensemble
+                                              signed forecasts/receipts
+                                              complete-field optimizer
                                               provenance/warnings
 ```
 
@@ -33,6 +33,10 @@ STRATHMARK imports nothing from STRATHEX. STRATHEX translates DataFrames and ope
 | `MainProgramV5_2.py` | terminal orchestration and single-event state |
 | `woodchopping/handicaps/calculator.py` | history merge, roster enrichment, fixed cutoff, live field call |
 | `woodchopping/strathmark_adapter.py` | typed boundary, transport selection, v2 metadata mapping, ResultStore and simulation facades |
+| `woodchopping/engine_selection.py` | immutable execution context and no-fallback V2/V3 router |
+| `woodchopping/ui/prediction_context.py` | canonical SQLite competition selection, lock, inheritance, and save reference |
+| `woodchopping/strathmark_v3_client.py` | authenticated loopback lifecycle, exact contract/source pins, receipt validation, and recovery |
+| `woodchopping/v3_authority_store.py` | durable outbound V3 command and acknowledgment ledger |
 | `woodchopping/prediction_context.py` | persisted exclusive evidence cutoff |
 | `woodchopping/ui/prediction_display.py` | judge-facing v2 evidence and explanation |
 | `woodchopping/ui/tournament_ui.py` | heat progression and advancing-field recalculation |
@@ -42,7 +46,16 @@ STRATHMARK imports nothing from STRATHEX. STRATHEX translates DataFrames and ope
 | `woodchopping/ui/state_persistence.py` | schema validation, atomic replace, backup recovery |
 | `woodchopping/data/excel_io.py` | canonical result write followed by best-effort ResultStore write |
 
-## Evidence flow
+## V3 two-stage evidence flow
+
+1. STRATHEX records one root engine selection and locks it at the first numeric boundary.
+2. Before a field exists, V3 synchronizes the tournament and round, opens the scope, freezes the evidence epoch, and returns signed mark-free forecasts for seeding.
+3. STRATHEX creates exact heats and stand assignments locally.
+4. Each field snapshot crosses the minimized API boundary with pseudonymous competitor IDs only.
+5. V3 prepares the five component jobs per competitor and assembles one complete field-relative receipt; partial fields are rejected.
+6. The approval queue supports ordinary batch review, a separate degraded batch, and individual flagged review.
+
+## V2 evidence flow
 
 1. Excel and local ResultStore history are merged and de-duplicated.
 2. Shared validation normalizes usable fields.
@@ -69,6 +82,7 @@ ResultStore stores historical results. PredictionLedger stores immutable predict
 - Multi-event recalculation is prohibited after results entry begins. Recalculating a scheduled event invalidates its generated heats. A failed recalculation clears both old marks and pending rounds, sets `recalculation_failed`, and blocks results entry and schedule export until the event is calculated and scheduled again.
 - Championship Monte Carlo uses an adaptive competitor-cell cap and omits unused per-race spread arrays so desktop memory remains bounded.
 - There is no silent transport fallback.
+- There is no silent engine fallback. A V3 timeout enters durable recovery and requires a deliberate exact retry.
 - Degraded engine results and optimizer fallbacks remain visible in returned metadata.
 - A malformed save is rejected and may recover from its valid `.bak`.
 - A derived-store failure never rewrites or rolls back the canonical Excel workbook.
