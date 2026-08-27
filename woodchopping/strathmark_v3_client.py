@@ -293,6 +293,10 @@ class V3HttpClient:
         """Authenticate and inspect V3 before a competition authority exists."""
         return self._readiness()
 
+    def selector_readiness(self) -> dict[str, str]:
+        """Return the judge-selector mapping without constructing another client."""
+        return _selector_readiness_mapping(self.preselection_readiness())
+
     def readiness(self, context: PredictionExecutionContext) -> V3Readiness:
         self._validate_context(context)
         return self._readiness(context.mode)
@@ -423,12 +427,6 @@ class V3HttpClient:
             raise V3ClientError(f"V3 {operation} request lacks semantic identity fields")
         return _canonical_json(identity)
 
-    def _simple(self, operation: str):
-        def invoke(context: PredictionExecutionContext, payload: Mapping[str, Any]) -> dict[str, Any]:
-            return self._post(context, operation, payload)
-
-        return invoke
-
     def open_scope(self, context, payload):
         return self._post(context, "open_scope", payload)
 
@@ -480,13 +478,16 @@ class V3HttpClient:
 
     def _get(self, context, path, expected_schema, query):
         self._validate_context(context)
-        response = self._transport.request(
-            "GET",
-            f"{self.base_url}{path}?{urlencode(query)}",
-            headers=self._headers(action="read_projection"),
-            timeout=(self._connect_timeout, 5.0),
-            allow_redirects=False,
-        )
+        try:
+            response = self._transport.request(
+                "GET",
+                f"{self.base_url}{path}?{urlencode(query)}",
+                headers=self._headers(action="read_projection"),
+                timeout=(self._connect_timeout, 5.0),
+                allow_redirects=False,
+            )
+        except requests.RequestException as exc:
+            raise V3ClientError("V3 read request failed") from exc
         return self._body(response, expected_schema)
 
     def pre_field_forecast(self, execution_context: PredictionExecutionContext, **request: Any) -> EngineProjection:
@@ -897,20 +898,7 @@ def build_v3_client(
         raise V3RuntimeConfigurationError("The configured V3 runtime could not be constructed") from exc
 
 
-def get_v3_readiness(
-    *,
-    environ: Mapping[str, str] | None = None,
-    transport: HttpTransport | None = None,
-) -> dict[str, str]:
-    """Return the exact fail-closed mapping consumed by the U6 selector UI."""
-    try:
-        client = build_v3_client(environ=environ, transport=transport)
-    except V3RuntimeConfigurationError:
-        return {
-            "status": "ineligible",
-            "message": "STRATHMARK V3 runtime is not configured with reviewed pins and a credential reference.",
-        }
-    readiness = client.preselection_readiness()
+def _selector_readiness_mapping(readiness: V3Readiness) -> dict[str, str]:
     if readiness.state == "rehearsal_ready":
         message = "Authenticated STRATHMARK V3 candidate is available for rehearsal."
     elif readiness.state == "production_ready":
@@ -928,6 +916,22 @@ def get_v3_readiness(
         "contract_identity": readiness.contract_digest,
         "source_identity": readiness.source_commit,
     }
+
+
+def get_v3_readiness(
+    *,
+    environ: Mapping[str, str] | None = None,
+    transport: HttpTransport | None = None,
+) -> dict[str, str]:
+    """Return the exact fail-closed mapping consumed by the U6 selector UI."""
+    try:
+        client = build_v3_client(environ=environ, transport=transport)
+    except V3RuntimeConfigurationError:
+        return {
+            "status": "ineligible",
+            "message": "STRATHMARK V3 runtime is not configured with reviewed pins and a credential reference.",
+        }
+    return _selector_readiness_mapping(client.preselection_readiness())
 
 
 __all__ = [

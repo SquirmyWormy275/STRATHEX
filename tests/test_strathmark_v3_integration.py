@@ -71,6 +71,15 @@ def _client(tmp_path, responses):
     return client, transport
 
 
+def test_approval_read_transport_failure_is_stable_v3_error(tmp_path):
+    client, _transport = _client(tmp_path, [requests.ConnectionError("offline")])
+
+    with pytest.raises(V3ClientError, match="request failed") as captured:
+        client.approval_page(_context(), competition_scope_id="tournament:show")
+
+    assert isinstance(captured.value.__cause__, requests.ConnectionError)
+
+
 def test_status_maps_candidate_to_rehearsal_and_never_leaks_secret(tmp_path):
     client, transport = _client(
         tmp_path,

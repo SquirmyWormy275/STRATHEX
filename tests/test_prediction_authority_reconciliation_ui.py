@@ -204,6 +204,12 @@ def test_locked_unissued_scope_requires_confirmation_and_reason_to_abandon(autho
 
     assert abandoned.status == "abandoned"
     assert abandoned.migration_status == "terminal"
+    assert abandoned.actor == "judge:one"
+    assert abandoned.reason_code == "judge_selection"
+    assert abandoned.selected_at == "2026-08-27T16:00:00.000Z"
+    assert abandoned.abandoned_by == "judge:one"
+    assert abandoned.abandonment_reason == "weather cancellation"
+    assert abandoned.abandoned_at == "2026-08-27T16:20:00.000Z"
     assert state["events"] == evidence
     decision = multi_event_ui.inspect_loaded_prediction_authority(state, authority_store=authority_store)
     assert decision["status"] == "terminal"

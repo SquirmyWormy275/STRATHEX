@@ -302,7 +302,7 @@ def test_main_authority_store_calls_match_source_ui_wrapper_signatures():
         )
 
 
-def test_source_ui_wrappers_delegate_and_preserve_legacy_save_return(monkeypatch):
+def test_source_ui_wrappers_delegate_and_report_multi_save_outcome(monkeypatch):
     from woodchopping.ui import multi_event_ui, tournament_ui
 
     sentinel_store = object()
@@ -366,10 +366,12 @@ def test_source_ui_wrappers_delegate_and_preserve_legacy_save_return(monkeypatch
                 is multi_loaded
             )
             assert tournament_ui.auto_save_state(single_state, authority_store=sentinel_store) is None
-            assert multi_event_ui.auto_save_multi_event(multi_state, authority_store=sentinel_store) is None
+            assert multi_event_ui.auto_save_multi_event(multi_state, authority_store=sentinel_store) is True
+            multi_event_ui.configure_prediction_authority_store(sentinel_store)
+            assert multi_event_ui.auto_save_multi_event(multi_state) is True
 
         assert single_result is None
-        assert multi_result is None
+        assert multi_result is True
         assert calls[0][0::2] == ("single", "single.json")
         assert calls[0][1] is single_state
         assert calls[0][3] is sentinel_store
@@ -384,6 +386,9 @@ def test_source_ui_wrappers_delegate_and_preserve_legacy_save_return(monkeypatch
         assert calls[5][0] == "multi"
         assert calls[5][1] is multi_state
         assert calls[5][2:] == ("saves/multi_tournament_state.json", sentinel_store)
+        assert calls[6][0] == "multi"
+        assert calls[6][1] is multi_state
+        assert calls[6][2:] == ("saves/multi_tournament_state.json", sentinel_store)
     finally:
         for module in (tournament_ui, multi_event_ui):
             if hasattr(module, "_atomic_state_persistence_installed"):

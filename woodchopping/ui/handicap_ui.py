@@ -124,6 +124,18 @@ def _build_engine_request(
 
     from woodchopping.ui.prediction_context import derive_scope_identity
 
+    authority_bound_fields = {
+        "field_id",
+        "tournament_id",
+        "round_id",
+        "ordered_competitor_ids",
+        "competitor_names",
+        "stand_ids",
+    }
+    collisions = authority_bound_fields.intersection(numeric_options)
+    if collisions:
+        raise ValueError(f"numeric options cannot override authority-bound numeric fields: {sorted(collisions)}")
+
     names = competitors_df["competitor_name"].astype(str).tolist()
     local_ids = (
         competitors_df["competitor_id"].astype(str).tolist() if "competitor_id" in competitors_df.columns else names

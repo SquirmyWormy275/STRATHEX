@@ -115,6 +115,25 @@ def test_authoritative_field_routes_v3_without_v2_fallback(tmp_path):
     assert set(request["competitor_names"].values()) == {"Alice", "Bob"}
 
 
+def test_authoritative_field_rejects_scope_identity_overrides(tmp_path):
+    state, store = _selected_state(tmp_path, engine="v3")
+
+    with pytest.raises(ValueError, match="authority-bound numeric fields"):
+        calculate_authoritative_field(
+            root_state=state,
+            authority_store=store,
+            engine_router=EngineRouter(v2_adapter=lambda **_request: [], v3_adapter=lambda **_request: []),
+            field_local_id="heat-one",
+            competitors_df=pd.DataFrame({"competitor_name": ["Alice"]}),
+            wood_species="S01",
+            wood_diameter=300,
+            wood_quality=5,
+            event_code="UH",
+            results_df=pd.DataFrame(),
+            field_id="field:attacker-controlled",
+        )
+
+
 def test_unprepared_selected_v3_surfaces_lifecycle_failure_without_v2(tmp_path):
     state, store = _selected_state(tmp_path, engine="v3")
     competitors = pd.DataFrame({"competitor_name": ["Alice", "Bob"]})

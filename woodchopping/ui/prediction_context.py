@@ -101,6 +101,9 @@ class SelectionReceipt:
     locked_at: str | None
     status: str
     migration_status: str
+    abandoned_by: str | None
+    abandonment_reason: str | None
+    abandoned_at: str | None
 
 
 def derive_scope_identity(scope_id: str, kind: str, local_id: str, *, revision: int = 1) -> str:
@@ -201,6 +204,9 @@ class PredictionAuthorityStore:
             locked_at=payload.get("locked_at"),
             status=str(payload["status"]),
             migration_status=str(payload["migration_status"]),
+            abandoned_by=payload.get("abandoned_by"),
+            abandonment_reason=payload.get("abandonment_reason"),
+            abandoned_at=payload.get("abandoned_at"),
         )
 
     def _write(self, connection: sqlite3.Connection, payload: Mapping[str, Any], *, save_id: str) -> SelectionReceipt:
@@ -244,6 +250,9 @@ class PredictionAuthorityStore:
             "locked_at": None,
             "status": "open",
             "migration_status": "selection_required",
+            "abandoned_by": None,
+            "abandonment_reason": None,
+            "abandoned_at": None,
         }
         try:
             with self._connect() as connection:
@@ -291,6 +300,9 @@ class PredictionAuthorityStore:
             "locked_at": current.locked_at,
             "status": current.status,
             "migration_status": current.migration_status,
+            "abandoned_by": current.abandoned_by,
+            "abandonment_reason": current.abandonment_reason,
+            "abandoned_at": current.abandoned_at,
         }
         payload.update(changes)
         with self._connect() as connection:
@@ -363,10 +375,10 @@ class PredictionAuthorityStore:
             reference,
             {
                 "status": "abandoned",
-                "actor": _required_text(actor, "actor"),
-                "reason_code": _required_text(reason, "abandonment reason"),
-                "selected_at": _required_text(abandoned_at, "abandoned_at"),
                 "migration_status": "terminal",
+                "abandoned_by": _required_text(actor, "actor"),
+                "abandonment_reason": _required_text(reason, "abandonment reason"),
+                "abandoned_at": _required_text(abandoned_at, "abandoned_at"),
             },
         )
 

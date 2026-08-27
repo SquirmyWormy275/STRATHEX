@@ -37,6 +37,7 @@ from woodchopping.ui.tournament_ui import (
 from woodchopping.ui.wood_ui import select_event_code, wood_menu
 
 V3ReadinessProvider = Callable[[], Mapping[str, Any]]
+_prediction_authority_store: Any = None
 
 _READINESS_LABELS = {
     "checking": "CHECKING",
@@ -48,6 +49,16 @@ _READINESS_LABELS = {
 _SELECTION_REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _V2_CONTRACT_IDENTITY = "strathmark-v2/2.0.0"
 _V2_SOURCE_IDENTITY = "strathmark:a231ad65fe82317516cc82a282761d73adb0c0e3"
+
+
+def configure_prediction_authority_store(authority_store: Any) -> None:
+    """Bind the process-local authority store used by legacy autosave call sites."""
+    global _prediction_authority_store
+    _prediction_authority_store = authority_store
+
+
+def _configured_authority_store(authority_store: Any) -> Any:
+    return authority_store if authority_store is not None else _prediction_authority_store
 
 
 def _utc_milliseconds() -> str:
@@ -1286,7 +1297,7 @@ def save_multi_event_tournament(
     filename: str = "saves/multi_tournament_state.json",
     *,
     authority_store: Any = None,
-) -> None:
+) -> bool:
     """Save multi-event state through the canonical persistence layer.
 
     Args:
@@ -1296,12 +1307,10 @@ def save_multi_event_tournament(
     """
     from woodchopping.ui import state_persistence
 
-    # Preserve the legacy UI return contract (None); the canonical layer owns
-    # NumPy/DataFrame conversion, validation, and atomic writes.
-    state_persistence.save_multi_event_tournament(
+    return state_persistence.save_multi_event_tournament(
         tournament_state,
         filename,
-        authority_store=authority_store,
+        authority_store=_configured_authority_store(authority_store),
     )
 
 
@@ -1323,17 +1332,17 @@ def load_multi_event_tournament(
 
     return state_persistence.load_multi_event_tournament(
         filename,
-        authority_store=authority_store,
+        authority_store=_configured_authority_store(authority_store),
     )
 
 
-def auto_save_multi_event(tournament_state: Dict, *, authority_store: Any = None) -> None:
+def auto_save_multi_event(tournament_state: Dict, *, authority_store: Any = None) -> bool:
     """Auto-save multi-event tournament state with default filename.
 
     Args:
         tournament_state: Multi-event tournament state dictionary
     """
-    save_multi_event_tournament(
+    return save_multi_event_tournament(
         tournament_state,
         "saves/multi_tournament_state.json",
         authority_store=authority_store,
@@ -1812,7 +1821,6 @@ def calculate_all_event_handicaps(
         auto_save_multi_event(tournament_state)
     else:
         auto_save_multi_event(tournament_state, authority_store=authority_store)
-    print("\n[OK] Tournament state auto-saved")
 
     input("\nPress Enter to continue...")
     return tournament_state
@@ -1956,7 +1964,6 @@ def analyze_single_event(event: Dict, event_index: int, tournament_state: Dict) 
         print("  You can now manually adjust handicaps for this event in the Approval menu.")
         # Auto-save
         auto_save_multi_event(tournament_state)
-        print("[OK] Tournament state auto-saved")
     else:
         print("\n[WARN] Analysis not marked complete")
         print("  Manual handicap adjustments will not be available for this event.")
@@ -2133,7 +2140,6 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                     print(f"\n[OK] All handicaps approved by {initials} at {timestamp}")
                     # Auto-save
                     auto_save_multi_event(tournament_state)
-                    print("[OK] Tournament state auto-saved")
                 else:
                     print("\n[WARN] Approval cancelled")
 
@@ -2217,7 +2223,6 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                     print(f"\n[OK] Championship marks approved by {initials} at {timestamp}")
                     # Auto-save
                     auto_save_multi_event(tournament_state)
-                    print("[OK] Tournament state auto-saved")
                 else:
                     print("\n[WARN] Approval cancelled")
 
@@ -2253,7 +2258,6 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                 print(f"\n[OK] Handicaps approved by {initials} at {timestamp}")
                 # Auto-save
                 auto_save_multi_event(tournament_state)
-                print("[OK] Tournament state auto-saved")
             else:
                 print("\n[WARN] Approval cancelled")
 
@@ -2375,7 +2379,6 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                 print(f"\n[OK] Adjusted handicaps approved by {initials} at {timestamp}")
                 # Auto-save
                 auto_save_multi_event(tournament_state)
-                print("[OK] Tournament state auto-saved")
             else:
                 print("\n[WARN] Approval cancelled - adjustments saved but not approved")
 
@@ -2940,6 +2943,8 @@ def generate_complete_day_schedule(
     if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
 
+    v3_results_df = None
+
     # Generate heats for each event
     for event in tournament_state["events"]:
         # Get event type indicator
@@ -2961,6 +2966,7 @@ def generate_complete_day_schedule(
         num_stands = event["num_stands"]
 
         def materialize_v3_marks(heats):
+            nonlocal v3_results_df
             if authority_store is None or engine_router is None:
                 return heats
             authority = resolve_prediction_engine(tournament_state, authority_store)
@@ -2970,12 +2976,12 @@ def generate_complete_day_schedule(
             from woodchopping.ui.handicap_ui import calculate_authoritative_field
 
             event_id = event.get("event_id", event.get("event_name", "event"))
-            results_df = load_results_df()
+            if v3_results_df is None:
+                v3_results_df = load_results_df()
+            competitor_index = event["all_competitors_df"].set_index("competitor_name")
             materialized = []
             for heat_index, heat in enumerate(heats, 1):
-                ordered = (
-                    event["all_competitors_df"].set_index("competitor_name").loc[heat["competitors"]].reset_index()
-                )
+                ordered = competitor_index.loc[heat["competitors"]].reset_index()
                 marks = calculate_authoritative_field(
                     root_state=tournament_state,
                     child=event,
@@ -2991,7 +2997,7 @@ def generate_complete_day_schedule(
                     wood_diameter=event["wood_diameter"],
                     wood_quality=event["wood_quality"],
                     event_code=event["event_code"],
-                    results_df=results_df,
+                    results_df=v3_results_df,
                     prediction_as_of=event.get("prediction_as_of", tournament_state.get("prediction_as_of")),
                 )
                 if len(marks) != len(ordered) or any("mark" not in item for item in marks):

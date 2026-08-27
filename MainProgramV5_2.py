@@ -75,6 +75,7 @@ from woodchopping.ui.multi_event_ui import (
     approve_event_handicaps,
     assign_competitors_to_events,  # NEW V5.1
     calculate_all_event_handicaps,
+    configure_prediction_authority_store,
     create_multi_event_tournament,
     display_prediction_engine_banner,
     execute_with_v3_recovery,
@@ -228,6 +229,7 @@ multi_event_tournament_state = {
 _prediction_authority_store = PredictionAuthorityStore(
     os.getenv("STRATHEX_PREDICTION_AUTHORITY_DB", "saves/prediction_authority.db")
 )
+configure_prediction_authority_store(_prediction_authority_store)
 
 try:
     from woodchopping.strathmark_v3_client import (
@@ -249,11 +251,9 @@ _prediction_engine_router = build_engine_router(v3_adapter=_v3_engine_adapter)
 
 def _v3_readiness_provider():
     """Use the authenticated V3 client when installed; otherwise fail closed."""
-    try:
-        from woodchopping.strathmark_v3_client import get_v3_readiness
-    except ImportError:
+    if _v3_engine_adapter is None:
         return unavailable_v3_readiness()
-    return get_v3_readiness()
+    return _v3_engine_adapter.selector_readiness()
 
 
 def _judge_actor() -> str:
@@ -607,14 +607,10 @@ def single_event_menu():
             return heats
         results_df = load_results_df()
         prediction_as_of = ensure_prediction_as_of(tournament_state)
+        competitor_index = tournament_state["all_competitors_df"].set_index("competitor_name")
         materialized = []
         for heat_index, heat in enumerate(heats, 1):
-            ordered = (
-                tournament_state["all_competitors_df"]
-                .set_index("competitor_name")
-                .loc[heat["competitors"]]
-                .reset_index()
-            )
+            ordered = competitor_index.loc[heat["competitors"]].reset_index()
             marks = calculate_authoritative_field(
                 root_state=tournament_state,
                 authority_store=_prediction_authority_store,
