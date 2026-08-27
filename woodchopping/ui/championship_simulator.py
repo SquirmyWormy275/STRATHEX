@@ -7,7 +7,7 @@ calculating handicap marks. All competitors start together (Mark 3) in champions
 format - fastest raw time wins.
 
 Key Features:
-    - Uses STRATHMARK v2 predictions and calibrated uncertainty
+    - Uses the competition-selected STRATHMARK engine for forecasts
     - Runs Monte Carlo simulations for statistical confidence
     - Displays individual competitor statistics (time variations, consistency)
     - AI-powered race analysis focusing on matchups and competitive dynamics
@@ -47,7 +47,14 @@ def _championship_simulation_count(num_competitors: int) -> int:
     )
 
 
-def run_championship_simulator(comp_df):
+def run_championship_simulator(
+    comp_df,
+    *,
+    prediction_state=None,
+    authority_store=None,
+    engine_router=None,
+    forecast_adapter=None,
+):
     """
     Interactive championship race simulator.
 
@@ -180,6 +187,10 @@ def run_championship_simulator(comp_df):
         peak_windows=peak_windows,
         peak_names=peak_names,
         prediction_as_of=datetime.now().date(),
+        root_state=prediction_state,
+        authority_store=authority_store,
+        engine_router=engine_router,
+        forecast_adapter=forecast_adapter,
     )
 
     if not predictions:
@@ -218,6 +229,10 @@ def run_championship_simulator(comp_df):
             results_df,
             peak_windows,
             peak_names,
+            prediction_state,
+            authority_store,
+            engine_router,
+            forecast_adapter,
         )
 
     # Run Monte Carlo simulation
@@ -307,6 +322,10 @@ def _generate_championship_predictions(
     peak_windows: Optional[Dict[str, Dict]] = None,
     peak_names: Optional[set] = None,
     prediction_as_of=None,
+    root_state=None,
+    authority_store=None,
+    engine_router=None,
+    forecast_adapter=None,
 ) -> List[Dict]:
     """
     Generate predictions for all competitors with Mark 3 (championship format).
@@ -371,16 +390,38 @@ def _generate_championship_predictions(
     for group in groups.values():
         comp_wood = group["wood"]
         group_df = selected_df.loc[group["indices"]]
-        field_result = calculate_ai_enhanced_handicaps(
-            group_df,
-            comp_wood["species"],
-            comp_wood["size_mm"],
-            comp_wood["quality"],
-            comp_wood["event"],
-            group["results"],
-            prediction_as_of=prediction_as_of,
-            include_store_history=group["include_store_history"],
-        )
+        from woodchopping.ui.handicap_ui import calculate_authoritative_seeding
+
+        if root_state is None or authority_store is None or engine_router is None:
+            field_result = calculate_ai_enhanced_handicaps(
+                group_df,
+                comp_wood["species"],
+                comp_wood["size_mm"],
+                comp_wood["quality"],
+                comp_wood["event"],
+                group["results"],
+                prediction_as_of=prediction_as_of,
+                include_store_history=group["include_store_history"],
+            )
+        else:
+            field_result = calculate_authoritative_seeding(
+                root_state=root_state,
+                authority_store=authority_store,
+                engine_router=engine_router,
+                forecast_adapter=forecast_adapter,
+                field_local_id=(
+                    f"championship:forecast:{comp_wood['event']}:{comp_wood['species']}:"
+                    f"{comp_wood['size_mm']}:{comp_wood['quality']}"
+                ),
+                competitors_df=group_df,
+                wood_species=comp_wood["species"],
+                wood_diameter=comp_wood["size_mm"],
+                wood_quality=comp_wood["quality"],
+                event_code=comp_wood["event"],
+                results_df=group["results"],
+                prediction_as_of=prediction_as_of,
+                include_store_history=group["include_store_history"],
+            )
         expected_names = group_df["competitor_name"].astype(str).tolist()
         if not field_result or len(field_result) != len(expected_names):
             print("\n[WARN] STRATHMARK did not return the complete championship field.")
@@ -410,6 +451,7 @@ def _generate_championship_predictions(
                 print("Championship simulation aborted rather than mixing model snapshots.")
                 return []
             prediction["mark"] = 3
+            prediction["mark_origin"] = "championship_fixed_rule"
             prediction["wood"] = dict(comp_wood)
             prediction["prime_window"] = group["prime_by_name"].get(comp_name)
             predictions.append(prediction)
@@ -932,6 +974,10 @@ def _display_wood_swap_sensitivity(
     results_df: pd.DataFrame,
     peak_windows: Dict[str, Dict],
     peak_names: set,
+    prediction_state,
+    authority_store,
+    engine_router,
+    forecast_adapter,
 ) -> None:
     scenarios = _select_wood_swap_scenarios(wood_selection)
     if not scenarios:
@@ -965,6 +1011,10 @@ def _display_wood_swap_sensitivity(
             peak_windows=peak_windows,
             peak_names=peak_names,
             prediction_as_of=base_predictions[0].get("evidence_cutoff") if base_predictions else None,
+            root_state=prediction_state,
+            authority_store=authority_store,
+            engine_router=engine_router,
+            forecast_adapter=forecast_adapter,
         )
 
         scenario_rank = {pred["name"]: i + 1 for i, pred in enumerate(scenario_predictions)}

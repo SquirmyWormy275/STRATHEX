@@ -36,7 +36,6 @@ from woodchopping.data import (
     load_competitors_df,
     load_results_df,
 )
-from woodchopping.handicaps import calculate_ai_enhanced_handicaps
 from woodchopping.prediction_context import ensure_prediction_as_of
 from woodchopping.simulation import simulate_and_assess_handicaps
 from woodchopping.strathmark_adapter import MAX_STRATHMARK_FIELD_SIZE
@@ -64,8 +63,11 @@ from woodchopping.ui.error_display import (
     display_warning,
 )
 from woodchopping.ui.handicap_ui import (
+    build_engine_router,
+    calculate_authoritative_field,
     judge_approval,
     manual_adjust_handicaps,
+    normalize_actor_identifier,
 )
 from woodchopping.ui.multi_event_ui import (
     add_event_to_tournament,
@@ -220,6 +222,23 @@ _prediction_authority_store = PredictionAuthorityStore(
     os.getenv("STRATHEX_PREDICTION_AUTHORITY_DB", "saves/prediction_authority.db")
 )
 
+try:
+    from woodchopping.strathmark_v3_client import (
+        V3RuntimeConfigurationError,
+        build_v3_client,
+    )
+except ImportError:
+    # Selection readiness explains the exact configuration problem. Keeping the
+    # adapter absent makes a selected V3 scope fail closed, never fall back.
+    _v3_engine_adapter = None
+else:
+    try:
+        _v3_engine_adapter = build_v3_client()
+    except V3RuntimeConfigurationError:
+        _v3_engine_adapter = None
+
+_prediction_engine_router = build_engine_router(v3_adapter=_v3_engine_adapter)
+
 
 def _v3_readiness_provider():
     """Use the authenticated V3 client when installed; otherwise fail closed."""
@@ -232,7 +251,7 @@ def _v3_readiness_provider():
 
 def _judge_actor() -> str:
     """Return display/audit identity; STRATHMARK credentials remain separate."""
-    return os.getenv("STRATHEX_JUDGE_ID", "local-judge").strip() or "local-judge"
+    return normalize_actor_identifier(os.getenv("STRATHEX_JUDGE_ID", "local-judge"))
 
 
 def _create_multi_event_with_engine() -> dict:
@@ -992,13 +1011,17 @@ def single_event_menu():
             # Use existing calculate_ai_enhanced_handicaps function with progress
             results_df = load_results_df()
             prediction_as_of = ensure_prediction_as_of(tournament_state)
-            handicap_results = calculate_ai_enhanced_handicaps(
-                tournament_state["all_competitors_df"],
-                wood_selection["species"],
-                wood_selection["size_mm"],
-                wood_selection["quality"],
-                wood_selection["event"],
-                results_df,
+            handicap_results = calculate_authoritative_field(
+                root_state=tournament_state,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+                field_local_id="single-event:initial",
+                competitors_df=tournament_state["all_competitors_df"],
+                wood_species=wood_selection["species"],
+                wood_diameter=wood_selection["size_mm"],
+                wood_quality=wood_selection["quality"],
+                event_code=wood_selection["event"],
+                results_df=results_df,
                 progress_callback=show_progress,
                 prediction_as_of=prediction_as_of,
             )
@@ -1305,6 +1328,12 @@ def single_event_menu():
                         wood_selection["quality"],
                         wood_selection["event"],
                         prediction_as_of=ensure_prediction_as_of(tournament_state),
+                        root_state=tournament_state,
+                        authority_store=_prediction_authority_store,
+                        engine_router=_prediction_engine_router,
+                        forecast_adapter=(
+                            _v3_engine_adapter.pre_field_forecast if _v3_engine_adapter is not None else None
+                        ),
                     )
                 except (ValueError, RuntimeError) as error:
                     print(f"\n[WARN] Bracket seeding failed: {error}")
@@ -1500,6 +1529,8 @@ def single_event_menu():
                 next_type,
                 is_championship=False,
                 animate_selection=True,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
             )
             tournament_state["rounds"].extend(next_rounds)
 
@@ -1837,7 +1868,12 @@ def multi_event_tournament_menu():
                 continue
 
             results_df = load_results_df()
-            multi_event_tournament_state = calculate_all_event_handicaps(multi_event_tournament_state, results_df)
+            multi_event_tournament_state = calculate_all_event_handicaps(
+                multi_event_tournament_state,
+                results_df,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+            )
 
         elif menu_choice == "7":
             # Review & Analyze Handicaps
@@ -1896,6 +1932,8 @@ def multi_event_tournament_menu():
                 multi_event_tournament_state,
                 wood_selection,  # Legacy parameter
                 heat_assignment_df,  # Legacy parameter
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
             )
 
         elif menu_choice == "12":
@@ -1991,7 +2029,21 @@ def championship_simulator_menu():
     print("║" + " " * 68 + "║")
     print("╚" + "═" * 68 + "╝")
 
-    run_championship_simulator(comp_df)
+    prediction_state = {}
+    select_prediction_engine_for_scope(
+        prediction_state,
+        authority_store=_prediction_authority_store,
+        owner_kind="single_event",
+        readiness_provider=_v3_readiness_provider,
+        actor=_judge_actor(),
+    )
+    run_championship_simulator(
+        comp_df,
+        prediction_state=prediction_state,
+        authority_store=_prediction_authority_store,
+        engine_router=_prediction_engine_router,
+        forecast_adapter=(_v3_engine_adapter.pre_field_forecast if _v3_engine_adapter is not None else None),
+    )
 
 
 ## Main Menu - Top Level Mode Selection

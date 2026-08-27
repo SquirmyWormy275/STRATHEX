@@ -510,6 +510,11 @@ def generate_bracket_seeds(
     wood_quality: int,
     event_code: str,
     prediction_as_of=None,
+    *,
+    root_state: Dict | None = None,
+    authority_store=None,
+    engine_router=None,
+    forecast_adapter=None,
 ) -> Dict[str, Dict]:
     """Generate predictions for all competitors and assign seeds.
 
@@ -528,19 +533,36 @@ def generate_bracket_seeds(
     """
     from woodchopping.data import load_results_df
     from woodchopping.handicaps import calculate_ai_enhanced_handicaps
+    from woodchopping.ui.handicap_ui import calculate_authoritative_seeding
 
     results_df = load_results_df()
-    field_results = calculate_ai_enhanced_handicaps(
-        competitors_df,
-        wood_species,
-        wood_diameter,
-        wood_quality,
-        event_code,
-        results_df,
-        prediction_as_of=prediction_as_of,
-    )
+    if root_state is None or authority_store is None or engine_router is None:
+        field_results = calculate_ai_enhanced_handicaps(
+            competitors_df,
+            wood_species,
+            wood_diameter,
+            wood_quality,
+            event_code,
+            results_df,
+            prediction_as_of=prediction_as_of,
+        )
+    else:
+        field_results = calculate_authoritative_seeding(
+            root_state=root_state,
+            authority_store=authority_store,
+            engine_router=engine_router,
+            forecast_adapter=forecast_adapter,
+            field_local_id="bracket:seeding",
+            competitors_df=competitors_df,
+            wood_species=wood_species,
+            wood_diameter=wood_diameter,
+            wood_quality=wood_quality,
+            event_code=event_code,
+            results_df=results_df,
+            prediction_as_of=prediction_as_of,
+        )
     if not field_results:
-        raise RuntimeError("STRATHMARK v2 did not return bracket seed predictions")
+        raise RuntimeError("selected STRATHMARK engine did not return bracket seed predictions")
 
     predictions = {result["name"]: dict(result) for result in field_results}
 

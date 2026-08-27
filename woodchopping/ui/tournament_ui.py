@@ -686,6 +686,11 @@ def generate_next_round(
     next_round_type: str,
     is_championship: bool = False,
     animate_selection: bool = False,
+    *,
+    authority_store: Any = None,
+    engine_router: Any = None,
+    authority_child: Dict | None = None,
+    authority_root_state: Dict | None = None,
 ) -> List[Dict]:
     """Generate semi-final or final rounds from advancing competitors.
 
@@ -788,7 +793,6 @@ def generate_next_round(
 
     # Import handicap calculation function
     from woodchopping.data import load_results_df
-    from woodchopping.handicaps import calculate_ai_enhanced_handicaps
 
     # Get DataFrame for advancers only
     all_advancers_df = tournament_state["all_competitors_df"][
@@ -819,15 +823,34 @@ def generate_next_round(
         results_df = load_results_df()
 
         prediction_as_of = ensure_prediction_as_of(tournament_state)
-        advancer_results = calculate_ai_enhanced_handicaps(
-            all_advancers_df,
-            wood_species,
-            wood_diameter,
-            wood_quality,
-            event_code,
-            results_df,
-            prediction_as_of=prediction_as_of,
-        )
+        from woodchopping.handicaps import calculate_ai_enhanced_handicaps
+        from woodchopping.ui.handicap_ui import calculate_authoritative_field
+
+        if authority_store is None or engine_router is None:
+            advancer_results = calculate_ai_enhanced_handicaps(
+                all_advancers_df,
+                wood_species,
+                wood_diameter,
+                wood_quality,
+                event_code,
+                results_df,
+                prediction_as_of=prediction_as_of,
+            )
+        else:
+            advancer_results = calculate_authoritative_field(
+                root_state=(tournament_state if authority_root_state is None else authority_root_state),
+                child=authority_child,
+                authority_store=authority_store,
+                engine_router=engine_router,
+                field_local_id=f"round:{next_round_type}:{len(tournament_state.get('rounds', [])) + 1}",
+                competitors_df=all_advancers_df,
+                wood_species=wood_species,
+                wood_diameter=wood_diameter,
+                wood_quality=wood_quality,
+                event_code=event_code,
+                results_df=results_df,
+                prediction_as_of=prediction_as_of,
+            )
 
     if not advancer_results:
         print("\n[WARN] STRATHMARK did not produce a complete advancing-field mark sheet.")

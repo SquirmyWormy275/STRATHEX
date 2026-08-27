@@ -688,7 +688,13 @@ def add_event_to_tournament(
     return tournament_state
 
 
-def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFrame) -> Dict:
+def calculate_all_event_handicaps(
+    tournament_state: Dict,
+    results_df: pd.DataFrame,
+    *,
+    authority_store: Any = None,
+    engine_router: Any = None,
+) -> Dict:
     """Calculate handicaps for ALL events in the tournament (BATCH OPERATION).
 
     This is the key function for the batch handicap workflow. It processes all
@@ -820,16 +826,35 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
         # Calculate handicaps for this event
         staged_event = dict(event)
         event_cutoff = ensure_prediction_as_of(staged_event, fallback=tournament_cutoff)
-        handicap_results = calculate_ai_enhanced_handicaps(
-            event["all_competitors_df"],
-            event["wood_species"],
-            event["wood_diameter"],
-            event["wood_quality"],
-            event["event_code"],
-            results_df,
-            progress_callback=show_progress,
-            prediction_as_of=event_cutoff,
-        )
+        from woodchopping.ui.handicap_ui import calculate_authoritative_field
+
+        if authority_store is None or engine_router is None:
+            handicap_results = calculate_ai_enhanced_handicaps(
+                event["all_competitors_df"],
+                event["wood_species"],
+                event["wood_diameter"],
+                event["wood_quality"],
+                event["event_code"],
+                results_df,
+                progress_callback=show_progress,
+                prediction_as_of=event_cutoff,
+            )
+        else:
+            handicap_results = calculate_authoritative_field(
+                root_state=tournament_state,
+                child=event,
+                authority_store=authority_store,
+                engine_router=engine_router,
+                field_local_id=f"event:{event.get('event_id', event.get('event_name', event_idx))}:initial",
+                competitors_df=event["all_competitors_df"],
+                wood_species=event["wood_species"],
+                wood_diameter=event["wood_diameter"],
+                wood_quality=event["wood_quality"],
+                event_code=event["event_code"],
+                results_df=results_df,
+                progress_callback=show_progress,
+                prediction_as_of=event_cutoff,
+            )
 
         if not handicap_results:
             progress_display.finish("No handicap results returned")
@@ -879,7 +904,10 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
     print(f"{'=' * 70}")
 
     # Auto-save
-    auto_save_multi_event(tournament_state)
+    if authority_store is None:
+        auto_save_multi_event(tournament_state)
+    else:
+        auto_save_multi_event(tournament_state, authority_store=authority_store)
     print("\n[OK] Tournament state auto-saved")
 
     input("\nPress Enter to continue...")
@@ -2276,7 +2304,14 @@ def display_event_progress(event_obj: Dict, current_round: Dict) -> None:
     print(f"Status: {current_round['status']}")
 
 
-def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, heat_assignment_df: pd.DataFrame) -> Dict:
+def sequential_results_workflow(
+    tournament_state: Dict,
+    wood_selection: Dict,
+    heat_assignment_df: pd.DataFrame,
+    *,
+    authority_store: Any = None,
+    engine_router: Any = None,
+) -> Dict:
     """Sequential results entry workflow for all events in tournament.
 
     Guides judge through recording results for all rounds across all events.
@@ -2431,6 +2466,10 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
                             all_advancers,
                             next_type,
                             is_championship=(event_obj.get("event_type") == "championship"),
+                            authority_store=authority_store,
+                            engine_router=engine_router,
+                            authority_child=event_obj,
+                            authority_root_state=tournament_state,
                         )
 
                         # Add to event rounds

@@ -7,8 +7,9 @@ This module handles handicap viewing and results operations including:
 - Recording and saving heat results to Excel
 """
 
-from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+import re
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
 from openpyxl import Workbook, load_workbook
@@ -23,12 +24,211 @@ from woodchopping.data.validation import (
 from woodchopping.handicaps import calculate_ai_enhanced_handicaps
 from woodchopping.simulation import simulate_and_assess_handicaps
 
+
+def _utc_milliseconds(now: datetime | None = None) -> str:
+    value = now or datetime.now(timezone.utc)
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def normalize_actor_identifier(value: str) -> str:
+    """Return the stable STRATHMARK actor identifier used in audit evidence."""
+    text = str(value or "").strip()
+    if text.startswith("actor:") and len(text) > len("actor:"):
+        return text
+    slug = re.sub(r"[^a-z0-9]+", "-", text.casefold()).strip("-")
+    return f"actor:{slug or 'local-judge'}"
+
+
+def build_prediction_execution_context(
+    root_state: Mapping[str, Any],
+    authority_store: Any,
+    *,
+    child: Mapping[str, Any] | None = None,
+    now: datetime | None = None,
+):
+    """Lock at the first numeric boundary, then snapshot canonical authority."""
+    from woodchopping.engine_selection import PredictionExecutionContext
+    from woodchopping.ui.prediction_context import (
+        attach_authority_reference,
+        resolve_authority_for_state,
+    )
+
+    if authority_store is None:
+        raise ValueError("prediction authority store is required for numeric work")
+    receipt = resolve_authority_for_state(root_state, authority_store, child=child)
+    if not receipt.locked:
+        receipt = authority_store.lock(
+            receipt.reference,
+            boundary="first_authoritative_numeric_action",
+            locked_at=_utc_milliseconds(now),
+        )
+        if not isinstance(root_state, dict):
+            raise TypeError("root prediction state must be mutable at the first numeric boundary")
+        attach_authority_reference(root_state, receipt.reference)
+    return PredictionExecutionContext.from_receipt(receipt)
+
+
+def calculate_authoritative_field(
+    *,
+    root_state: Dict[str, Any],
+    authority_store: Any,
+    engine_router: Any,
+    field_local_id: str,
+    competitors_df: pd.DataFrame,
+    wood_species: str,
+    wood_diameter: float,
+    wood_quality: int,
+    event_code: str,
+    results_df: pd.DataFrame,
+    child: Mapping[str, Any] | None = None,
+    upstream_field_revision: int = 1,
+    **numeric_options: Any,
+) -> List[Dict[str, Any]]:
+    """Route one complete numeric field through its locked selected engine."""
+    from woodchopping.engine_selection import EngineRouter
+
+    if not isinstance(engine_router, EngineRouter):
+        raise TypeError("configured prediction engine router is required")
+    context = build_prediction_execution_context(root_state, authority_store, child=child)
+    request = _build_engine_request(
+        context=context,
+        field_local_id=field_local_id,
+        competitors_df=competitors_df,
+        wood_species=wood_species,
+        wood_diameter=wood_diameter,
+        wood_quality=wood_quality,
+        event_code=event_code,
+        results_df=results_df,
+        upstream_field_revision=upstream_field_revision,
+        numeric_options=numeric_options,
+    )
+    return engine_router.calculate_field(context, **request)
+
+
+def _build_engine_request(
+    *,
+    context: Any,
+    field_local_id: str,
+    competitors_df: pd.DataFrame,
+    wood_species: str,
+    wood_diameter: float,
+    wood_quality: int,
+    event_code: str,
+    results_df: pd.DataFrame,
+    upstream_field_revision: int,
+    numeric_options: Mapping[str, Any],
+) -> Dict[str, Any]:
+    from woodchopping.ui.prediction_context import derive_scope_identity
+
+    names = competitors_df["competitor_name"].astype(str).tolist()
+    local_ids = (
+        competitors_df["competitor_id"].astype(str).tolist() if "competitor_id" in competitors_df.columns else names
+    )
+    competitor_ids = [derive_scope_identity(context.scope_id, "competitor", local_id) for local_id in local_ids]
+    if len(set(competitor_ids)) != len(competitor_ids):
+        raise ValueError("numeric field contains duplicate competitor identities")
+    request = {
+        "competitors_df": competitors_df,
+        "wood_species": wood_species,
+        "wood_diameter": wood_diameter,
+        "wood_quality": wood_quality,
+        "event_code": event_code,
+        "results_df": results_df,
+        "field_id": derive_scope_identity(context.scope_id, "field", field_local_id),
+        "upstream_field_revision": upstream_field_revision,
+        "ordered_competitor_ids": competitor_ids,
+        "competitor_names": dict(zip(competitor_ids, names)),
+    }
+    request.update(numeric_options)
+    return request
+
+
+def build_engine_router(*, v3_adapter: Any = None):
+    """Build the router while preserving the exact legacy V2 call contract."""
+    from woodchopping.engine_selection import EngineRouter
+
+    def v2_adapter(**request: Any) -> List[Dict[str, Any]]:
+        return calculate_ai_enhanced_handicaps(
+            request["competitors_df"],
+            request["wood_species"],
+            request["wood_diameter"],
+            request["wood_quality"],
+            request["event_code"],
+            request["results_df"],
+            **{
+                key: request[key]
+                for key in ("progress_callback", "prediction_as_of", "include_store_history")
+                if key in request
+            },
+        )
+
+    return EngineRouter(v2_adapter=v2_adapter, v3_adapter=v3_adapter)
+
+
+def calculate_authoritative_seeding(
+    *,
+    forecast_adapter: Any = None,
+    **field_request: Any,
+) -> List[Dict[str, Any]]:
+    """Use V3's pre-field capability for seeding, never a hidden V2 fallback."""
+    context = build_prediction_execution_context(
+        field_request["root_state"],
+        field_request["authority_store"],
+        child=field_request.get("child"),
+    )
+    if context.selected_engine == "v2":
+        return calculate_authoritative_field(**field_request)
+    if not callable(forecast_adapter):
+        raise RuntimeError("selected V3 engine has no pre-field forecast capability")
+    known = {
+        "field_local_id",
+        "competitors_df",
+        "wood_species",
+        "wood_diameter",
+        "wood_quality",
+        "event_code",
+        "results_df",
+        "upstream_field_revision",
+    }
+    request = _build_engine_request(
+        context=context,
+        field_local_id=field_request["field_local_id"],
+        competitors_df=field_request["competitors_df"],
+        wood_species=field_request["wood_species"],
+        wood_diameter=field_request["wood_diameter"],
+        wood_quality=field_request["wood_quality"],
+        event_code=field_request["event_code"],
+        results_df=field_request["results_df"],
+        upstream_field_revision=field_request.get("upstream_field_revision", 1),
+        numeric_options={
+            key: value
+            for key, value in field_request.items()
+            if key not in known | {"root_state", "authority_store", "engine_router", "child"}
+        },
+    )
+    projection = forecast_adapter(execution_context=context, **request)
+    if not isinstance(projection, list) or any(
+        not isinstance(row, Mapping) or not str(row.get("engine_version", "")).startswith("3.") for row in projection
+    ):
+        raise RuntimeError("V3 pre-field forecast returned mismatched engine evidence")
+    return projection
+
+
 # File/sheet names from config
 RESULTS_FILE = paths.EXCEL_FILE
 RESULTS_SHEET = paths.RESULTS_SHEET
 
 
-def view_handicaps_menu(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> None:
+def view_handicaps_menu(
+    heat_assignment_df: pd.DataFrame,
+    wood_selection: Dict,
+    *,
+    prediction_state: Dict[str, Any] | None = None,
+    authority_store: Any = None,
+    engine_router: Any = None,
+) -> None:
     """View Handicap Marks Menu.
 
     Official will be presented with the calculated handicap marks for each
@@ -58,7 +258,13 @@ def view_handicaps_menu(heat_assignment_df: pd.DataFrame, wood_selection: Dict) 
         if s == "1":
             if not validate_heat_data(heat_assignment_df, wood_selection):
                 continue
-            view_handicaps(heat_assignment_df, wood_selection)
+            view_handicaps(
+                heat_assignment_df,
+                wood_selection,
+                prediction_state=prediction_state,
+                authority_store=authority_store,
+                engine_router=engine_router,
+            )
             input("\n(Press Enter to return to the View Handicap Marks menu) ")
 
         elif s == "2" or s == "":
@@ -99,7 +305,14 @@ def validate_heat_data(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -
     return True
 
 
-def view_handicaps(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> None:
+def view_handicaps(
+    heat_assignment_df: pd.DataFrame,
+    wood_selection: Dict,
+    *,
+    prediction_state: Dict[str, Any] | None = None,
+    authority_store: Any = None,
+    engine_router: Any = None,
+) -> None:
     """Calculate and display AI-enhanced handicap marks for the heat.
 
     This function:
@@ -140,7 +353,28 @@ def view_handicaps(heat_assignment_df: pd.DataFrame, wood_selection: Dict) -> No
         quality = 5
 
     # Calculate AI-enhanced handicaps
-    results = calculate_ai_enhanced_handicaps(heat_assignment_df, species, diameter, quality, event_code, results_df)
+    if prediction_state is None or authority_store is None or engine_router is None:
+        results = calculate_ai_enhanced_handicaps(
+            heat_assignment_df,
+            species,
+            diameter,
+            quality,
+            event_code,
+            results_df,
+        )
+    else:
+        results = calculate_authoritative_field(
+            root_state=prediction_state,
+            authority_store=authority_store,
+            engine_router=engine_router,
+            field_local_id="single-event:view-handicaps",
+            competitors_df=heat_assignment_df,
+            wood_species=species,
+            wood_diameter=diameter,
+            wood_quality=quality,
+            event_code=event_code,
+            results_df=results_df,
+        )
 
     if not results:
         print("\nUnable to generate handicap marks. Please check historical data.")
