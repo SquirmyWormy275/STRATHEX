@@ -12,7 +12,7 @@ Every new competition begins with no prediction engine selected. The judge must 
 - the choice locks at the first numeric operation;
 - an outage or incompatible response blocks work rather than calling the other engine.
 
-V2 remains the established production baseline. V3 is selectable only when its authenticated loopback service proves an exact reviewed contract and source identity. The currently supported V3 path is rehearsal-only unless installation-owned production evidence says otherwise; selecting it does not enable a global V3 cutover.
+V2 remains the established production baseline. V3 is selectable only when its authenticated loopback service proves an exact reviewed contract and source identity. This STRATHEX release always records V3 as rehearsal-only, even when the service reports production-ready evidence; changing that policy requires a separate explicit cutover release. Selecting V3 for one competition never enables a global V3 cutover.
 
 V3 uses a two-stage workflow. A signed pre-field forecast supplies raw-time estimates for seeding before heats exist and is forbidden from carrying a mark. After STRATHEX creates exact heats and stand assignments, V3 assembles the complete field-relative mark sheet. See [Choosing the Prediction Engine](wiki/Choosing-the-Prediction-Engine.md).
 

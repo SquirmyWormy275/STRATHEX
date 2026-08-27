@@ -13,6 +13,7 @@ typed :class:`EngineAdapterUnavailableError`.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Protocol, TypeAlias
 
@@ -74,6 +75,7 @@ class PredictionExecutionContext:
     locked: bool
     lock_boundary: str
     locked_at: str
+    pre_field_signer_trust_json: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -136,6 +138,16 @@ class PredictionExecutionContext:
             locked=receipt.locked,
             lock_boundary=receipt.lock_boundary or "",
             locked_at=receipt.locked_at or "",
+            pre_field_signer_trust_json=(
+                None
+                if receipt.pre_field_signer_trust is None
+                else json.dumps(
+                    receipt.pre_field_signer_trust,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                )
+            ),
         )
 
 

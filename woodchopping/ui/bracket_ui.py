@@ -512,9 +512,11 @@ def generate_bracket_seeds(
     prediction_as_of=None,
     *,
     root_state: Dict | None = None,
+    authority_child: Dict | None = None,
     authority_store=None,
     engine_router=None,
     forecast_adapter=None,
+    authority_checkpoint_callback=None,
 ) -> Dict[str, Dict]:
     """Generate predictions for all competitors and assign seeds.
 
@@ -532,35 +534,27 @@ def generate_bracket_seeds(
         dict: {competitor_name: prediction_with_seed}
     """
     from woodchopping.data import load_results_df
-    from woodchopping.handicaps import calculate_ai_enhanced_handicaps
     from woodchopping.ui.handicap_ui import calculate_authoritative_seeding
 
     results_df = load_results_df()
     if root_state is None or authority_store is None or engine_router is None:
-        field_results = calculate_ai_enhanced_handicaps(
-            competitors_df,
-            wood_species,
-            wood_diameter,
-            wood_quality,
-            event_code,
-            results_df,
-            prediction_as_of=prediction_as_of,
-        )
-    else:
-        field_results = calculate_authoritative_seeding(
-            root_state=root_state,
-            authority_store=authority_store,
-            engine_router=engine_router,
-            forecast_adapter=forecast_adapter,
-            field_local_id="bracket:seeding",
-            competitors_df=competitors_df,
-            wood_species=wood_species,
-            wood_diameter=wood_diameter,
-            wood_quality=wood_quality,
-            event_code=event_code,
-            results_df=results_df,
-            prediction_as_of=prediction_as_of,
-        )
+        raise ValueError("prediction authority root state, store, and engine router are required for bracket seeding")
+    field_results = calculate_authoritative_seeding(
+        root_state=root_state,
+        child=authority_child,
+        authority_store=authority_store,
+        engine_router=engine_router,
+        checkpoint_callback=authority_checkpoint_callback,
+        forecast_adapter=forecast_adapter,
+        field_local_id=f"event:{(authority_child or {}).get('event_id', 'single-event')}:bracket:seeding",
+        competitors_df=competitors_df,
+        wood_species=wood_species,
+        wood_diameter=wood_diameter,
+        wood_quality=wood_quality,
+        event_code=event_code,
+        results_df=results_df,
+        prediction_as_of=prediction_as_of,
+    )
     if not field_results:
         raise RuntimeError("selected STRATHMARK engine did not return bracket seed predictions")
 

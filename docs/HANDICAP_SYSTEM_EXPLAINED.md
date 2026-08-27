@@ -1,6 +1,6 @@
 # Handicap System Explained
 
-STRATHEX delegates prediction and mark arithmetic to the STRATHMARK engine deliberately selected for the competition. V2 remains the production baseline; V3 is an opt-in, readiness-gated rehearsal mechanism until installation-owned production evidence exists.
+STRATHEX delegates prediction and mark arithmetic to the STRATHMARK engine deliberately selected for the competition. V2 remains the production baseline; V3 is an opt-in, readiness-gated rehearsal mechanism in this release. Service readiness alone cannot authorize a production cutover.
 
 The choice is made once for a single event or once at tournament creation. Tournament children inherit it. The selected engine is the numeric authority for that scope, and failures never invoke the other engine.
 

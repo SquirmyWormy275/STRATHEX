@@ -96,6 +96,7 @@ class SelectionReceipt:
     mode: str | None
     contract_identity: str | None
     source_identity: str | None
+    pre_field_signer_trust: dict[str, str] | None
     locked: bool
     lock_boundary: str | None
     locked_at: str | None
@@ -199,6 +200,11 @@ class PredictionAuthorityStore:
             mode=payload.get("mode"),
             contract_identity=payload.get("contract_identity"),
             source_identity=payload.get("source_identity"),
+            pre_field_signer_trust=(
+                dict(payload["pre_field_signer_trust"])
+                if isinstance(payload.get("pre_field_signer_trust"), Mapping)
+                else None
+            ),
             locked=bool(payload["locked"]),
             lock_boundary=payload.get("lock_boundary"),
             locked_at=payload.get("locked_at"),
@@ -245,6 +251,7 @@ class PredictionAuthorityStore:
             "mode": None,
             "contract_identity": None,
             "source_identity": None,
+            "pre_field_signer_trust": None,
             "locked": False,
             "lock_boundary": None,
             "locked_at": None,
@@ -295,6 +302,7 @@ class PredictionAuthorityStore:
             "mode": current.mode,
             "contract_identity": current.contract_identity,
             "source_identity": current.source_identity,
+            "pre_field_signer_trust": current.pre_field_signer_trust,
             "locked": current.locked,
             "lock_boundary": current.lock_boundary,
             "locked_at": current.locked_at,
@@ -319,6 +327,7 @@ class PredictionAuthorityStore:
         mode: str,
         contract_identity: str,
         source_identity: str,
+        pre_field_signer_trust: Mapping[str, str] | None = None,
         reason_note: str | None = None,
     ) -> SelectionReceipt:
         current = self.resolve(reference)
@@ -335,6 +344,8 @@ class PredictionAuthorityStore:
             raise AuthorityStateError("engine change requires a reason")
         if engine == "v2" and mode != "production":
             raise AuthorityStateError("V2 selection must use production mode")
+        if engine == "v3" and mode != "rehearsal":
+            raise AuthorityStateError("V3 selection is rehearsal-only until an explicit cutover release")
         return self._mutate(
             reference,
             {
@@ -346,6 +357,7 @@ class PredictionAuthorityStore:
                 "mode": mode,
                 "contract_identity": _required_text(contract_identity, "contract_identity"),
                 "source_identity": _required_text(source_identity, "source_identity"),
+                "pre_field_signer_trust": (None if pre_field_signer_trust is None else dict(pre_field_signer_trust)),
                 "migration_status": "ready",
             },
         )

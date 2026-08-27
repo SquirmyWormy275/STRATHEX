@@ -16,12 +16,13 @@ def authority_store(tmp_path):
     return PredictionAuthorityStore(tmp_path / "prediction-authority.db")
 
 
-def _v3_status(status: str = "production_ready") -> dict[str, str]:
+def _v3_status(status: str = "production_ready") -> dict[str, object]:
     return {
         "status": status,
         "contract_identity": "strathmark-v3-consumer/1",
         "source_identity": "strathmark:abc123",
         "message": "Local V3 service passed its configured readiness check.",
+        "pre_field_signer_trust": {"schema_version": "test-trust"},
     }
 
 
@@ -97,6 +98,7 @@ def test_v3_status_failure_can_be_retried_before_rehearsal_selection(authority_s
     assert receipt.engine == "v3"
     assert receipt.mode == "rehearsal"
     assert receipt.contract_identity == "strathmark-v3-consumer/1"
+    assert receipt.pre_field_signer_trust == {"schema_version": "test-trust"}
     output = capsys.readouterr().out
     assert "STATUS CHECK FAILED" in output
     assert "REHEARSAL READY" in output
@@ -142,6 +144,38 @@ def test_all_v3_readiness_states_are_rendered_without_overclaiming(status, label
     assert label in rendered
     if status != "production_ready":
         assert "production-ready" not in rendered.lower()
+    else:
+        assert "rehearsal mode only" in rendered
+
+
+def test_production_ready_service_cannot_cut_over_v3_authority(authority_store, monkeypatch):
+    answers = iter(["2", "judge_evaluation", "Compare V3 during the show"])
+    monkeypatch.setattr("builtins.input", lambda _prompt="": next(answers))
+
+    receipt = multi_event_ui.select_prediction_engine_for_scope(
+        {},
+        authority_store=authority_store,
+        owner_kind="single_event",
+        readiness_provider=lambda: _v3_status("production_ready"),
+        actor="judge-7",
+        selected_at="2026-08-27T08:31:00.000Z",
+    )
+
+    assert receipt.engine == "v3"
+    assert receipt.mode == "rehearsal"
+
+    unlocked = authority_store.create_scope(owner_kind="single_event")
+    with pytest.raises(ValueError, match="rehearsal-only"):
+        authority_store.select_engine(
+            unlocked.reference,
+            engine="v3",
+            actor="actor:judge-7",
+            selected_at="2026-08-27T08:31:01.000Z",
+            reason_code="attempted_cutover",
+            mode="production",
+            contract_identity="contract:v3",
+            source_identity="c" * 40,
+        )
 
 
 def test_tournament_creation_selects_once_and_children_only_inherit(authority_store, monkeypatch, capsys):
@@ -314,6 +348,7 @@ def test_v3_review_batches_ordinary_fields_and_singles_out_flagged(authority_sto
         authority_store=authority_store,
         v3_adapter=adapter,
         input_fn=lambda _prompt: next(answers),
+        checkpoint_callback=lambda _state: True,
     )
 
     assert [item["action"] for item in decisions] == [

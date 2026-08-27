@@ -51,26 +51,57 @@ def test_single_event_result_entry_settles_and_finalizes_selected_engine() -> No
     assert "record_and_settle_v3_single_event(" in source
     assert "finalize_completed_competition(" in source
     assert 'derive_scope_identity(authority.scope_id, "round", "single-event")' in source
+    assert "checkpoint_callback=_checkpoint_single_prediction_state" in source
+    assert "checkpoint_callback=_checkpoint_multi_prediction_state" in source
 
 
 def test_first_numeric_boundary_locks_and_reconstructs_canonical_context(tmp_path):
     state, store = _selected_state(tmp_path)
     now = datetime(2026, 8, 27, 16, 1, tzinfo=timezone.utc)
+    checkpoints = []
 
-    context = build_prediction_execution_context(state, store, now=now)
+    context = build_prediction_execution_context(
+        state,
+        store,
+        now=now,
+        checkpoint_callback=lambda root: checkpoints.append(dict(root)) or True,
+    )
 
     canonical = store.resolve(state["prediction_authority_ref"])
     assert canonical.locked is True
     assert canonical.lock_boundary == "first_authoritative_numeric_action"
     assert context.authority_digest == canonical.reference.digest
     assert context.locked_at == "2026-08-27T16:01:00.000Z"
+    assert checkpoints[-1]["prediction_authority_ref"] == canonical.reference.to_json()
+
+
+def test_first_numeric_boundary_aborts_when_locked_reference_cannot_be_checkpointed(tmp_path):
+    state, store = _selected_state(tmp_path)
+
+    with pytest.raises(RuntimeError, match="locked prediction authority reference"):
+        build_prediction_execution_context(state, store, checkpoint_callback=lambda _root: False)
+
+    canonical_reference = state["prediction_authority_ref"]
+    assert store.resolve(canonical_reference).locked is True
+
+
+def test_first_numeric_boundary_requires_a_durable_checkpoint_callback(tmp_path):
+    state, store = _selected_state(tmp_path)
+
+    with pytest.raises(RuntimeError, match="checkpoint callback"):
+        build_prediction_execution_context(state, store)
 
 
 def test_tournament_child_inherits_root_and_child_override_is_rejected(tmp_path):
     state, store = _selected_state(tmp_path, owner_kind="tournament")
     child = {"event_name": "Underhand"}
 
-    context = build_prediction_execution_context(state, store, child=child)
+    context = build_prediction_execution_context(
+        state,
+        store,
+        child=child,
+        checkpoint_callback=lambda _root: True,
+    )
     assert context.scope_id == "strathex:tournament:one"
 
     child["prediction_authority_ref"] = dict(state["prediction_authority_ref"])
@@ -104,6 +135,7 @@ def test_authoritative_field_routes_v3_without_v2_fallback(tmp_path):
         wood_quality=5,
         event_code="SB",
         results_df=pd.DataFrame(),
+        checkpoint_callback=lambda _root: True,
     )
 
     assert [row["mark"] for row in result] == [3, 8]
@@ -130,6 +162,7 @@ def test_authoritative_field_rejects_scope_identity_overrides(tmp_path):
             wood_quality=5,
             event_code="UH",
             results_df=pd.DataFrame(),
+            checkpoint_callback=lambda _root: True,
             field_id="field:attacker-controlled",
         )
 
@@ -159,6 +192,7 @@ def test_unprepared_selected_v3_surfaces_lifecycle_failure_without_v2(tmp_path):
             wood_quality=5,
             event_code="SB",
             results_df=pd.DataFrame(),
+            checkpoint_callback=lambda _root: True,
         )
 
     assert calls == ["v3"]
@@ -186,6 +220,7 @@ def test_v2_adapter_receives_legacy_numeric_arguments_unchanged(tmp_path):
         event_code="UH",
         results_df=pd.DataFrame({"x": [1]}),
         prediction_as_of="2026-08-27",
+        checkpoint_callback=lambda _root: True,
     )
 
     assert result is sentinel
@@ -220,6 +255,7 @@ def test_runtime_v2_adapter_filters_authority_metadata_from_legacy_calculator(tm
         event_code="SB",
         results_df=pd.DataFrame(),
         prediction_as_of="2026-08-27",
+        checkpoint_callback=lambda _root: True,
     )
 
     assert result is sentinel
@@ -246,6 +282,7 @@ def test_v3_seeding_requires_forecast_capability_and_never_calls_field_router(tm
         wood_quality=5,
         event_code="SB",
         results_df=pd.DataFrame(),
+        checkpoint_callback=lambda _root: True,
     )
 
     with pytest.raises(RuntimeError, match="no pre-field forecast capability"):
@@ -293,6 +330,7 @@ def test_championship_predictions_keep_fixed_mark_distinct_from_engine_output(tm
         ]
 
     wood = {"species": "S01", "size_mm": 300, "quality": 5, "event": "SB"}
+    build_prediction_execution_context(state, store, checkpoint_callback=lambda _root: True)
     result = _generate_championship_predictions(
         competitors,
         wood,

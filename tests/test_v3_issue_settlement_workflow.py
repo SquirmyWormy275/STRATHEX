@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pandas as pd
+import pytest
 
 from woodchopping.ui.multi_event_ui import (
     acknowledge_v3_issued_marks,
@@ -139,11 +142,46 @@ def test_accepted_approval_is_acknowledged_before_review_returns(tmp_path):
         authority_store=store,
         v3_adapter=Adapter(),
         input_fn=lambda _prompt: "y",
+        checkpoint_callback=lambda _state: True,
     )
 
     assert decisions == [{"action": "ordinary_batch_accept"}]
     assert state["v3_issue_status"] == "issued"
     assert rows[0]["issue_batch_id"] == "issue_batch:accepted"
+
+
+def test_approval_does_not_reach_strathmark_until_pending_decision_is_checkpointed(tmp_path):
+    state, store = _v3_state(tmp_path)
+    approval_row = {
+        "field_id": "field:heat-one",
+        "receipt_id": "receipt:heat-one",
+        "receipt_content_digest": "a" * 64,
+        "receipt_revision": 1,
+        "upstream_field_revision": 1,
+        "row_digest": "b" * 64,
+        "call_order": 1,
+        "decision_state": "undecided",
+        "ordinary_batch_eligible": True,
+        "degraded_batch_eligible": False,
+    }
+
+    class Adapter:
+        def approval_page(self, *_args, **_kwargs):
+            return {"snapshot_id": "approval_snapshot:" + "1" * 64, "rows": [approval_row]}
+
+        def decide_approval(self, _context, _payload):
+            raise AssertionError("decision must not be sent before its recovery payload is durable")
+
+    with pytest.raises(RuntimeError, match="pending V3 approval decision"):
+        review_v3_approval_queue(
+            state,
+            authority_store=store,
+            v3_adapter=Adapter(),
+            input_fn=lambda _prompt: "y",
+            checkpoint_callback=lambda _state: False,
+        )
+
+    assert state["v3_pending_approval_decision"]["action"] == "ordinary_batch_accept"
 
 
 def test_review_reentry_retries_pending_issue_without_redeciding_or_changing_payload(tmp_path):
@@ -197,23 +235,107 @@ def test_review_reentry_retries_pending_issue_without_redeciding_or_changing_pay
         authority_store=store,
         v3_adapter=adapter,
         input_fn=lambda _prompt: "y",
+        checkpoint_callback=lambda _state: True,
     ) == [{"action": "ordinary_batch_accept"}]
     assert state["v3_issue_status"] == "accepted_unacknowledged"
     assert state["v3_pending_issue_acknowledgments"]
 
-    assert (
-        review_v3_approval_queue(
-            state,
-            authority_store=store,
-            v3_adapter=adapter,
-            input_fn=lambda _prompt: "y",
-        )
-        == []
-    )
+    assert review_v3_approval_queue(
+        state,
+        authority_store=store,
+        v3_adapter=adapter,
+        input_fn=lambda _prompt: "y",
+        checkpoint_callback=lambda _state: True,
+    ) == [{"action": "ordinary_batch_accept"}]
     assert adapter.decisions == 1
     assert adapter.issue_payloads[0] == adapter.issue_payloads[1]
     assert state["v3_pending_issue_acknowledgments"] == {}
     assert state["v3_issue_batches"]["receipt:heat-one"] == "issue_batch:recovered"
+
+
+def test_ambiguous_approval_reentry_finishes_local_evidence_and_issue_once(tmp_path):
+    from woodchopping.strathmark_v3_client import V3RecoveryRequired
+
+    state, store = _v3_state(tmp_path)
+    rows = _field_rows()
+    state["events"].append({"handicap_results_all": rows})
+    approval_row = {
+        "field_id": "field:heat-one",
+        "receipt_id": "receipt:heat-one",
+        "receipt_content_digest": "a" * 64,
+        "receipt_revision": 1,
+        "upstream_field_revision": 1,
+        "row_digest": "b" * 64,
+        "call_order": 1,
+        "decision_state": "undecided",
+        "ordinary_batch_eligible": True,
+        "degraded_batch_eligible": False,
+        "classification": "green",
+    }
+
+    class Adapter:
+        decision_calls = 0
+        recoveries = 0
+        acknowledgments = 0
+        recovered = False
+
+        def approval_page(self, *_args, **_kwargs):
+            return {"snapshot_id": "approval_snapshot:" + "1" * 64, "rows": [approval_row]}
+
+        def decide_approval(self, _context, payload):
+            self.decision_calls += 1
+            if not self.recovered:
+                raise V3RecoveryRequired("approval-command:one")
+            return {"action": payload["action"], "status": "accepted"}
+
+        def retry_recovery(self, command_key, _context):
+            assert command_key == "approval-command:one"
+            self.recoveries += 1
+            self.recovered = True
+            return {"status": "recovered"}
+
+        def acknowledge_issue(self, _context, payload):
+            self.acknowledgments += 1
+            return {
+                "issue_batch_id": "issue_batch:recovered-approval",
+                "receipt_ids": [item["receipt_id"] for item in payload["receipt_bindings"]],
+            }
+
+    adapter = Adapter()
+    checkpoints = []
+
+    first = review_v3_approval_queue(
+        state,
+        authority_store=store,
+        v3_adapter=adapter,
+        input_fn=lambda prompt: "y" if "Approve" in prompt else "c",
+        checkpoint_callback=lambda root: checkpoints.append(deepcopy(root)) or True,
+    )
+
+    assert first == []
+    assert "v3_pending_approval_decision" in state
+    assert any("v3_pending_approval_decision" in saved for saved in checkpoints)
+
+    second = review_v3_approval_queue(
+        state,
+        authority_store=store,
+        v3_adapter=adapter,
+        input_fn=lambda _prompt: "r",
+        checkpoint_callback=lambda root: checkpoints.append(deepcopy(root)) or True,
+    )
+
+    assert second == [{"action": "ordinary_batch_accept", "status": "accepted"}]
+    assert adapter.recoveries == 1
+    assert adapter.acknowledgments == 1
+    assert state["prediction_review_evidence"] == [
+        {
+            "field_id": "field:heat-one",
+            "classification": "green",
+            "interventions": ["ordinary_batch_accept"],
+        }
+    ]
+    assert rows[0]["issue_batch_id"] == "issue_batch:recovered-approval"
+    assert "v3_pending_approval_decision" not in state
 
 
 def test_recorded_unsettled_round_retries_without_duplicate_excel_write(tmp_path):

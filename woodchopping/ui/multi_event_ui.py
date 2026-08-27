@@ -80,7 +80,10 @@ def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
     detail = str(readiness.get("message") or "No readiness detail was returned.").strip()
     qualification = {
         "checking": "V3 cannot be selected until the check finishes.",
-        "production_ready": "V3 may be selected in production mode for this scope.",
+        "production_ready": (
+            "The service passed its production checks, but this STRATHEX release "
+            "still selects V3 in rehearsal mode only."
+        ),
         "rehearsal_ready": "V3 is rehearsal-only; this does not claim production readiness.",
         "ineligible": "V3 cannot be selected for this scope.",
         "status_failed": "Readiness is unknown; retry the check or select V2.",
@@ -88,7 +91,7 @@ def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
     return f"V3: {label} - {detail} {qualification}"
 
 
-def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str]:
+def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str, dict[str, str]]:
     status = str(readiness.get("status", "status_failed"))
     if status not in {"production_ready", "rehearsal_ready"}:
         raise ValueError("V3 is not eligible for selection in its current readiness state")
@@ -96,8 +99,18 @@ def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str
     source_identity = str(readiness.get("source_identity") or "").strip()
     if not contract_identity or not source_identity:
         raise ValueError("V3 readiness did not return pinned contract and source identities")
-    mode = "production" if status == "production_ready" else "rehearsal"
-    return mode, contract_identity, source_identity
+    signer_trust = readiness.get("pre_field_signer_trust")
+    if not isinstance(signer_trust, Mapping) or not signer_trust:
+        raise ValueError("V3 readiness did not return pinned pre-field signer trust")
+    # Service readiness is evidence, not cutover authority.  This release lets a
+    # judge exercise V3 as the selected numeric engine for a competition while
+    # preserving the explicit global boundary that V2 remains authoritative.
+    return (
+        "rehearsal",
+        contract_identity,
+        source_identity,
+        {str(key): str(value) for key, value in signer_trust.items()},
+    )
 
 
 def _read_v3_readiness(readiness_provider: V3ReadinessProvider) -> dict[str, Any]:
@@ -386,9 +399,15 @@ def select_prediction_engine_for_scope(
             mode = "production"
             contract_identity = _V2_CONTRACT_IDENTITY
             source_identity = _V2_SOURCE_IDENTITY
+            pre_field_signer_trust = None
         else:
             try:
-                mode, contract_identity, source_identity = _validated_v3_readiness(readiness)
+                (
+                    mode,
+                    contract_identity,
+                    source_identity,
+                    pre_field_signer_trust,
+                ) = _validated_v3_readiness(readiness)
             except ValueError as error:
                 print(f"\n[WARN] {error}. No engine was selected.")
                 continue
@@ -411,6 +430,7 @@ def select_prediction_engine_for_scope(
             mode=mode,
             contract_identity=contract_identity,
             source_identity=source_identity,
+            pre_field_signer_trust=pre_field_signer_trust,
         )
         attach_authority_reference(state, selected.reference)
         print(f"\n[OK] STRATHMARK {engine.upper()} selected in {mode.upper()} mode")
@@ -963,6 +983,7 @@ def review_v3_approval_queue(
     authority_store: Any,
     v3_adapter: Any,
     input_fn: Callable[[str], str] | None = None,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
 ) -> list[dict[str, Any]]:
     """Batch ordinary fields and force exception fields through individual review."""
     from woodchopping.ui.handicap_ui import build_prediction_execution_context
@@ -970,6 +991,25 @@ def review_v3_approval_queue(
     ask = input if input_fn is None else input_fn
     if not isinstance(state, dict):
         raise TypeError("V3 approval workflow requires mutable competition state")
+    if checkpoint_callback is None:
+        raise ValueError("V3 approval workflow requires a durable checkpoint callback")
+    decisions: list[dict[str, Any]] = []
+    pending_approval = state.get("v3_pending_approval_decision")
+    if pending_approval is not None:
+        decision = _complete_pending_v3_approval(
+            state,
+            pending_approval,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+            checkpoint_callback=checkpoint_callback,
+        )
+        if decision is None:
+            saved_decision = pending_approval.get("decision") if isinstance(pending_approval, Mapping) else None
+            if isinstance(saved_decision, dict):
+                decisions.append(saved_decision)
+            return decisions
+        decisions.append(decision)
     if state.get("v3_pending_issue_acknowledgments"):
         if not callable(getattr(v3_adapter, "acknowledge_issue", None)):
             state["v3_issue_status"] = "accepted_unacknowledged"
@@ -985,8 +1025,9 @@ def review_v3_approval_queue(
             print("\n[BLOCKED] Accepted V3 receipts still require exact issue acknowledgment.")
             print("The approval queue cannot be declared complete yet.")
             return []
+        if not checkpoint_callback(state):
+            raise RuntimeError("recovered V3 issue acknowledgment could not be checkpointed")
     context = build_prediction_execution_context(state, authority_store)
-    decisions: list[dict[str, Any]] = []
 
     def binding(row: Mapping[str, Any]) -> dict[str, Any]:
         return {
@@ -1071,27 +1112,99 @@ def review_v3_approval_queue(
             "decided_at_utc": _utc_milliseconds(),
             "deadline_ms": 10_000,
         }
-        decision = v3_adapter.decide_approval(context, payload)
-        decisions.append(decision)
-        _record_prediction_review_evidence(state, selected, action)
-        accepted_actions = {
-            "ordinary_batch_accept",
-            "degraded_batch_accept",
-            "individual_accept",
-            "override_submitted",
+        pending = {
+            "payload": payload,
+            "selected": [dict(row) for row in selected],
+            "action": action,
         }
-        if action in accepted_actions and callable(getattr(v3_adapter, "acknowledge_issue", None)):
-            issue_batch_id = acknowledge_v3_issued_marks(
-                state,
-                list(selected),
-                authority_store=authority_store,
-                v3_adapter=v3_adapter,
-                input_fn=input_fn,
-            )
-            if issue_batch_id is None:
-                state["v3_issue_status"] = "accepted_unacknowledged"
-                return decisions
-            state["v3_issue_status"] = "issued"
+        state["v3_pending_approval_decision"] = pending
+        if not checkpoint_callback(state):
+            raise RuntimeError("pending V3 approval decision could not be checkpointed")
+        decision = _complete_pending_v3_approval(
+            state,
+            pending,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+            checkpoint_callback=checkpoint_callback,
+        )
+        if decision is None:
+            saved_decision = pending.get("decision")
+            if isinstance(saved_decision, dict):
+                decisions.append(saved_decision)
+            return decisions
+        decisions.append(decision)
+
+
+def _complete_pending_v3_approval(
+    state: Dict[str, Any],
+    pending: Mapping[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    input_fn: Callable[[str], str] | None,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool],
+) -> dict[str, Any] | None:
+    """Finish one durable decision, local evidence, and issue acknowledgment."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    if not isinstance(pending, dict):
+        raise RuntimeError("pending V3 approval decision is malformed")
+    payload = pending.get("payload")
+    selected = pending.get("selected")
+    action = pending.get("action")
+    if not isinstance(payload, dict) or not isinstance(selected, list) or not isinstance(action, str):
+        raise RuntimeError("pending V3 approval decision is incomplete")
+    context = build_prediction_execution_context(state, authority_store)
+    decision = pending.get("decision")
+    if decision is None:
+        decision = execute_with_v3_recovery(
+            lambda: v3_adapter.decide_approval(context, payload),
+            root_state=state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        )
+        if decision is None:
+            return None
+        if not isinstance(decision, dict):
+            raise RuntimeError("V3 approval decision response is malformed")
+        pending["decision"] = decision
+        if not checkpoint_callback(state):
+            raise RuntimeError("accepted V3 approval decision could not be checkpointed")
+
+    _record_prediction_review_evidence(state, selected, action)
+    pending["local_evidence_recorded"] = True
+    if not checkpoint_callback(state):
+        raise RuntimeError("V3 local review evidence could not be checkpointed")
+
+    accepted_actions = {
+        "ordinary_batch_accept",
+        "degraded_batch_accept",
+        "individual_accept",
+        "override_submitted",
+    }
+    if action in accepted_actions and callable(getattr(v3_adapter, "acknowledge_issue", None)):
+        issue_batch_id = acknowledge_v3_issued_marks(
+            state,
+            selected,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        )
+        if issue_batch_id is None:
+            state["v3_issue_status"] = "accepted_unacknowledged"
+            checkpoint_callback(state)
+            return None
+        state["v3_issue_status"] = "issued"
+        pending["issue_batch_id"] = issue_batch_id
+        if not checkpoint_callback(state):
+            raise RuntimeError("V3 issue acknowledgment could not be checkpointed")
+
+    state.pop("v3_pending_approval_decision", None)
+    if not checkpoint_callback(state):
+        raise RuntimeError("completed V3 approval state could not be checkpointed")
+    return decision
 
 
 def _record_prediction_review_evidence(
@@ -1605,6 +1718,7 @@ def calculate_all_event_handicaps(
     authority_store: Any = None,
     engine_router: Any = None,
     forecast_adapter: Any = None,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
 ) -> Dict:
     """Calculate handicaps for ALL events in the tournament (BATCH OPERATION).
 
@@ -1767,6 +1881,7 @@ def calculate_all_event_handicaps(
                 progress_callback=show_progress,
                 prediction_as_of=event_cutoff,
                 forecast_adapter=forecast_adapter,
+                checkpoint_callback=checkpoint_callback,
             )
 
         if not handicap_results:
@@ -2901,6 +3016,7 @@ def generate_complete_day_schedule(
     *,
     authority_store: Any = None,
     engine_router: Any = None,
+    authority_checkpoint_callback: Callable[[Dict[str, Any]], None] | None = None,
 ) -> Dict:
     """Generate initial heats for ALL events in tournament.
 
@@ -2999,6 +3115,7 @@ def generate_complete_day_schedule(
                     event_code=event["event_code"],
                     results_df=v3_results_df,
                     prediction_as_of=event.get("prediction_as_of", tournament_state.get("prediction_as_of")),
+                    authority_checkpoint_callback=authority_checkpoint_callback,
                 )
                 if len(marks) != len(ordered) or any("mark" not in item for item in marks):
                     raise RuntimeError("V3 did not return a complete exact-field mark sheet")
@@ -3312,6 +3429,8 @@ def sequential_results_workflow(
     *,
     authority_store: Any = None,
     engine_router: Any = None,
+    forecast_adapter: Any = None,
+    authority_checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
 ) -> Dict:
     """Sequential results entry workflow for all events in tournament.
 
@@ -3506,16 +3625,9 @@ def sequential_results_workflow(
                             engine_router=engine_router,
                             authority_child=event_obj,
                             authority_root_state=tournament_state,
+                            forecast_adapter=forecast_adapter,
+                            authority_checkpoint_callback=authority_checkpoint_callback,
                         )
-
-                        if authority_store is not None and engine_router is not None:
-                            authority = resolve_prediction_engine(tournament_state, authority_store)
-                            if authority.engine == "v3" and event_obj.get("event_type") != "championship":
-                                from woodchopping.ui.prediction_context import derive_scope_identity
-
-                                round_id = derive_scope_identity(authority.reference.scope_id, "round", "round")
-                                for next_round in next_rounds:
-                                    next_round["v3_round_id"] = round_id
 
                         # Add to event rounds
                         event_obj["rounds"].extend(next_rounds)

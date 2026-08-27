@@ -261,6 +261,24 @@ def _judge_actor() -> str:
     return normalize_actor_identifier(os.getenv("STRATHEX_JUDGE_ID", "local-judge"))
 
 
+def _checkpoint_single_prediction_state(state: dict) -> bool:
+    """Persist a new canonical authority reference before numeric work."""
+    return save_tournament_state(
+        state,
+        "saves/tournament_state.json",
+        authority_store=_prediction_authority_store,
+    )
+
+
+def _checkpoint_multi_prediction_state(state: dict) -> bool:
+    """Persist tournament authority/recovery state at consequential boundaries."""
+    return save_multi_event_tournament(
+        state,
+        "saves/multi_tournament_state.json",
+        authority_store=_prediction_authority_store,
+    )
+
+
 def _create_multi_event_with_engine() -> dict:
     return create_multi_event_tournament(
         authority_store=_prediction_authority_store,
@@ -626,6 +644,7 @@ def single_event_menu():
                 event_code=wood_selection["event"],
                 results_df=results_df,
                 prediction_as_of=prediction_as_of,
+                checkpoint_callback=_checkpoint_single_prediction_state,
             )
             if len(marks) != len(ordered) or any("mark" not in item for item in marks):
                 raise RuntimeError("V3 did not return a complete exact-field mark sheet")
@@ -1069,6 +1088,7 @@ def single_event_menu():
                 progress_callback=show_progress,
                 prediction_as_of=prediction_as_of,
                 forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                checkpoint_callback=_checkpoint_single_prediction_state,
             )
 
             if not handicap_results:
@@ -1114,6 +1134,7 @@ def single_event_menu():
                             tournament_state,
                             authority_store=_prediction_authority_store,
                             v3_adapter=_v3_engine_adapter,
+                            checkpoint_callback=_checkpoint_single_prediction_state,
                         ),
                         root_state=tournament_state,
                         authority_store=_prediction_authority_store,
@@ -1427,6 +1448,7 @@ def single_event_menu():
                         forecast_adapter=(
                             _v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None
                         ),
+                        authority_checkpoint_callback=_checkpoint_single_prediction_state,
                     )
                 except (ValueError, RuntimeError) as error:
                     print(f"\n[WARN] Bracket seeding failed: {error}")
@@ -1650,6 +1672,8 @@ def single_event_menu():
                 animate_selection=True,
                 authority_store=_prediction_authority_store,
                 engine_router=_prediction_engine_router,
+                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                authority_checkpoint_callback=_checkpoint_single_prediction_state,
             )
             tournament_state["rounds"].extend(next_rounds)
 
@@ -1993,6 +2017,7 @@ def multi_event_tournament_menu():
                 authority_store=_prediction_authority_store,
                 engine_router=_prediction_engine_router,
                 forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                checkpoint_callback=_checkpoint_multi_prediction_state,
             )
 
         elif menu_choice == "7":
@@ -2028,6 +2053,7 @@ def multi_event_tournament_menu():
                             multi_event_tournament_state,
                             authority_store=_prediction_authority_store,
                             v3_adapter=_v3_engine_adapter,
+                            checkpoint_callback=_checkpoint_multi_prediction_state,
                         ),
                         root_state=multi_event_tournament_state,
                         authority_store=_prediction_authority_store,
@@ -2049,6 +2075,7 @@ def multi_event_tournament_menu():
                 multi_event_tournament_state,
                 authority_store=_prediction_authority_store,
                 engine_router=_prediction_engine_router,
+                authority_checkpoint_callback=_checkpoint_multi_prediction_state,
             )
 
         elif menu_choice == "10":
@@ -2077,6 +2104,8 @@ def multi_event_tournament_menu():
                 heat_assignment_df,  # Legacy parameter
                 authority_store=_prediction_authority_store,
                 engine_router=_prediction_engine_router,
+                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                authority_checkpoint_callback=_checkpoint_multi_prediction_state,
             )
 
         elif menu_choice == "12":

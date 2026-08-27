@@ -32,7 +32,7 @@
 - Undated and same-day results are excluded by the v2 prior-only contract.
 - Wood quality and same-tournament times do not change v2 numerics.
 - Legacy local XGBoost/LLM modules are compatibility/history code, not live prediction authority.
-- V3 production mode remains unavailable without installation-owned evidence; this work does not cut over the installation globally.
+- V3 production mode is unavailable in this STRATHEX release. Even a service-level `production_ready` result is displayed as readiness evidence and bound to rehearsal mode; a separate explicit cutover release is required.
 
 ## Remaining release operations
 

@@ -696,6 +696,8 @@ def generate_next_round(
     *,
     authority_store: Any = None,
     engine_router: Any = None,
+    forecast_adapter: Any = None,
+    authority_checkpoint_callback: Any = None,
     authority_child: Dict | None = None,
     authority_root_state: Dict | None = None,
 ) -> List[Dict]:
@@ -789,7 +791,14 @@ def generate_next_round(
 
         return next_rounds
 
-    # Handicap event: recalculate the smaller field with the original evidence cutoff.
+    # Handicap event: every advancing-stage numeric operation must remain bound
+    # to the engine deliberately selected at the competition root.  There is no
+    # authority-less compatibility path here: silently calling V2 would change
+    # the judge's selected numeric authority.
+    if authority_store is None or engine_router is None:
+        raise ValueError("prediction authority store and engine router are required for advancing-round numeric work")
+
+    # Recalculate the smaller field with the original evidence cutoff.
     print(f"\n{'=' * 70}")
     print("  RECALCULATING HANDICAPS FOR ADVANCING FIELD")
     print(f"{'=' * 70}")
@@ -798,7 +807,6 @@ def generate_next_round(
         if name in all_advancers:
             print(f"  - {name}: {t:.2f}s")
 
-    # Import handicap calculation function
     from woodchopping.data import load_results_df
 
     # Get DataFrame for advancers only
@@ -814,58 +822,46 @@ def generate_next_round(
     event_code = tournament_state.get("event_code")
 
     if not all([wood_species, wood_diameter, event_code is not None, wood_quality is not None]):
-        print("\n[WARN] WARNING: Wood characteristics not found in tournament state.")
-        print("Cannot recalculate handicaps for the advancing field.")
-        print("Using original handicaps from initial calculation.")
+        raise RuntimeError("advancing-round handicap calculation requires complete wood and event characteristics")
 
-        # Fallback: extract handicap results from previous rounds
-        all_results = []
-        for round_obj in tournament_state["rounds"]:
-            if "handicap_results" in round_obj and round_obj["handicap_results"]:
-                all_results.extend(round_obj["handicap_results"])
+    results_df = load_results_df()
+    prediction_as_of = ensure_prediction_as_of(tournament_state)
+    from woodchopping.ui.handicap_ui import calculate_authoritative_field, calculate_authoritative_seeding
+    from woodchopping.ui.prediction_context import derive_scope_identity, resolve_authority_for_state
 
-        advancer_results = [r for r in all_results if r["name"] in all_advancers]
-    else:
-        # Normal path: recalculate the new field using the persisted cutoff.
-        results_df = load_results_df()
+    root_state = tournament_state if authority_root_state is None else authority_root_state
+    event_local_id = str(
+        tournament_state.get("event_id")
+        or tournament_state.get("competition_id")
+        or tournament_state.get("event_name")
+        or "single-event"
+    )
+    generation = 1 + sum(1 for item in tournament_state.get("rounds", []) if item.get("round_type") == next_round_type)
+    stage_local_id = f"event:{event_local_id}:stage:{next_round_type}:generation:{generation}"
 
-        prediction_as_of = ensure_prediction_as_of(tournament_state)
-        from woodchopping.handicaps import calculate_ai_enhanced_handicaps
-        from woodchopping.ui.handicap_ui import calculate_authoritative_field
-
-        if authority_store is None or engine_router is None:
-            advancer_results = calculate_ai_enhanced_handicaps(
-                all_advancers_df,
-                wood_species,
-                wood_diameter,
-                wood_quality,
-                event_code,
-                results_df,
-                prediction_as_of=prediction_as_of,
-            )
-        else:
-            advancer_results = calculate_authoritative_field(
-                root_state=(tournament_state if authority_root_state is None else authority_root_state),
-                child=authority_child,
-                authority_store=authority_store,
-                engine_router=engine_router,
-                field_local_id=f"round:{next_round_type}:{len(tournament_state.get('rounds', [])) + 1}",
-                competitors_df=all_advancers_df,
-                wood_species=wood_species,
-                wood_diameter=wood_diameter,
-                wood_quality=wood_quality,
-                event_code=event_code,
-                results_df=results_df,
-                prediction_as_of=prediction_as_of,
-            )
-
-    if not advancer_results:
-        print("\n[WARN] STRATHMARK did not produce a complete advancing-field mark sheet.")
-        print("No next round was generated; the existing tournament state is unchanged.")
-        return []
-
-    print("\n[OK] Handicaps recalculated for the advancing field using the original cutoff")
-    print(f"{'=' * 70}\n")
+    # Seed the whole advancing population before fields exist.  V3 returns
+    # field-independent forecasts with no marks; V2 returns its selected-engine
+    # projection.  Either way, this call is used only to form the actual heats.
+    seed_results = calculate_authoritative_seeding(
+        root_state=root_state,
+        child=authority_child,
+        authority_store=authority_store,
+        engine_router=engine_router,
+        checkpoint_callback=authority_checkpoint_callback,
+        forecast_adapter=forecast_adapter,
+        field_local_id=f"{stage_local_id}:seeding",
+        round_local_id=f"{stage_local_id}:seeding",
+        competitors_df=all_advancers_df,
+        wood_species=wood_species,
+        wood_diameter=wood_diameter,
+        wood_quality=wood_quality,
+        event_code=event_code,
+        results_df=results_df,
+        prediction_as_of=prediction_as_of,
+        round_ordinal=generation,
+    )
+    if not seed_results:
+        raise RuntimeError("selected STRATHMARK engine did not return advancing-stage seeding evidence")
 
     # Determine optimal heat configuration for next round
     num_stands = tournament_state["num_stands"]
@@ -887,13 +883,49 @@ def generate_next_round(
         stands_per_heat = optimal_config["stands_per_heat"]
         num_heats = optimal_config["num_heats"]
 
-    # Use same distribution algorithm (snake draft) with RECALCULATED handicaps
+    # Use the stage-wide seed evidence only to form the actual fields.
     next_rounds = distribute_competitors_into_heats(
         all_advancers_df,
-        advancer_results,  # Recalculated field using the original evidence cutoff
-        stands_per_heat,  # Use optimal stands per heat
+        seed_results,
+        stands_per_heat,
         num_heats,
     )
+
+    authority = resolve_authority_for_state(root_state, authority_store, child=authority_child)
+    competitor_index = all_advancers_df.set_index("competitor_name", drop=False)
+    for heat_index, round_obj in enumerate(next_rounds, 1):
+        ordered = competitor_index.loc[round_obj["competitors"]].reset_index(drop=True)
+        field_local_id = f"{stage_local_id}:heat:{heat_index}"
+        round_local_id = f"{stage_local_id}:heat:{heat_index}"
+        exact_marks = calculate_authoritative_field(
+            root_state=root_state,
+            child=authority_child,
+            authority_store=authority_store,
+            engine_router=engine_router,
+            checkpoint_callback=authority_checkpoint_callback,
+            field_local_id=field_local_id,
+            round_local_id=round_local_id,
+            stand_local_ids=[f"{field_local_id}:stand:{ordinal}" for ordinal in range(1, len(ordered) + 1)],
+            competitors_df=ordered,
+            wood_species=wood_species,
+            wood_diameter=wood_diameter,
+            wood_quality=wood_quality,
+            event_code=event_code,
+            results_df=results_df,
+            prediction_as_of=prediction_as_of,
+            round_ordinal=generation,
+        )
+        returned_names = [str(item.get("name", "")) for item in exact_marks]
+        if (
+            len(exact_marks) != len(ordered)
+            or set(returned_names) != set(round_obj["competitors"])
+            or any("mark" not in item for item in exact_marks)
+        ):
+            raise RuntimeError("selected STRATHMARK engine did not return a complete exact-field mark sheet")
+        round_obj["competitors_df"] = ordered
+        round_obj["handicap_results"] = exact_marks
+        if authority.engine == "v3":
+            round_obj["v3_round_id"] = derive_scope_identity(authority.reference.scope_id, "round", round_local_id)
 
     # Update round type and names
     for i, round_obj in enumerate(next_rounds):
@@ -905,6 +937,8 @@ def generate_next_round(
             round_obj["round_name"] = f"Semi {i + 1}"
             round_obj["round_number"] = i + 1
 
+    print("\n[OK] Exact handicaps calculated separately for every advancing heat")
+    print(f"{'=' * 70}\n")
     return next_rounds
 
 

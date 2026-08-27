@@ -192,6 +192,8 @@ def test_real_v3_client_is_a_router_adapter_without_v2_fallback(tmp_path, monkey
         FROZEN_V3_CONTRACT_DIGEST,
         FROZEN_V3_SOURCE_COMMIT,
         V3HttpClient,
+        _canonical_json,
+        _digest_text,
     )
     from woodchopping.v3_authority_store import V3CommandStore
 
@@ -205,39 +207,58 @@ def test_real_v3_client_is_a_router_adapter_without_v2_fallback(tmp_path, monkey
         credential_provider=lambda: "credential",
         command_store=V3CommandStore(tmp_path / "commands.db"),
     )
+    authority = {
+        "scope_id": context.scope_id,
+        "engine": "v3",
+        "mode": context.mode,
+        "selection_digest": _digest_text(_canonical_json(client._selection(context))),
+        "consumer_contract_digest": context.contract_identity,
+        "source_commit": context.source_identity,
+    }
+    receipt_content = {
+        "schema_version": "strathmark-v3-field-receipt-v1",
+        "field_id": "field:one",
+        "upstream_field_revision": 1,
+        "receipt_revision": 1,
+        "supersedes_receipt_id": None,
+        "ordered_competitor_ids": ["competitor:a", "competitor:b"],
+        "target_context": {"schema_version": "test"},
+        "target_context_digest": "a" * 64,
+        "historical_cutoff_key": "history:test",
+        "tournament_epoch_id": "epoch:test",
+        "tournament_event_sequence": 1,
+        "packet_identities": [],
+        "sections": [
+            {
+                "kind": "optimizer_frontier",
+                "payload_type": "inline",
+                "payload": {"canonical_json": '{"expected_times_ms":[["competitor:a",30000],["competitor:b",35000]]}'},
+            }
+        ],
+        "marks": [
+            {"competitor_id": "competitor:a", "mark": 3},
+            {"competitor_id": "competitor:b", "mark": 8},
+        ],
+        "warning_codes": [],
+        "total_latency_ms": 1,
+        "bundles": [{"role": "ensemble"}],
+        "engine_authority": authority,
+    }
+    receipt_digest = _digest_text(_canonical_json(receipt_content))
+    receipt = {
+        "receipt_id": "receipt:one",
+        "caller_namespace": "strathex",
+        "request_identity": "command:test",
+        **receipt_content,
+        "content_digest": receipt_digest,
+    }
     monkeypatch.setattr(
         client,
         "assemble_field",
         lambda _context, _payload: {
             "receipt_id": "receipt:one",
-            "receipt_digest": "c" * 64,
-            "canonical_receipt_json": json.dumps(
-                {
-                    "receipt_id": "receipt:one",
-                    "ordered_competitor_ids": ["competitor:a", "competitor:b"],
-                    "engine_authority": {
-                        "scope_id": context.scope_id,
-                        "engine": "v3",
-                        "mode": context.mode,
-                        "selection_digest": "d" * 64,
-                        "consumer_contract_digest": context.contract_identity,
-                        "source_commit": context.source_identity,
-                    },
-                    "marks": [
-                        {"competitor_id": "competitor:a", "mark": 3},
-                        {"competitor_id": "competitor:b", "mark": 8},
-                    ],
-                    "sections": [
-                        {
-                            "kind": "optimizer_frontier",
-                            "payload_type": "inline",
-                            "payload": {
-                                "canonical_json": '{"expected_times_ms":[["competitor:a",30000],["competitor:b",35000]]}'
-                            },
-                        }
-                    ],
-                }
-            ),
+            "receipt_digest": receipt_digest,
+            "canonical_receipt_json": json.dumps(receipt),
         },
     )
 

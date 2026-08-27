@@ -2,24 +2,58 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Protocol
 from urllib.parse import urlencode, urlparse
 
 import requests
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 
 from woodchopping.engine_selection import EngineProjection, PredictionExecutionContext
 from woodchopping.v3_authority_store import V3CommandStore
 
-FROZEN_V3_CONTRACT_DIGEST = "ef2555da7836cc0997e7ac63d9a8132267b3ee3c12c4a64fadabf7500a775706"
-FROZEN_V3_CONTRACT_VERSION = "strathmark.v3-consumer-contract.v6"
-FROZEN_V3_SOURCE_COMMIT = "c6c99c36614c9e345c5fb1a89bb79895a2eacd85"
+FROZEN_V3_CONTRACT_DIGEST = "20174ab13d32c74419e90bfdc73e6b5d5e3e888e1a6cf098f20e585c3bf2ec24"
+FROZEN_V3_CONTRACT_VERSION = "strathmark.v3-consumer-contract.v7"
+FROZEN_V3_SOURCE_COMMIT = "498c8f40fc37afdb7ec400b09e64e03044ceb2a9"
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_FIELD_RECEIPT_CONTENT_KEYS = (
+    "schema_version",
+    "field_id",
+    "upstream_field_revision",
+    "receipt_revision",
+    "supersedes_receipt_id",
+    "ordered_competitor_ids",
+    "target_context",
+    "target_context_digest",
+    "historical_cutoff_key",
+    "tournament_epoch_id",
+    "tournament_event_sequence",
+    "packet_identities",
+    "sections",
+    "marks",
+    "warning_codes",
+    "total_latency_ms",
+    "bundles",
+    "engine_authority",
+)
+_PRE_FIELD_RECEIPT_CONTENT_KEYS = (
+    "schema_version",
+    "purpose",
+    "issued_mark",
+    "snapshot",
+    "forecasts",
+    "created_at",
+)
 
 
 class V3ClientError(RuntimeError):
@@ -46,6 +80,10 @@ class HttpTransport(Protocol):
     def request(self, method: str, url: str, **kwargs: Any) -> Any: ...
 
 
+class UtcClock(Protocol):
+    def __call__(self) -> datetime: ...
+
+
 @dataclass(frozen=True, slots=True)
 class V3Readiness:
     state: str
@@ -55,6 +93,7 @@ class V3Readiness:
     contract_digest: str
     source_commit: str
     detail: str | None = None
+    pre_field_signer_trust_json: str | None = None
 
 
 def _canonical_json(value: Mapping[str, Any]) -> str:
@@ -75,7 +114,114 @@ def _loopback_url(value: str) -> str:
         raise ValueError("STRATHMARK V3 client requires an explicit loopback HTTP URL")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("STRATHMARK V3 base URL cannot contain credentials, query, or fragment")
+    if parsed.path not in {"", "/"}:
+        raise ValueError("STRATHMARK V3 base URL must be a loopback origin without a path")
     return value.rstrip("/")
+
+
+def _receipt_content_digest(receipt: Mapping[str, Any], keys: tuple[str, ...]) -> str:
+    content = {key: receipt[key] for key in keys}
+    return _digest_text(_canonical_json(content))
+
+
+def _validated_pre_field_signer_trust(
+    value: Any,
+    *,
+    source_commit: str,
+) -> tuple[str, ec.EllipticCurvePublicKey]:
+    expected = {
+        "schema_version",
+        "algorithm",
+        "key_id",
+        "key_class",
+        "provider",
+        "public_key_der_b64",
+        "identity_digest",
+        "service_binding_digest",
+    }
+    if not isinstance(value, Mapping) or set(value) != expected:
+        raise ValueError
+    trust = {str(key): str(item) for key, item in value.items()}
+    identity = {key: trust[key] for key in ("key_id", "key_class", "provider", "public_key_der_b64")}
+    binding = {
+        "schema_version": "strathmark-v3-pre-field-signer-service-binding-v1",
+        "source_commit": source_commit,
+        "consumer_contract_version": FROZEN_V3_CONTRACT_VERSION,
+        "consumer_contract_digest": FROZEN_V3_CONTRACT_DIGEST,
+        "pre_field_signer_identity_digest": trust["identity_digest"],
+    }
+    if (
+        trust["schema_version"] != "strathmark-v3-pre-field-signer-trust-v1"
+        or trust["algorithm"] != "ecdsa-p256-sha256"
+        or re.fullmatch(r"[a-z][a-z0-9_.:-]{0,127}", trust["key_id"]) is None
+        or trust["key_class"] not in {"development_ephemeral", "production_cng"}
+        or re.fullmatch(r"[a-z][a-z0-9_.:-]{0,127}", trust["provider"]) is None
+        or trust["identity_digest"] != _digest_text(_canonical_json(identity))
+        or trust["service_binding_digest"] != _digest_text(_canonical_json(binding))
+    ):
+        raise ValueError
+    try:
+        public_der = base64.b64decode(trust["public_key_der_b64"], validate=True)
+        public_key = serialization.load_der_public_key(public_der)
+    except (TypeError, ValueError, binascii.Error) as exc:
+        raise ValueError from exc
+    if not isinstance(public_key, ec.EllipticCurvePublicKey) or not isinstance(public_key.curve, ec.SECP256R1):
+        raise ValueError
+    return _canonical_json(trust), public_key
+
+
+def _validate_structural_manifest(
+    manifest: Mapping[str, Any],
+    *,
+    expected_kind: str,
+    expected_payload: Mapping[str, Any],
+    trusted_signer_trust_json: str,
+) -> None:
+    """Validate canonical receipt integrity and its competition-pinned signature."""
+    expected_fields = {
+        "schema_version",
+        "kind",
+        "body_json",
+        "body_digest",
+        "key_id",
+        "signature_der_b64",
+    }
+    if not isinstance(manifest, Mapping) or set(manifest) != expected_fields:
+        raise ValueError
+    body_json = manifest["body_json"]
+    if not isinstance(body_json, str):
+        raise ValueError
+    body = json.loads(body_json)
+    try:
+        signature = base64.b64decode(manifest["signature_der_b64"], validate=True)
+    except (TypeError, ValueError, binascii.Error) as exc:
+        raise ValueError from exc
+    if (
+        not isinstance(body, dict)
+        or body_json != _canonical_json(body)
+        or manifest["schema_version"] != "strathmark-v3-signed-manifest-v1"
+        or manifest["kind"] != expected_kind
+        or body.get("schema_version") != "strathmark-v3-integrity-body-v1"
+        or body.get("kind") != expected_kind
+        or body.get("algorithm") != "ecdsa-p256-sha256"
+        or body.get("key_id") != manifest["key_id"]
+        or body.get("created_at") != expected_payload.get("created_at")
+        or body.get("payload") != expected_payload
+        or manifest["body_digest"] != _digest_text(body_json)
+        or not signature
+    ):
+        raise ValueError
+    trust, public_key = _validated_pre_field_signer_trust(
+        json.loads(trusted_signer_trust_json),
+        source_commit=FROZEN_V3_SOURCE_COMMIT,
+    )
+    trusted = json.loads(trust)
+    if manifest["key_id"] != trusted["key_id"]:
+        raise ValueError
+    try:
+        public_key.verify(signature, body_json.encode("utf-8"), ec.ECDSA(hashes.SHA256()))
+    except InvalidSignature as exc:
+        raise ValueError from exc
 
 
 class V3HttpClient:
@@ -126,6 +272,7 @@ class V3HttpClient:
         transport: HttpTransport | None = None,
         connect_timeout_seconds: float = 1.0,
         bundle_id: str = "bundle:strathex-current",
+        clock: UtcClock | None = None,
     ) -> None:
         self.base_url = _loopback_url(base_url)
         if not callable(credential_provider):
@@ -141,9 +288,23 @@ class V3HttpClient:
         else:
             self._transport = transport
         self._connect_timeout = float(connect_timeout_seconds)
+        self._clock = clock or (lambda: datetime.now(timezone.utc))
         if not isinstance(bundle_id, str) or not bundle_id.startswith("bundle:"):
             raise ValueError("V3 runtime bundle_id must be a namespaced bundle identifier")
         self.bundle_id = bundle_id
+
+    def _remaining_deadline_ms(self, hard_deadline_at: str, *, maximum_ms: int) -> int:
+        try:
+            deadline = datetime.fromisoformat(hard_deadline_at.replace("Z", "+00:00"))
+            now = self._clock()
+        except (AttributeError, TypeError, ValueError) as exc:
+            raise V3ClientError("V3 hard deadline is invalid") from exc
+        if deadline.tzinfo is None or not isinstance(now, datetime) or now.tzinfo is None:
+            raise V3ClientError("V3 hard deadline and clock must be timezone-aware")
+        remaining_ms = int((deadline - now).total_seconds() * 1000)
+        if remaining_ms < 25:
+            raise V3ClientError("V3 field hard deadline expired before completion")
+        return min(maximum_ms, remaining_ms)
 
     @staticmethod
     def _validate_context(context: PredictionExecutionContext) -> None:
@@ -153,6 +314,13 @@ class V3HttpClient:
             raise V3ClientError("V3 consumer contract pin does not match the frozen contract")
         if context.source_identity != FROZEN_V3_SOURCE_COMMIT:
             raise V3ClientError("V3 source pin does not match the frozen source commit")
+        try:
+            _validated_pre_field_signer_trust(
+                json.loads(context.pre_field_signer_trust_json or "null"),
+                source_commit=context.source_identity,
+            )
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise V3ClientError("V3 pre-field signer trust is absent or invalid") from exc
 
     def _headers(self, *, idempotency_key: str | None = None, action: str | None = None) -> dict[str, str]:
         credential = self._credential_provider()
@@ -270,6 +438,21 @@ class V3HttpClient:
                 FROZEN_V3_SOURCE_COMMIT,
                 "source_pin_mismatch",
             )
+        try:
+            signer_trust_json, _public_key = _validated_pre_field_signer_trust(
+                body.get("pre_field_signer_trust"),
+                source_commit=returned_source,
+            )
+        except (TypeError, ValueError) as exc:
+            return V3Readiness(
+                "ineligible",
+                service,
+                posture,
+                authority,
+                FROZEN_V3_CONTRACT_DIGEST,
+                FROZEN_V3_SOURCE_COMMIT,
+                f"pre_field_signer_trust_invalid:{type(exc).__name__}",
+            )
         if service != "ready":
             state = "ineligible"
         elif posture == "production" and authority == "v3":
@@ -287,6 +470,7 @@ class V3HttpClient:
             authority,
             FROZEN_V3_CONTRACT_DIGEST,
             FROZEN_V3_SOURCE_COMMIT,
+            pre_field_signer_trust_json=signer_trust_json,
         )
 
     def preselection_readiness(self) -> V3Readiness:
@@ -352,6 +536,9 @@ class V3HttpClient:
         except V3ClientError as exc:
             if 200 <= response.status_code < 300:
                 self.command_store.mark_recovery_required(command_key, "invalid_success_response")
+                raise V3RecoveryRequired(command_key) from exc
+            if response.status_code in {408, 429} or response.status_code >= 500:
+                self.command_store.mark_recovery_required(command_key, "ambiguous_http_response")
                 raise V3RecoveryRequired(command_key) from exc
             self.command_store.reject(command_key, "http_rejected")
             raise
@@ -579,9 +766,9 @@ class V3HttpClient:
         round_id = request["round_id"]
         if tournament_id != execution_context.scope_id:
             raise V3ClientError("V3 tournament differs from selected scope")
-        observed_at = request["requested_at_utc"]
+        observed_at = execution_context.locked_at
         cutoff = request["historical_cutoff_key"]
-        deadline_ms = int(request.get("deadline_ms", 5_000))
+        deadline_ms = int(request.get("lifecycle_deadline_ms", 5_000))
         selection = self._selection(execution_context)
         common_snapshot = {
             "schema_version": "strathmark-v3-snapshot-sync-request-v1",
@@ -651,8 +838,8 @@ class V3HttpClient:
                 "epoch_revision": round_revision,
                 "historical_cutoff_key": request["historical_cutoff_key"],
                 "closure_ids": list(request.get("closure_ids", ())),
-                "frozen_at_utc": request["requested_at_utc"],
-                "deadline_ms": int(request.get("deadline_ms", 5_000)),
+                "frozen_at_utc": execution_context.locked_at,
+                "deadline_ms": int(request.get("lifecycle_deadline_ms", 5_000)),
             },
         )
 
@@ -668,14 +855,24 @@ class V3HttpClient:
     ) -> EngineProjection:
         try:
             receipt = json.loads(response["canonical_receipt_json"])
+            if not isinstance(receipt, dict):
+                raise ValueError
+            content = {key: receipt[key] for key in _PRE_FIELD_RECEIPT_CONTENT_KEYS}
+            receipt_digest = _receipt_content_digest(receipt, _PRE_FIELD_RECEIPT_CONTENT_KEYS)
+            _validate_structural_manifest(
+                receipt["manifest"],
+                expected_kind="pre_field_forecast_receipt",
+                expected_payload=content,
+                trusted_signer_trust_json=context.pre_field_signer_trust_json or "",
+            )
             snapshot = receipt["snapshot"]
             authority = snapshot["engine_authority"]
             forecasts = receipt["forecasts"]
             if (
-                not isinstance(receipt, dict)
-                or receipt.get("purpose") != "pre_field_seeding_only"
+                receipt.get("purpose") != "pre_field_seeding_only"
                 or receipt.get("issued_mark") is not False
                 or receipt.get("receipt_digest") != response["receipt_digest"]
+                or receipt_digest != response["receipt_digest"]
                 or response.get("purpose") != "pre_field_seeding_only"
                 or response.get("issued_mark") is not False
                 or snapshot.get("tournament_id") != expected_tournament_id
@@ -684,6 +881,7 @@ class V3HttpClient:
                 or authority.get("scope_id") != context.scope_id
                 or authority.get("engine") != "v3"
                 or authority.get("mode") != context.mode
+                or authority.get("selection_digest") != _digest_text(_canonical_json(V3HttpClient._selection(context)))
                 or authority.get("consumer_contract_digest") != context.contract_identity
                 or authority.get("source_commit") != context.source_identity
                 or not isinstance(forecasts, list)
@@ -727,6 +925,8 @@ class V3HttpClient:
                 execution_context,
                 response,
                 request.get("competitor_names", {}),
+                expected_field_id=payload["field_id"],
+                expected_competitor_ids=tuple(payload["ordered_competitor_ids"]),
             )
         round_revision = int(request.get("epoch_revision", 1))
         self._ensure_scope_round(
@@ -757,7 +957,15 @@ class V3HttpClient:
         )
         self._freeze_round(execution_context, request, round_revision=round_revision)
         context_digest = _digest_text(_canonical_json(request["target_context"]))
+        # Keep card commands serial until both the injected transport and durable
+        # command store expose an explicit thread-safety contract.  Parallelizing
+        # this loop would otherwise trade a speculative latency win for ambiguous
+        # command ownership and non-deterministic recovery ordering.
         for competitor_id in request["ordered_competitor_ids"]:
+            preparation_deadline_ms = self._remaining_deadline_ms(
+                request["hard_deadline_at"],
+                maximum_ms=int(request.get("preparation_deadline_ms", 60_000)),
+            )
             self.prepare_card(
                 execution_context,
                 {
@@ -768,26 +976,49 @@ class V3HttpClient:
                     "competitor_id": competitor_id,
                     "source_revision": int(request["upstream_field_revision"]),
                     "target_context_digest": context_digest,
-                    "deadline_ms": int(request.get("preparation_deadline_ms", 60_000)),
+                    "deadline_ms": preparation_deadline_ms,
                 },
             )
+        assembly_deadline_ms = self._remaining_deadline_ms(
+            request["hard_deadline_at"],
+            maximum_ms=int(request.get("deadline_ms", 5_000)),
+        )
         payload = {
             "schema_version": "strathmark-v3-field-assembly-request-v1",
             "field_id": request["field_id"],
             "upstream_field_revision": request["upstream_field_revision"],
             "ordered_competitor_ids": list(request["ordered_competitor_ids"]),
-            "deadline_ms": int(request.get("deadline_ms", 5_000)),
+            "deadline_ms": assembly_deadline_ms,
         }
         response = self.assemble_field(execution_context, payload)
-        return self._projection(execution_context, response, request.get("competitor_names", {}))
+        return self._projection(
+            execution_context,
+            response,
+            request.get("competitor_names", {}),
+            expected_field_id=payload["field_id"],
+            expected_competitor_ids=tuple(payload["ordered_competitor_ids"]),
+        )
 
     @staticmethod
-    def _projection(context, response, competitor_names):
+    def _projection(
+        context,
+        response,
+        competitor_names,
+        *,
+        expected_field_id,
+        expected_competitor_ids,
+    ):
         try:
             receipt = json.loads(response["canonical_receipt_json"])
             if not isinstance(receipt, dict) or receipt.get("receipt_id") != response["receipt_id"]:
                 raise ValueError
-            if "content_digest" in receipt and receipt["content_digest"] != response["receipt_digest"]:
+            content_digest = _receipt_content_digest(receipt, _FIELD_RECEIPT_CONTENT_KEYS)
+            if (
+                receipt.get("content_digest") != response["receipt_digest"]
+                or content_digest != response["receipt_digest"]
+                or receipt.get("field_id") != expected_field_id
+                or tuple(receipt.get("ordered_competitor_ids", ())) != expected_competitor_ids
+            ):
                 raise ValueError
             returned_authority = receipt.get("engine_authority")
             if (
@@ -795,6 +1026,8 @@ class V3HttpClient:
                 or returned_authority.get("scope_id") != context.scope_id
                 or returned_authority.get("engine") != "v3"
                 or returned_authority.get("mode") != context.mode
+                or returned_authority.get("selection_digest")
+                != _digest_text(_canonical_json(V3HttpClient._selection(context)))
                 or returned_authority.get("consumer_contract_digest") != context.contract_identity
                 or returned_authority.get("source_commit") != context.source_identity
             ):
@@ -898,7 +1131,7 @@ def build_v3_client(
         raise V3RuntimeConfigurationError("The configured V3 runtime could not be constructed") from exc
 
 
-def _selector_readiness_mapping(readiness: V3Readiness) -> dict[str, str]:
+def _selector_readiness_mapping(readiness: V3Readiness) -> dict[str, Any]:
     if readiness.state == "rehearsal_ready":
         message = "Authenticated STRATHMARK V3 candidate is available for rehearsal."
     elif readiness.state == "production_ready":
@@ -910,19 +1143,22 @@ def _selector_readiness_mapping(readiness: V3Readiness) -> dict[str, str]:
             "status": "status_failed",
             "message": "Authenticated STRATHMARK V3 readiness could not be verified.",
         }
-    return {
+    result: dict[str, Any] = {
         "status": readiness.state,
         "message": message,
         "contract_identity": readiness.contract_digest,
         "source_identity": readiness.source_commit,
     }
+    if readiness.pre_field_signer_trust_json is not None:
+        result["pre_field_signer_trust"] = json.loads(readiness.pre_field_signer_trust_json)
+    return result
 
 
 def get_v3_readiness(
     *,
     environ: Mapping[str, str] | None = None,
     transport: HttpTransport | None = None,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Return the exact fail-closed mapping consumed by the U6 selector UI."""
     try:
         client = build_v3_client(environ=environ, transport=transport)

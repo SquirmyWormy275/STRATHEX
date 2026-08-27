@@ -9,7 +9,7 @@ This module handles handicap viewing and results operations including:
 
 import re
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
 from openpyxl import Workbook, load_workbook
@@ -47,6 +47,7 @@ def build_prediction_execution_context(
     *,
     child: Mapping[str, Any] | None = None,
     now: datetime | None = None,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
 ):
     """Lock at the first numeric boundary, then snapshot canonical authority."""
     from woodchopping.engine_selection import PredictionExecutionContext
@@ -67,6 +68,14 @@ def build_prediction_execution_context(
         if not isinstance(root_state, dict):
             raise TypeError("root prediction state must be mutable at the first numeric boundary")
         attach_authority_reference(root_state, receipt.reference)
+        if checkpoint_callback is None:
+            raise RuntimeError("first numeric authority lock requires a durable checkpoint callback")
+        try:
+            checkpointed = checkpoint_callback(root_state)
+        except Exception as error:
+            raise RuntimeError("locked prediction authority reference could not be checkpointed") from error
+        if checkpointed is not True:
+            raise RuntimeError("locked prediction authority reference could not be checkpointed")
     return PredictionExecutionContext.from_receipt(receipt)
 
 
@@ -84,6 +93,7 @@ def calculate_authoritative_field(
     results_df: pd.DataFrame,
     child: Mapping[str, Any] | None = None,
     upstream_field_revision: int = 1,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
     **numeric_options: Any,
 ) -> List[Dict[str, Any]]:
     """Route one complete numeric field through its locked selected engine."""
@@ -91,7 +101,12 @@ def calculate_authoritative_field(
 
     if not isinstance(engine_router, EngineRouter):
         raise TypeError("configured prediction engine router is required")
-    context = build_prediction_execution_context(root_state, authority_store, child=child)
+    context = build_prediction_execution_context(
+        root_state,
+        authority_store,
+        child=child,
+        checkpoint_callback=checkpoint_callback,
+    )
     request = _build_engine_request(
         context=context,
         field_local_id=field_local_id,
@@ -239,6 +254,7 @@ def calculate_authoritative_seeding(
         field_request["root_state"],
         field_request["authority_store"],
         child=field_request.get("child"),
+        checkpoint_callback=field_request.get("checkpoint_callback"),
     )
     if context.selected_engine == "v2":
         return calculate_authoritative_field(**field_request)
@@ -267,7 +283,7 @@ def calculate_authoritative_seeding(
         numeric_options={
             key: value
             for key, value in field_request.items()
-            if key not in known | {"root_state", "authority_store", "engine_router", "child"}
+            if key not in known | {"root_state", "authority_store", "engine_router", "child", "checkpoint_callback"}
         },
     )
     request = {
