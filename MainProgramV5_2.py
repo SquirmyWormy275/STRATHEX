@@ -73,17 +73,21 @@ from woodchopping.ui.multi_event_ui import (
     assign_competitors_to_events,  # NEW V5.1
     calculate_all_event_handicaps,
     create_multi_event_tournament,
+    display_prediction_engine_banner,
     generate_complete_day_schedule,
     generate_tournament_summary,
     load_multi_event_tournament,
     remove_event_from_tournament,
     save_multi_event_tournament,
+    select_prediction_engine_for_scope,
     sequential_results_workflow,
     setup_tournament_roster,  # NEW V5.1
+    unavailable_v3_readiness,
     view_analyze_all_handicaps,
     view_tournament_schedule,
     view_wood_count,
 )
+from woodchopping.ui.prediction_context import PredictionAuthorityStore
 from woodchopping.ui.prediction_display import (
     display_basic_prediction_table,
     display_comprehensive_prediction_analysis,
@@ -209,6 +213,35 @@ multi_event_tournament_state = {
     "schedule": [],  # Complete day schedule across all events
     "results": [],  # Final results across all events
 }
+
+# One local SQLite authority store owns engine selection and lock state. JSON
+# saves contain only the immutable reference produced by this store.
+_prediction_authority_store = PredictionAuthorityStore(
+    os.getenv("STRATHEX_PREDICTION_AUTHORITY_DB", "saves/prediction_authority.db")
+)
+
+
+def _v3_readiness_provider():
+    """Use the authenticated V3 client when installed; otherwise fail closed."""
+    try:
+        from woodchopping.strathmark_v3_client import get_v3_readiness
+    except ImportError:
+        return unavailable_v3_readiness()
+    return get_v3_readiness()
+
+
+def _judge_actor() -> str:
+    """Return display/audit identity; STRATHMARK credentials remain separate."""
+    return os.getenv("STRATHEX_JUDGE_ID", "local-judge").strip() or "local-judge"
+
+
+def _create_multi_event_with_engine() -> dict:
+    return create_multi_event_tournament(
+        authority_store=_prediction_authority_store,
+        readiness_provider=_v3_readiness_provider,
+        actor=_judge_actor(),
+    )
+
 
 ## Competitor Selection Menu
 """ Official will be presented with a list of competitors
@@ -541,6 +574,16 @@ def single_event_menu():
     heat_assignment_df = pd.DataFrame()
     heat_assignment_names = []
 
+    # A single event owns one deliberate choice for all of its rounds. The
+    # authority remains unlocked until the first numeric action in U5.
+    select_prediction_engine_for_scope(
+        tournament_state,
+        authority_store=_prediction_authority_store,
+        owner_kind="single_event",
+        readiness_provider=_v3_readiness_provider,
+        actor=_judge_actor(),
+    )
+
     while True:
         os.system("cls" if os.name == "nt" else "clear")
         # Display banner based on tournament format
@@ -565,6 +608,8 @@ def single_event_menu():
             print("║" + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".center(68) + "║")
             print("║" + " " * 68 + "║")
             print("╚" + "═" * 68 + "╝")
+
+        display_prediction_engine_banner(tournament_state, _prediction_authority_store)
 
         # Show current configuration status (including payouts)
         if tournament_state.get("event_name"):
@@ -1195,7 +1240,11 @@ def single_event_menu():
                 print(f"{'=' * 70}")
 
             # Auto-save
-            auto_save_state(tournament_state)
+            save_tournament_state(
+                tournament_state,
+                "saves/tournament_state.json",
+                authority_store=_prediction_authority_store,
+            )
             print("\n[OK] Tournament state auto-saved")
             input("\nPress Enter to return to menu...")
 
@@ -1342,7 +1391,11 @@ def single_event_menu():
 
                 if not entry_succeeded:
                     print("\n[WARN] Results were not saved. This round remains open for retry.")
-                    auto_save_state(tournament_state)
+                    save_tournament_state(
+                        tournament_state,
+                        "saves/tournament_state.json",
+                        authority_store=_prediction_authority_store,
+                    )
                     continue
 
                 # Select advancers
@@ -1354,7 +1407,11 @@ def single_event_menu():
                     print(f"\n[OK] {selected_heat['round_name']} completed")
                     print(f"[OK] Advancers: {', '.join(advancers)}")
 
-                auto_save_state(tournament_state)
+                save_tournament_state(
+                    tournament_state,
+                    "saves/tournament_state.json",
+                    authority_store=_prediction_authority_store,
+                )
 
             except (ValueError, IndexError):
                 print("Invalid selection.")
@@ -1452,7 +1509,11 @@ def single_event_menu():
                 for name in round_obj["competitors"]:
                     print(f"  - {name}")
 
-            auto_save_state(tournament_state)
+            save_tournament_state(
+                tournament_state,
+                "saves/tournament_state.json",
+                authority_store=_prediction_authority_store,
+            )
 
         elif menu_choice == "12":
             # Option 12: Export Bracket to HTML (BRACKET MODE) or View Event Status (REGULAR MODE)
@@ -1525,7 +1586,11 @@ def single_event_menu():
 
         elif menu_choice == "15":
             # Save Event State (BOTH MODES)
-            save_tournament_state(tournament_state, "saves/tournament_state.json")
+            save_tournament_state(
+                tournament_state,
+                "saves/tournament_state.json",
+                authority_store=_prediction_authority_store,
+            )
 
         elif menu_choice == "16":
             # Return to Main Menu (BOTH MODES)
@@ -1545,6 +1610,7 @@ def multi_event_tournament_menu():
         # Display progress tracker if tournament exists
         if multi_event_tournament_state.get("tournament_name"):
             display_tournament_progress_tracker(multi_event_tournament_state)
+            display_prediction_engine_banner(multi_event_tournament_state, _prediction_authority_store)
         else:
             # Show banner only if no tournament
             print("\n╔" + "═" * 68 + "╗")
@@ -1589,9 +1655,11 @@ def multi_event_tournament_menu():
         if menu_choice == "s":
             # Quick save
             if multi_event_tournament_state.get("tournament_name"):
-                from woodchopping.ui.multi_event_ui import auto_save_multi_event
-
-                auto_save_multi_event(multi_event_tournament_state)
+                save_multi_event_tournament(
+                    multi_event_tournament_state,
+                    "saves/multi_tournament_state.json",
+                    authority_store=_prediction_authority_store,
+                )
                 display_success("Tournament saved successfully")
             else:
                 print("\n[WARN] No tournament to save")
@@ -1625,7 +1693,7 @@ def multi_event_tournament_menu():
 
         if menu_choice == "1":
             # Create New Tournament
-            multi_event_tournament_state = create_multi_event_tournament()
+            multi_event_tournament_state = _create_multi_event_with_engine()
 
         elif menu_choice == "2":
             # Define All Events (Add/Remove/View) - NEW SUBMENU
@@ -1637,7 +1705,7 @@ def multi_event_tournament_menu():
                     quick_action_key="1",
                 )
                 if choice == "1":
-                    multi_event_tournament_state = create_multi_event_tournament()
+                    multi_event_tournament_state = _create_multi_event_with_engine()
                 continue
 
             # Event management submenu loop
@@ -1659,7 +1727,10 @@ def multi_event_tournament_menu():
                 if event_choice == "1":
                     results_df = load_results_df()
                     multi_event_tournament_state = add_event_to_tournament(
-                        multi_event_tournament_state, comp_df, results_df
+                        multi_event_tournament_state,
+                        comp_df,
+                        results_df,
+                        authority_store=_prediction_authority_store,
                     )
                 elif event_choice == "2":
                     if not multi_event_tournament_state.get("events"):
@@ -1689,7 +1760,7 @@ def multi_event_tournament_menu():
                     quick_action_key="1",
                 )
                 if choice == "1":
-                    multi_event_tournament_state = create_multi_event_tournament()
+                    multi_event_tournament_state = _create_multi_event_with_engine()
                 continue
 
             multi_event_tournament_state = setup_tournament_roster(multi_event_tournament_state, comp_df)
@@ -1719,7 +1790,7 @@ def multi_event_tournament_menu():
                     quick_action_key="1",
                 )
                 if choice == "1":
-                    multi_event_tournament_state = create_multi_event_tournament()
+                    multi_event_tournament_state = _create_multi_event_with_engine()
                 continue
 
             # Submenu loop for entry fees and payouts
@@ -1885,7 +1956,11 @@ def multi_event_tournament_menu():
             if not filename:
                 filename = "saves/multi_tournament_state.json"
 
-            save_multi_event_tournament(multi_event_tournament_state, filename)
+            save_multi_event_tournament(
+                multi_event_tournament_state,
+                filename,
+                authority_store=_prediction_authority_store,
+            )
 
         elif menu_choice == "17":
             # Return to main menu
@@ -1981,7 +2056,10 @@ while True:
 
         if load_choice == "1":
             # Load single event
-            loaded_state = load_tournament_state("saves/tournament_state.json")
+            loaded_state = load_tournament_state(
+                "saves/tournament_state.json",
+                authority_store=_prediction_authority_store,
+            )
             if loaded_state:
                 tournament_state.update(loaded_state)
                 print("\n[OK] Single event state loaded successfully")
@@ -1992,7 +2070,10 @@ while True:
             if not filename:
                 filename = "saves/multi_tournament_state.json"
 
-            loaded_multi_state = load_multi_event_tournament(filename)
+            loaded_multi_state = load_multi_event_tournament(
+                filename,
+                authority_store=_prediction_authority_store,
+            )
             if loaded_multi_state:
                 multi_event_tournament_state.update(loaded_multi_state)
                 print("\n[OK] Multi-event tournament state loaded successfully")
@@ -2028,13 +2109,21 @@ while True:
             save_choice = input("\nEnter your choice (1-3): ").strip()
 
             if save_choice == "1":
-                auto_save_state(tournament_state)
+                save_tournament_state(
+                    tournament_state,
+                    "saves/tournament_state.json",
+                    authority_store=_prediction_authority_store,
+                )
                 print("\n[OK] Single event state saved")
             elif save_choice == "2":
                 filename = input("\nEnter filename (default: saves/multi_tournament_state.json): ").strip()
                 if not filename:
                     filename = "saves/multi_tournament_state.json"
-                save_multi_event_tournament(multi_event_tournament_state, filename)
+                save_multi_event_tournament(
+                    multi_event_tournament_state,
+                    filename,
+                    authority_store=_prediction_authority_store,
+                )
 
         print("\nGoodbye!")
         break

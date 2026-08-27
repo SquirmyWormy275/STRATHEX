@@ -10,11 +10,10 @@ This module handles multi-event tournament operations including:
 - Multi-event state persistence
 """
 
-import copy
 import itertools
-import json
-from datetime import datetime
-from typing import Dict, Optional, Tuple
+import re
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 import pandas as pd
 
@@ -35,6 +34,176 @@ from woodchopping.ui.tournament_ui import (
 
 # Import existing functions for reuse
 from woodchopping.ui.wood_ui import select_event_code, wood_menu
+
+V3ReadinessProvider = Callable[[], Mapping[str, Any]]
+
+_READINESS_LABELS = {
+    "checking": "CHECKING",
+    "production_ready": "PRODUCTION READY",
+    "rehearsal_ready": "REHEARSAL READY",
+    "ineligible": "INELIGIBLE",
+    "status_failed": "STATUS CHECK FAILED",
+}
+_SELECTION_REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_V2_CONTRACT_IDENTITY = "strathmark-v2/2.0.0"
+_V2_SOURCE_IDENTITY = "strathmark:a231ad65fe82317516cc82a282761d73adb0c0e3"
+
+
+def _utc_milliseconds() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def unavailable_v3_readiness() -> dict[str, str]:
+    """Fail closed until the runtime supplies an authenticated readiness check."""
+    return {
+        "status": "ineligible",
+        "message": "No authenticated STRATHMARK V3 readiness provider is configured.",
+    }
+
+
+def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
+    """Render a judge-facing V3 state without promoting it by implication."""
+    status = str(readiness.get("status", "status_failed"))
+    label = _READINESS_LABELS.get(status, _READINESS_LABELS["status_failed"])
+    detail = str(readiness.get("message") or "No readiness detail was returned.").strip()
+    qualification = {
+        "checking": "V3 cannot be selected until the check finishes.",
+        "production_ready": "V3 may be selected in production mode for this scope.",
+        "rehearsal_ready": "V3 is rehearsal-only; this does not claim production readiness.",
+        "ineligible": "V3 cannot be selected for this scope.",
+        "status_failed": "Readiness is unknown; retry the check or select V2.",
+    }.get(status, "Readiness is unknown; retry the check or select V2.")
+    return f"V3: {label} - {detail} {qualification}"
+
+
+def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str]:
+    status = str(readiness.get("status", "status_failed"))
+    if status not in {"production_ready", "rehearsal_ready"}:
+        raise ValueError("V3 is not eligible for selection in its current readiness state")
+    contract_identity = str(readiness.get("contract_identity") or "").strip()
+    source_identity = str(readiness.get("source_identity") or "").strip()
+    if not contract_identity or not source_identity:
+        raise ValueError("V3 readiness did not return pinned contract and source identities")
+    mode = "production" if status == "production_ready" else "rehearsal"
+    return mode, contract_identity, source_identity
+
+
+def _read_v3_readiness(readiness_provider: V3ReadinessProvider) -> dict[str, Any]:
+    try:
+        return dict(readiness_provider())
+    except Exception as error:
+        return {
+            "status": "status_failed",
+            "message": f"Readiness check failed: {error}",
+        }
+
+
+def select_prediction_engine_for_scope(
+    state: Dict,
+    *,
+    authority_store: Any,
+    owner_kind: str,
+    readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
+    actor: str = "local-judge",
+    selected_at: Optional[str] = None,
+):
+    """Require a deliberate V2/V3 choice and persist it in canonical authority."""
+    from woodchopping.ui.prediction_context import attach_authority_reference
+
+    readiness = _read_v3_readiness(readiness_provider)
+    created = authority_store.create_scope(owner_kind=owner_kind)
+    selected_at = selected_at or _utc_milliseconds()
+
+    while True:
+        print(f"\n{'=' * 70}")
+        print("  SELECT PREDICTION ENGINE")
+        print(f"{'=' * 70}")
+        print("No engine is selected by default. The judge must choose deliberately.")
+        if owner_kind == "tournament":
+            print("This one choice is inherited by every event and round in the tournament.")
+        else:
+            print("This choice governs this single event and all of its rounds.")
+        print("\n1. STRATHMARK V2 - established production baseline")
+        print(f"2. STRATHMARK V3 - {format_v3_readiness(readiness)[4:]}")
+        if str(readiness.get("status")) in {"checking", "status_failed"}:
+            print("R. Retry V3 readiness check")
+        print("H. Explain the engine choice")
+
+        choice = input("\nSelect prediction engine (1 or 2; no default): ").strip().lower()
+        if choice == "h":
+            import explanation_system_functions as explanations
+
+            explanations.show_prediction_engine_help()
+            continue
+        if choice == "r":
+            readiness = _read_v3_readiness(readiness_provider)
+            continue
+        if choice not in {"1", "2"}:
+            print("\n[WARN] A deliberate engine selection is required; nothing was selected.")
+            continue
+
+        engine = "v2" if choice == "1" else "v3"
+        if engine == "v2":
+            mode = "production"
+            contract_identity = _V2_CONTRACT_IDENTITY
+            source_identity = _V2_SOURCE_IDENTITY
+        else:
+            try:
+                mode, contract_identity, source_identity = _validated_v3_readiness(readiness)
+            except ValueError as error:
+                print(f"\n[WARN] {error}. No engine was selected.")
+                continue
+
+        reason_code = input("Selection reason code (required): ").strip()
+        if _SELECTION_REASON.fullmatch(reason_code) is None:
+            print(
+                "\n[WARN] Use a lowercase reason code beginning with a letter and containing "
+                "only letters, numbers, or underscores. No engine was selected."
+            )
+            continue
+        reason_note = input("Selection note (optional): ").strip()
+        selected = authority_store.select_engine(
+            created.reference,
+            engine=engine,
+            actor=actor,
+            selected_at=selected_at,
+            reason_code=reason_code,
+            reason_note=reason_note or None,
+            mode=mode,
+            contract_identity=contract_identity,
+            source_identity=source_identity,
+        )
+        attach_authority_reference(state, selected.reference)
+        print(f"\n[OK] STRATHMARK {engine.upper()} selected in {mode.upper()} mode")
+        print("[OK] No silent fallback to the other engine is permitted")
+        return selected
+
+
+def resolve_prediction_engine(state: Mapping[str, Any], authority_store: Any):
+    """Resolve the canonical engine receipt attached to a root state."""
+    from woodchopping.ui.prediction_context import resolve_authority_for_state
+
+    return resolve_authority_for_state(state, authority_store)
+
+
+def display_prediction_engine_banner(state: Mapping[str, Any], authority_store: Any) -> None:
+    """Display the persistent engine/mode/lock reminder for a root scope."""
+    try:
+        receipt = resolve_prediction_engine(state, authority_store)
+    except Exception as error:
+        print(f"PREDICTION ENGINE: ATTENTION REQUIRED ({error})")
+        return
+    lock_label = "LOCKED" if receipt.locked else "UNLOCKED"
+    print(f"PREDICTION ENGINE: {receipt.engine.upper()} | MODE: {receipt.mode.upper()} | {lock_label}")
+    print("Championship and bracket Mark 3 rules remain unchanged.")
+
+
+def display_inherited_prediction_engine(tournament_state: Mapping[str, Any], authority_store: Any) -> None:
+    """Explain tournament inheritance at child-event setup without a selector."""
+    receipt = resolve_prediction_engine(tournament_state, authority_store)
+    print(f"Prediction engine: STRATHMARK {receipt.engine.upper()} ({receipt.mode.upper()})")
+    print("This tournament choice is inherited by every event and round.")
+    print("It cannot be changed per event; create a new tournament scope to choose differently.")
 
 
 def _reject_unsupported_bracket_events(tournament_state: Dict) -> bool:
@@ -65,7 +234,13 @@ def _event_competition_has_started(event: Dict) -> bool:
     return False
 
 
-def create_multi_event_tournament() -> Dict:
+def create_multi_event_tournament(
+    *,
+    authority_store: Any = None,
+    readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
+    actor: str = "local-judge",
+    selected_at: Optional[str] = None,
+) -> Dict:
     """Create a new multi-event tournament structure.
 
     Prompts judge for:
@@ -103,6 +278,16 @@ def create_multi_event_tournament() -> Dict:
         "current_event_index": 0,
         "events": [],
     }
+
+    if authority_store is not None:
+        select_prediction_engine_for_scope(
+            tournament_state,
+            authority_store=authority_store,
+            owner_kind="tournament",
+            readiness_provider=readiness_provider,
+            actor=actor,
+            selected_at=selected_at,
+        )
 
     print(f"\n[OK] Tournament '{tournament_name}' created for {tournament_date}")
     print("[OK] You can now add events to this tournament")
@@ -195,146 +380,72 @@ def setup_tournament_roster(tournament_state: Dict, comp_df: pd.DataFrame) -> Di
     return tournament_state
 
 
-def save_multi_event_tournament(tournament_state: Dict, filename: str = "saves/multi_tournament_state.json") -> None:
-    """Save multi-event tournament state to JSON file.
-
-    Handles DataFrame serialization and NumPy type conversion for all events and rounds.
+def save_multi_event_tournament(
+    tournament_state: Dict,
+    filename: str = "saves/multi_tournament_state.json",
+    *,
+    authority_store: Any = None,
+) -> None:
+    """Save multi-event state through the canonical persistence layer.
 
     Args:
         tournament_state: Multi-event tournament state dictionary
         filename: Output filename (default: saves/multi_tournament_state.json)
+        authority_store: Optional canonical prediction-authority store
     """
-    import numpy as np
+    from woodchopping.ui import state_persistence
 
-    class NumpyEncoder(json.JSONEncoder):
-        """Custom JSON encoder for NumPy types."""
-
-        def default(self, obj):
-            if isinstance(obj, (np.integer, np.int64, np.int32)):
-                return int(obj)
-            elif isinstance(obj, (np.floating, np.float64, np.float32)):
-                return float(obj)
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            return super().default(obj)
-
-    try:
-        # Deep copy to avoid mutating original
-        state_copy = copy.deepcopy(tournament_state)
-
-        # Convert top-level DataFrames (V5.1)
-        if "competitor_roster_df" in state_copy and isinstance(state_copy["competitor_roster_df"], pd.DataFrame):
-            state_copy["competitor_roster_df"] = state_copy["competitor_roster_df"].to_dict("records")
-
-        # Convert DataFrames to dict records for JSON serialization
-        for event in state_copy.get("events", []):
-            # Convert event-level DataFrame
-            if "all_competitors_df" in event and isinstance(event["all_competitors_df"], pd.DataFrame):
-                event["all_competitors_df"] = event["all_competitors_df"].to_dict("records")
-
-            # Convert round-level DataFrames
-            for round_obj in event.get("rounds", []):
-                if "competitors_df" in round_obj and isinstance(round_obj["competitors_df"], pd.DataFrame):
-                    round_obj["competitors_df"] = round_obj["competitors_df"].to_dict("records")
-
-        # Write to JSON with custom encoder for NumPy types
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(state_copy, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
-
-        print(f"\n[OK] Tournament state saved to {filename}")
-
-    except Exception as e:
-        print(f"\n[WARN] Error saving tournament state: {e}")
+    # Preserve the legacy UI return contract (None); the canonical layer owns
+    # NumPy/DataFrame conversion, validation, and atomic writes.
+    state_persistence.save_multi_event_tournament(
+        tournament_state,
+        filename,
+        authority_store=authority_store,
+    )
 
 
 def load_multi_event_tournament(
     filename: str = "saves/multi_tournament_state.json",
+    *,
+    authority_store: Any = None,
 ) -> Optional[Dict]:
-    """Load multi-event tournament state from JSON file.
-
-    Reconstructs DataFrames from dict records.
+    """Load multi-event state through the canonical persistence layer.
 
     Args:
         filename: Input filename (default: saves/multi_tournament_state.json)
+        authority_store: Optional canonical prediction-authority store
 
     Returns:
         dict: Loaded tournament state, or None if load failed
     """
-    try:
-        with open(filename, "r", encoding="utf-8") as f:
-            tournament_state = json.load(f)
+    from woodchopping.ui import state_persistence
 
-        # Reconstruct top-level DataFrames (V5.1)
-        if "competitor_roster_df" in tournament_state and isinstance(tournament_state["competitor_roster_df"], list):
-            tournament_state["competitor_roster_df"] = pd.DataFrame(tournament_state["competitor_roster_df"])
-
-        # Reconstruct DataFrames
-        for event in tournament_state.get("events", []):
-            # Reconstruct event-level DataFrame
-            if "all_competitors_df" in event and isinstance(event["all_competitors_df"], list):
-                event["all_competitors_df"] = pd.DataFrame(event["all_competitors_df"])
-
-            # Reconstruct round-level DataFrames
-            for round_obj in event.get("rounds", []):
-                if "competitors_df" in round_obj and isinstance(round_obj["competitors_df"], list):
-                    round_obj["competitors_df"] = pd.DataFrame(round_obj["competitors_df"])
-
-            # Backward compatibility: add event_type for legacy tournaments
-            if "event_type" not in event:
-                event["event_type"] = "handicap"
-
-            # Backward compatibility: add payout_config for legacy tournaments (V4.5)
-            if "payout_config" not in event:
-                event["payout_config"] = None
-
-            # Backward compatibility: add competitor_status to events (V5.1)
-            if "competitor_status" not in event:
-                event["competitor_status"] = {name: "active" for name in event.get("all_competitors", [])}
-
-        # Backward compatibility: add tournament_roster for legacy tournaments (V5.1)
-        if "tournament_roster" not in tournament_state:
-            # Legacy tournament - build minimal roster from event assignments
-            all_comp_names = set()
-            for event in tournament_state.get("events", []):
-                all_comp_names.update(event.get("all_competitors", []))
-
-            # Build minimal roster
-            tournament_state["tournament_roster"] = [
-                {
-                    "competitor_name": name,
-                    "competitor_id": "",
-                    "events_entered": [],  # Empty - legacy tournaments already have events populated
-                    "entry_fees_paid": {},
-                }
-                for name in sorted(all_comp_names)
-            ]
-            tournament_state["entry_fee_tracking_enabled"] = False
-            tournament_state["competitor_roster_df"] = pd.DataFrame()
-
-        print(f"\n[OK] Tournament state loaded from {filename}")
-        print(f"[OK] Tournament: {tournament_state.get('tournament_name', 'Unknown')}")
-        print(f"[OK] Events: {tournament_state.get('total_events', 0)}")
-
-        return tournament_state
-
-    except FileNotFoundError:
-        print(f"\n[WARN] Tournament file '{filename}' not found")
-        return None
-    except Exception as e:
-        print(f"\n[WARN] Error loading tournament state: {e}")
-        return None
+    return state_persistence.load_multi_event_tournament(
+        filename,
+        authority_store=authority_store,
+    )
 
 
-def auto_save_multi_event(tournament_state: Dict) -> None:
+def auto_save_multi_event(tournament_state: Dict, *, authority_store: Any = None) -> None:
     """Auto-save multi-event tournament state with default filename.
 
     Args:
         tournament_state: Multi-event tournament state dictionary
     """
-    save_multi_event_tournament(tournament_state, "saves/multi_tournament_state.json")
+    save_multi_event_tournament(
+        tournament_state,
+        "saves/multi_tournament_state.json",
+        authority_store=authority_store,
+    )
 
 
-def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, results_df: pd.DataFrame) -> Dict:
+def add_event_to_tournament(
+    tournament_state: Dict,
+    comp_df: pd.DataFrame,
+    results_df: pd.DataFrame,
+    *,
+    authority_store: Any = None,
+) -> Dict:
     """Add a new event to the tournament (wood, format, competitors ONLY).
 
     Sequential workflow:
@@ -361,6 +472,8 @@ def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, resul
     print(f"Tournament: {tournament_state.get('tournament_name', 'Unknown')}")
     print(f"Current events: {tournament_state.get('total_events', 0)}")
     print(f"{'=' * 70}")
+    if authority_store is not None:
+        display_inherited_prediction_engine(tournament_state, authority_store)
 
     # Generate event ID
     event_order = tournament_state["total_events"] + 1
@@ -559,8 +672,16 @@ def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, resul
     print("Status: PENDING (awaiting competitor assignment)")
     print(f"{'=' * 70}")
 
-    # Auto-save
-    auto_save_multi_event(tournament_state)
+    # Auto-save through canonical authority when this tournament has a selected
+    # engine. Legacy callers without an authority store retain the old path.
+    if authority_store is None:
+        auto_save_multi_event(tournament_state)
+    else:
+        save_multi_event_tournament(
+            tournament_state,
+            "saves/multi_tournament_state.json",
+            authority_store=authority_store,
+        )
 
     input("\nPress Enter to continue...")
 

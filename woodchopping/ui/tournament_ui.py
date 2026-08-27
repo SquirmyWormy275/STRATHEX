@@ -8,12 +8,10 @@ This module handles multi-round tournament operations including:
 - Tournament state management
 """
 
-import copy
-import json
 import random
 import time
 from math import ceil
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
@@ -945,85 +943,60 @@ def view_tournament_status(tournament_state: Dict) -> None:
     print(f"\n{'=' * 70}\n")
 
 
-def save_tournament_state(tournament_state: Dict, filename: str = "saves/tournament_state.json") -> None:
-    """Save tournament state to JSON for crash recovery.
+def save_tournament_state(
+    tournament_state: Dict,
+    filename: str = "saves/tournament_state.json",
+    *,
+    authority_store: Any = None,
+) -> None:
+    """Save tournament state through the canonical crash-safe persistence layer.
 
     Args:
         tournament_state: Tournament state to save
         filename: Output filename
+        authority_store: Optional canonical prediction-authority store
     """
-    try:
-        # Convert DataFrames to dict format for JSON serialization
-        state_copy = copy.deepcopy(tournament_state)
+    from woodchopping.ui import state_persistence
 
-        # Convert main competitors DataFrame
-        if not state_copy["all_competitors_df"].empty:
-            state_copy["all_competitors_df"] = state_copy["all_competitors_df"].to_dict("records")
-        else:
-            state_copy["all_competitors_df"] = []
-
-        # Convert DataFrames in rounds
-        for round_obj in state_copy.get("rounds", []):
-            if not round_obj["competitors_df"].empty:
-                round_obj["competitors_df"] = round_obj["competitors_df"].to_dict("records")
-            else:
-                round_obj["competitors_df"] = []
-
-        # Write to file
-        with open(filename, "w") as f:
-            json.dump(state_copy, f, indent=2, default=str)
-
-        print(f"Tournament state saved to {filename}")
-
-    except Exception as e:
-        print(f"Error saving tournament state: {e}")
+    # Preserve the legacy UI return contract (None); the canonical layer owns
+    # success reporting, atomic writes, validation, and DataFrame conversion.
+    state_persistence.save_tournament_state(
+        tournament_state,
+        filename,
+        authority_store=authority_store,
+    )
 
 
-def load_tournament_state(filename: str = "saves/tournament_state.json") -> Optional[Dict]:
-    """Load tournament state from JSON.
+def load_tournament_state(
+    filename: str = "saves/tournament_state.json",
+    *,
+    authority_store: Any = None,
+) -> Optional[Dict]:
+    """Load tournament state through the canonical persistence layer.
 
     Args:
         filename: Input filename
+        authority_store: Optional canonical prediction-authority store
 
     Returns:
         dict: Loaded tournament state, or None if error
     """
-    try:
-        with open(filename, "r") as f:
-            state = json.load(f)
+    from woodchopping.ui import state_persistence
 
-        # Convert dict records back to DataFrames
-        if state.get("all_competitors_df"):
-            state["all_competitors_df"] = pd.DataFrame(state["all_competitors_df"])
-        else:
-            state["all_competitors_df"] = pd.DataFrame()
-
-        # Convert DataFrames in rounds
-        for round_obj in state.get("rounds", []):
-            if round_obj.get("competitors_df"):
-                round_obj["competitors_df"] = pd.DataFrame(round_obj["competitors_df"])
-            else:
-                round_obj["competitors_df"] = pd.DataFrame()
-
-        # Backward compatibility: Add payout_config if missing (V4.5)
-        if "payout_config" not in state:
-            state["payout_config"] = None
-
-        print(f"Tournament state loaded from {filename}")
-        return state
-
-    except FileNotFoundError:
-        print(f"Tournament state file '{filename}' not found.")
-        return None
-    except Exception as e:
-        print(f"Error loading tournament state: {e}")
-        return None
+    return state_persistence.load_tournament_state(
+        filename,
+        authority_store=authority_store,
+    )
 
 
-def auto_save_state(tournament_state: Dict) -> None:
+def auto_save_state(tournament_state: Dict, *, authority_store: Any = None) -> None:
     """Auto-save tournament state after significant actions.
 
     Args:
         tournament_state: Tournament state to save
     """
-    save_tournament_state(tournament_state, "saves/tournament_state.json")
+    save_tournament_state(
+        tournament_state,
+        "saves/tournament_state.json",
+        authority_store=authority_store,
+    )

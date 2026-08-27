@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Interactive operator help for the live STRATHEX 7 / STRATHMARK v2 runtime."""
+"""Interactive operator help for STRATHEX prediction-engine operation."""
 
 
 def _pause() -> None:
@@ -79,6 +79,40 @@ the public calculation route is stateless.
     _pause()
 
 
+def show_prediction_engine_help(*, pause: bool = True) -> None:
+    """Explain the deliberate competition-scoped V2/V3 authority choice."""
+    print("""
+======================================================================
+CHOOSING STRATHMARK V2 OR V3
+======================================================================
+
+For a single event, the judge chooses one prediction engine during event
+setup. For a multi-event tournament, the judge chooses once at tournament creation.
+Every child event, heat, semifinal, and final inherits that tournament
+choice; there is no per-event tournament override.
+
+Nothing is selected by default. The screen shows V3 as checking,
+production-ready, rehearsal-ready, ineligible, or status-check-failed. A failed
+or incomplete readiness check never implies that V3 is safe to use. Rehearsal
+mode is explicitly non-production and remains labeled wherever the engine is
+shown.
+
+The selected engine supplies the authoritative predictions and handicap marks
+for that scope. There is no silent fallback to the other engine. The
+choice locks when authoritative numeric work begins; changing a locked choice
+requires abandoning that unused scope and creating a new one, while issued
+marks and results remain immutable and auditable.
+
+V2 is the established deterministic production baseline. V3 is the adaptive
+ensemble and may be used only in the mode proven by its readiness response.
+Both use the same woodchopping handicap purpose and judge approval workflow.
+Championship and bracket Mark 3 rules do not become handicap calculations and
+remain unchanged regardless of the selected prediction engine.
+""")
+    if pause:
+        _pause()
+
+
 def explanation_menu() -> None:
     """Show concise help that matches the live runtime."""
     while True:
@@ -90,6 +124,7 @@ STRATHEX 7 HELP
 2. STRATHMARK v2 prediction contract
 3. Uncertainty and mark optimization
 4. Transport and persistence boundaries
+5. Choosing STRATHMARK V2 or V3
 0. Return to main menu
 ======================================================================
 """)
@@ -102,6 +137,8 @@ STRATHEX 7 HELP
             _uncertainty_and_marks()
         elif choice == "4":
             _transport_and_persistence()
+        elif choice == "5":
+            show_prediction_engine_help()
         elif choice == "0":
             return
         else:
