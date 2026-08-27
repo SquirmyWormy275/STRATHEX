@@ -35,6 +35,19 @@ _EVENT_FORMATS = frozenset({"single_heat", "heats_to_finals", "heats_to_semis_to
 _EVENT_TYPES = frozenset({"handicap", "championship", "bracket"})
 
 
+def _validate_authority_reference(payload: dict[str, Any], *, child: bool = False) -> None:
+    """Validate the opaque JSON pointer without copying canonical authority into JSON."""
+    from woodchopping.ui.prediction_context import AuthorityReference
+
+    if child and "prediction_authority_ref" in payload:
+        raise ValueError("child event cannot override tournament prediction authority")
+    if "prediction_authority_ref" in payload:
+        AuthorityReference.from_json(payload["prediction_authority_ref"])
+    forbidden = {"prediction_engine", "selected_engine", "engine_selection"}
+    if forbidden.intersection(payload):
+        raise ValueError("prediction engine authority must not be embedded in JSON state")
+
+
 def _json_default(value: Any) -> Any:
     """Convert NumPy/pandas values while retaining the legacy string fallback."""
     if isinstance(value, np.integer):
@@ -304,6 +317,7 @@ def _validate_bracket_sections(payload: dict[str, Any], context: str) -> None:
 def _validate_single_state(payload: Any) -> None:
     if not isinstance(payload, dict):
         raise ValueError("Tournament state must be a JSON object")
+    _validate_authority_reference(payload)
     if "rounds" in payload and not isinstance(payload["rounds"], list):
         raise ValueError("Tournament state 'rounds' must be a list")
     if "all_competitors" in payload:
@@ -317,6 +331,7 @@ def _validate_single_state(payload: Any) -> None:
 def _validate_multi_state(payload: Any) -> None:
     if not isinstance(payload, dict):
         raise ValueError("Multi-event tournament state must be a JSON object")
+    _validate_authority_reference(payload)
     if "events" not in payload or not isinstance(payload["events"], list):
         raise ValueError("Multi-event tournament state requires an 'events' list")
     if "total_events" in payload and (
@@ -328,6 +343,7 @@ def _validate_multi_state(payload: Any) -> None:
     for event in payload["events"]:
         if not isinstance(event, dict):
             raise ValueError("Every multi-event entry must be a JSON object")
+        _validate_authority_reference(event, child=True)
         if "rounds" not in event or not isinstance(event["rounds"], list):
             raise ValueError("Every multi-event entry requires a 'rounds' list")
         for field in ("event_id", "event_name"):
@@ -349,6 +365,7 @@ def _validate_multi_state(payload: Any) -> None:
 
 def _serialize_single_state(tournament_state: Dict[str, Any]) -> Dict[str, Any]:
     state_copy = copy.deepcopy(tournament_state)
+    state_copy.pop("prediction_authority_runtime", None)
 
     competitors_df = state_copy.get("all_competitors_df")
     if isinstance(competitors_df, pd.DataFrame):
@@ -380,6 +397,7 @@ def _deserialize_single_state(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def _serialize_multi_state(tournament_state: Dict[str, Any]) -> Dict[str, Any]:
     state_copy = copy.deepcopy(tournament_state)
+    state_copy.pop("prediction_authority_runtime", None)
 
     roster_df = state_copy.get("competitor_roster_df")
     if isinstance(roster_df, pd.DataFrame):
@@ -445,10 +463,19 @@ def _deserialize_multi_state(payload: Dict[str, Any]) -> Dict[str, Any]:
 def save_tournament_state(
     tournament_state: Dict[str, Any],
     filename: str = "saves/tournament_state.json",
+    *,
+    authority_store: Any = None,
 ) -> bool:
     """Atomically save single-event state and report whether it persisted."""
     try:
         payload = _serialize_single_state(tournament_state)
+        if "prediction_authority_ref" in payload:
+            if authority_store is None:
+                raise ValueError("prediction authority store is required to save selected-engine state")
+            from woodchopping.ui.prediction_context import AuthorityReference
+
+            reference = AuthorityReference.from_json(payload["prediction_authority_ref"])
+            authority_store.bind_save_path(reference, filename)
         _atomic_write_json(payload, filename, _validate_single_state)
         print(f"Tournament state saved to {filename}")
         return True
@@ -457,11 +484,20 @@ def save_tournament_state(
         return False
 
 
-def load_tournament_state(filename: str = "saves/tournament_state.json") -> Optional[Dict[str, Any]]:
+def load_tournament_state(
+    filename: str = "saves/tournament_state.json",
+    *,
+    authority_store: Any = None,
+) -> Optional[Dict[str, Any]]:
     """Load single-event state, recovering the last valid backup when needed."""
     try:
         payload = _load_with_recovery(filename, _validate_single_state)
         state = _deserialize_single_state(payload)
+        from woodchopping.ui.prediction_context import runtime_authority_status
+
+        state["prediction_authority_runtime"] = runtime_authority_status(
+            state, authority_store, save_path=filename if authority_store is not None else None
+        )
         print(f"Tournament state loaded from {filename}")
         return state
     except FileNotFoundError:
@@ -479,10 +515,19 @@ def auto_save_state(tournament_state: Dict[str, Any]) -> bool:
 def save_multi_event_tournament(
     tournament_state: Dict[str, Any],
     filename: str = "saves/multi_tournament_state.json",
+    *,
+    authority_store: Any = None,
 ) -> bool:
     """Atomically save multi-event state and report whether it persisted."""
     try:
         payload = _serialize_multi_state(tournament_state)
+        if "prediction_authority_ref" in payload:
+            if authority_store is None:
+                raise ValueError("prediction authority store is required to save selected-engine state")
+            from woodchopping.ui.prediction_context import AuthorityReference
+
+            reference = AuthorityReference.from_json(payload["prediction_authority_ref"])
+            authority_store.bind_save_path(reference, filename)
         _atomic_write_json(payload, filename, _validate_multi_state)
         print(f"\n[OK] Tournament state saved to {filename}")
         return True
@@ -493,11 +538,18 @@ def save_multi_event_tournament(
 
 def load_multi_event_tournament(
     filename: str = "saves/multi_tournament_state.json",
+    *,
+    authority_store: Any = None,
 ) -> Optional[Dict[str, Any]]:
     """Load multi-event state, recovering the last valid backup when needed."""
     try:
         payload = _load_with_recovery(filename, _validate_multi_state)
         tournament_state = _deserialize_multi_state(payload)
+        from woodchopping.ui.prediction_context import runtime_authority_status
+
+        tournament_state["prediction_authority_runtime"] = runtime_authority_status(
+            tournament_state, authority_store, save_path=filename if authority_store is not None else None
+        )
         print(f"\n[OK] Tournament state loaded from {filename}")
         print(f"[OK] Tournament: {tournament_state.get('tournament_name', 'Unknown')}")
         print(f"[OK] Events: {tournament_state.get('total_events', 0)}")

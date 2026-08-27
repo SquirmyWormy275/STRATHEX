@@ -255,3 +255,112 @@ def test_ui_modules_are_patched_to_atomic_implementations():
     assert tournament_ui.load_tournament_state is state_persistence.load_tournament_state
     assert multi_event_ui.save_multi_event_tournament is state_persistence.save_multi_event_tournament
     assert multi_event_ui.load_multi_event_tournament is state_persistence.load_multi_event_tournament
+
+
+def test_atomic_state_persists_only_authority_reference_and_resolves_it(tmp_path):
+    from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
+
+    target = tmp_path / "state.json"
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    created = store.create_scope(owner_kind="single_event", scope_id="strathex:atomic-001")
+    selected = store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    state = _single_state("authority")
+    attach_authority_reference(state, selected.reference)
+
+    assert state_persistence.save_tournament_state(state, str(target), authority_store=store)
+    raw = json.loads(target.read_text(encoding="utf-8"))
+    assert raw["prediction_authority_ref"] == selected.reference.to_json()
+    assert "selected_engine" not in raw
+    assert "judge:local" not in target.read_text(encoding="utf-8")
+
+    loaded = state_persistence.load_tournament_state(str(target), authority_store=store)
+    assert loaded is not None
+    assert loaded["prediction_authority_runtime"]["status"] == "ready"
+    assert loaded["prediction_authority_runtime"]["engine"] == "v2"
+
+
+def test_authority_ahead_of_json_blocks_resume_after_json_save_failure(tmp_path, monkeypatch):
+    from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
+
+    target = tmp_path / "state.json"
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    created = store.create_scope(owner_kind="single_event", scope_id="strathex:atomic-002")
+    v2 = store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    state = _single_state("before")
+    attach_authority_reference(state, v2.reference)
+    assert state_persistence.save_tournament_state(state, str(target), authority_store=store)
+
+    changed = store.select_engine(
+        v2.reference,
+        engine="v3",
+        actor="judge:local",
+        selected_at="2026-08-27T15:01:00Z",
+        reason_code="evaluation",
+        mode="rehearsal",
+        contract_identity="v3-consumer/1",
+        source_identity="strathmark:abc123",
+    )
+    attach_authority_reference(state, changed.reference)
+    monkeypatch.setattr(
+        state_persistence, "_write_temp_file", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full"))
+    )
+    assert not state_persistence.save_tournament_state(state, str(target), authority_store=store)
+
+    assert state_persistence.load_tournament_state(str(target), authority_store=store) is None
+
+
+def test_multi_event_child_authority_override_is_rejected(tmp_path):
+    payload = _multi_state("override")
+    payload["prediction_authority_ref"] = {
+        "authority_store_id": "store-1",
+        "scope_id": "strathex:root",
+        "revision": 1,
+        "digest": "a" * 64,
+        "save_id": "save-1",
+    }
+    payload["events"][0]["prediction_authority_ref"] = dict(payload["prediction_authority_ref"])
+
+    assert not state_persistence.save_multi_event_tournament(payload, str(tmp_path / "multi.json"))
+
+
+def test_copied_save_requires_explicit_authority_reconciliation(tmp_path):
+    from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
+
+    original = tmp_path / "original.json"
+    copied = tmp_path / "copied.json"
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    created = store.create_scope(owner_kind="single_event", scope_id="strathex:copy-001")
+    selected = store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    state = _single_state("copy")
+    attach_authority_reference(state, selected.reference)
+    assert state_persistence.save_tournament_state(state, str(original), authority_store=store)
+    copied.write_bytes(original.read_bytes())
+
+    assert state_persistence.load_tournament_state(str(copied), authority_store=store) is None
