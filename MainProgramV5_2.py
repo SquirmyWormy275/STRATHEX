@@ -78,9 +78,12 @@ from woodchopping.ui.multi_event_ui import (
     create_multi_event_tournament,
     display_prediction_engine_banner,
     execute_with_v3_recovery,
+    finalize_completed_competition,
     generate_complete_day_schedule,
     generate_tournament_summary,
     load_multi_event_tournament,
+    prompt_loaded_prediction_authority,
+    record_and_settle_v3_single_event,
     remove_event_from_tournament,
     resolve_prediction_engine,
     review_v3_approval_queue,
@@ -93,7 +96,7 @@ from woodchopping.ui.multi_event_ui import (
     view_tournament_schedule,
     view_wood_count,
 )
-from woodchopping.ui.prediction_context import PredictionAuthorityStore
+from woodchopping.ui.prediction_context import PredictionAuthorityStore, derive_scope_identity
 from woodchopping.ui.prediction_display import (
     display_basic_prediction_table,
     display_comprehensive_prediction_analysis,
@@ -633,6 +636,7 @@ def single_event_menu():
             updated = dict(heat)
             updated["competitors_df"] = ordered
             updated["handicap_results"] = marks
+            updated["v3_round_id"] = derive_scope_identity(authority.scope_id, "round", "single-event")
             materialized.append(updated)
         tournament_state["handicap_results_all"] = [item for heat in materialized for item in heat["handicap_results"]]
         return materialized
@@ -1504,15 +1508,35 @@ def single_event_menu():
                 print(f"\n{'=' * 70}")
                 print(f"  RECORDING RESULTS FOR {selected_heat['round_name']}")
                 print(f"{'=' * 70}")
-                entry_succeeded = append_results_to_excel(
-                    heat_assignment_df,
-                    wood_selection,
-                    round_object=selected_heat,
-                    tournament_state=tournament_state,
-                )
+
+                def write_results() -> bool:
+                    return append_results_to_excel(
+                        heat_assignment_df,
+                        wood_selection,
+                        round_object=selected_heat,
+                        tournament_state=tournament_state,
+                    )
+
+                authority = resolve_prediction_engine(tournament_state, _prediction_authority_store)
+                if authority.engine == "v3":
+                    if _v3_engine_adapter is None:
+                        raise RuntimeError("selected V3 engine has no settlement adapter")
+                    entry_succeeded = record_and_settle_v3_single_event(
+                        tournament_state,
+                        selected_heat,
+                        write_action=write_results,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+                else:
+                    entry_succeeded = write_results()
 
                 if not entry_succeeded:
-                    print("\n[WARN] Results were not saved. This round remains open for retry.")
+                    if selected_heat.get("canonical_results_recorded"):
+                        print("\n[WARN] Results were saved, but V3 settlement remains blocked for exact retry.")
+                        print("The Excel rows will not be written again on the next attempt.")
+                    else:
+                        print("\n[WARN] Results were not saved. This round remains open for retry.")
                     save_tournament_state(
                         tournament_state,
                         "saves/tournament_state.json",
@@ -1521,9 +1545,15 @@ def single_event_menu():
                     continue
 
                 # Select advancers
-                if complete_recorded_round(tournament_state, selected_heat, entry_succeeded):
+                terminal_round = complete_recorded_round(tournament_state, selected_heat, entry_succeeded)
+                if terminal_round:
                     print(f"\n[OK] {selected_heat['round_name']} completed")
                     print("[OK] Tournament results saved")
+                    finalize_completed_competition(
+                        tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
                 else:
                     advancers = select_heat_advancers(selected_heat)
                     print(f"\n[OK] {selected_heat['round_name']} completed")
@@ -2230,6 +2260,12 @@ while True:
                 authority_store=_prediction_authority_store,
             )
             if loaded_state:
+                prompt_loaded_prediction_authority(
+                    loaded_state,
+                    authority_store=_prediction_authority_store,
+                    actor=_judge_actor(),
+                    readiness_provider=_v3_readiness_provider,
+                )
                 tournament_state.update(loaded_state)
                 print("\n[OK] Single event state loaded successfully")
                 input("\nPress Enter to return to menu...")
@@ -2244,6 +2280,12 @@ while True:
                 authority_store=_prediction_authority_store,
             )
             if loaded_multi_state:
+                prompt_loaded_prediction_authority(
+                    loaded_multi_state,
+                    authority_store=_prediction_authority_store,
+                    actor=_judge_actor(),
+                    readiness_provider=_v3_readiness_provider,
+                )
                 multi_event_tournament_state.update(loaded_multi_state)
                 print("\n[OK] Multi-event tournament state loaded successfully")
                 input("\nPress Enter to return to menu...")

@@ -10,6 +10,7 @@ This module handles multi-event tournament operations including:
 - Multi-event state persistence
 """
 
+import hashlib
 import itertools
 import re
 from datetime import datetime, timezone
@@ -98,6 +99,231 @@ def _read_v3_readiness(readiness_provider: V3ReadinessProvider) -> dict[str, Any
         }
 
 
+def _scope_has_started_competition(value: Any) -> bool:
+    """Detect lifecycle evidence that makes a fresh selector unsafe."""
+    if isinstance(value, Mapping):
+        if value.get("status") in {"in_progress", "completed"}:
+            return True
+        if value.get("canonical_results_recorded") is True:
+            return True
+        if any(value.get(key) for key in ("actual_results", "results", "finish_order")):
+            return True
+        return any(_scope_has_started_competition(child) for child in value.values())
+    if isinstance(value, list):
+        return any(_scope_has_started_competition(child) for child in value)
+    return False
+
+
+def _scope_has_issued_or_resulted(value: Any) -> bool:
+    """Detect durable issue/result evidence without treating calculation as issue."""
+    if isinstance(value, Mapping):
+        if value.get("v3_issue_status") == "issued" or value.get("canonical_results_recorded") is True:
+            return True
+        if any(value.get(key) for key in ("issue_batch_id", "v3_issue_batches", "issued_at_utc")):
+            return True
+        if value.get("status") in {"in_progress", "completed"}:
+            return True
+        if any(value.get(key) for key in ("actual_results", "results", "finish_order")):
+            return True
+        return any(_scope_has_issued_or_resulted(child) for child in value.values())
+    if isinstance(value, list):
+        return any(_scope_has_issued_or_resulted(child) for child in value)
+    return False
+
+
+def inspect_loaded_prediction_authority(
+    state: Mapping[str, Any],
+    *,
+    authority_store: Any,
+    save_path: str | None = None,
+) -> dict[str, Any]:
+    """Return fail-closed judge actions for a loaded competition state."""
+    from woodchopping.ui.prediction_context import (
+        AuthorityStateError,
+        classify_legacy_state,
+        runtime_authority_status,
+    )
+
+    has_reference = "prediction_authority_ref" in state
+    classification = None if has_reference else classify_legacy_state(state)
+    try:
+        runtime = runtime_authority_status(state, authority_store, save_path=save_path)
+    except (AuthorityStateError, ValueError, TypeError) as error:
+        return {
+            "status": "reconciliation_required",
+            "classification": classification,
+            "numeric_work_allowed": False,
+            "selector_allowed": False,
+            "read_only": True,
+            "available_actions": (),
+            "message": f"Prediction authority could not be reconciled: {error}",
+        }
+
+    status = str(runtime["status"])
+    started = _scope_has_started_competition(state)
+    issued_or_resulted = _scope_has_issued_or_resulted(state)
+    actions: tuple[str, ...] = ()
+    selector_allowed = False
+    read_only = not bool(runtime.get("numeric_work_allowed"))
+
+    if status == "selection_required" and not started and classification == "selection_required":
+        actions = ("select_engine",)
+        selector_allowed = True
+        read_only = False
+    elif status == "legacy_v2_confirmation_required" and classification == status:
+        actions = ("confirm_legacy_v2",)
+        read_only = True
+    elif status == "ready":
+        actions = ("continue",)
+        read_only = False
+        if runtime.get("locked") is True and not issued_or_resulted:
+            actions += ("abandon_scope",)
+    elif status == "terminal":
+        actions = ("create_new_scope",)
+        read_only = True
+
+    return {
+        **runtime,
+        "classification": classification,
+        "selector_allowed": selector_allowed,
+        "read_only": read_only,
+        "available_actions": actions,
+        "issued_or_resulted": issued_or_resulted,
+    }
+
+
+def resume_loaded_prediction_authority(
+    state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    actor: str,
+    action: str | None = None,
+    confirmed: bool = False,
+    acted_at: str | None = None,
+    readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
+    input_fn: Callable[[str], str] | None = None,
+) -> dict[str, Any]:
+    """Apply only a judge action permitted by loaded-state classification."""
+    from woodchopping.ui.prediction_context import confirm_legacy_v2
+
+    decision = inspect_loaded_prediction_authority(state, authority_store=authority_store)
+    if action not in decision["available_actions"]:
+        return decision
+    if action == "select_engine":
+        owner_kind = "tournament" if isinstance(state.get("events"), list) else "single_event"
+        select_prediction_engine_for_scope(
+            state,
+            authority_store=authority_store,
+            owner_kind=owner_kind,
+            readiness_provider=readiness_provider,
+            actor=actor,
+            selected_at=acted_at,
+            input_fn=input_fn,
+        )
+    elif action == "confirm_legacy_v2":
+        if not confirmed:
+            return decision
+        confirm_legacy_v2(
+            state,
+            authority_store,
+            actor=actor,
+            confirmed_at=acted_at or _utc_milliseconds(),
+            contract_identity=_V2_CONTRACT_IDENTITY,
+            source_identity=_V2_SOURCE_IDENTITY,
+        )
+    return inspect_loaded_prediction_authority(state, authority_store=authority_store)
+
+
+def abandon_locked_prediction_scope(
+    state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    actor: str,
+    confirmed: bool,
+    reason: str,
+    abandoned_at: str | None = None,
+):
+    """Terminally abandon a locked, unissued scope while preserving its evidence."""
+    from woodchopping.ui.prediction_context import (
+        AuthorityStateError,
+        attach_authority_reference,
+    )
+
+    current = resolve_prediction_engine(state, authority_store)
+    if not current.locked:
+        raise AuthorityStateError("only a locked scope can be terminally abandoned")
+    if _scope_has_issued_or_resulted(state):
+        raise AuthorityStateError("issued or resulted scope cannot be terminally abandoned")
+    if not confirmed:
+        raise ValueError("terminal abandonment requires explicit confirmation")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("terminal abandonment requires a reason")
+    abandoned = authority_store.abandon(
+        current.reference,
+        actor=actor,
+        reason=reason.strip(),
+        abandoned_at=abandoned_at or _utc_milliseconds(),
+    )
+    attach_authority_reference(state, abandoned.reference)
+    return abandoned
+
+
+def prompt_loaded_prediction_authority(
+    state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    actor: str,
+    readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
+    input_fn: Callable[[str], str] | None = None,
+) -> dict[str, Any]:
+    """Present only the deliberate recovery actions valid for a loaded scope."""
+    ask = input if input_fn is None else input_fn
+    decision = inspect_loaded_prediction_authority(state, authority_store=authority_store)
+    status = decision["status"]
+    if status == "selection_required" and decision["selector_allowed"]:
+        print("\n[PREDICTION AUTHORITY] This unstarted save has no engine selection.")
+        if ask("Select an engine now? (y/n): ").strip().lower() == "y":
+            return resume_loaded_prediction_authority(
+                state,
+                authority_store=authority_store,
+                actor=actor,
+                action="select_engine",
+                readiness_provider=readiness_provider,
+                input_fn=ask,
+            )
+    elif status == "legacy_v2_confirmation_required":
+        print("\n[PREDICTION AUTHORITY] Existing evidence consistently identifies V2.")
+        confirmed = ask("Explicitly bind this legacy save to V2? (y/n): ").strip().lower() == "y"
+        return resume_loaded_prediction_authority(
+            state,
+            authority_store=authority_store,
+            actor=actor,
+            action="confirm_legacy_v2",
+            confirmed=confirmed,
+        )
+    elif status == "reconciliation_required":
+        print("\n[READ ONLY] Prediction authority cannot be reconciled safely.")
+        print("Existing evidence remains visible, but new numeric work is blocked.")
+    elif status == "ready":
+        display_prediction_engine_banner(state, authority_store)
+        if "abandon_scope" in decision["available_actions"]:
+            choice = ask("Locked and unissued: A=terminally abandon, Enter=continue: ").strip().lower()
+            if choice == "a":
+                confirmed = ask("Type ABANDON to confirm: ").strip() == "ABANDON"
+                reason = ask("Abandonment reason (required): ").strip()
+                abandon_locked_prediction_scope(
+                    state,
+                    authority_store=authority_store,
+                    actor=actor,
+                    confirmed=confirmed,
+                    reason=reason,
+                )
+                return inspect_loaded_prediction_authority(state, authority_store=authority_store)
+    elif status == "terminal":
+        print("\n[READ ONLY] This scope was terminally abandoned; create a new competition to choose again.")
+    return inspect_loaded_prediction_authority(state, authority_store=authority_store)
+
+
 def select_prediction_engine_for_scope(
     state: Dict,
     *,
@@ -106,6 +332,7 @@ def select_prediction_engine_for_scope(
     readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
     actor: str = "local-judge",
     selected_at: Optional[str] = None,
+    input_fn: Callable[[str], str] | None = None,
 ):
     """Require a deliberate V2/V3 choice and persist it in canonical authority."""
     from woodchopping.ui.prediction_context import attach_authority_reference
@@ -113,6 +340,7 @@ def select_prediction_engine_for_scope(
     readiness = _read_v3_readiness(readiness_provider)
     created = authority_store.create_scope(owner_kind=owner_kind)
     selected_at = selected_at or _utc_milliseconds()
+    ask = input if input_fn is None else input_fn
 
     while True:
         print(f"\n{'=' * 70}")
@@ -129,7 +357,7 @@ def select_prediction_engine_for_scope(
             print("R. Retry V3 readiness check")
         print("H. Explain the engine choice")
 
-        choice = input("\nSelect prediction engine (1 or 2; no default): ").strip().lower()
+        choice = ask("\nSelect prediction engine (1 or 2; no default): ").strip().lower()
         if choice == "h":
             import explanation_system_functions as explanations
 
@@ -154,14 +382,14 @@ def select_prediction_engine_for_scope(
                 print(f"\n[WARN] {error}. No engine was selected.")
                 continue
 
-        reason_code = input("Selection reason code (required): ").strip()
+        reason_code = ask("Selection reason code (required): ").strip()
         if _SELECTION_REASON.fullmatch(reason_code) is None:
             print(
                 "\n[WARN] Use a lowercase reason code beginning with a letter and containing "
                 "only letters, numbers, or underscores. No engine was selected."
             )
             continue
-        reason_note = input("Selection note (optional): ").strip()
+        reason_note = ask("Selection note (optional): ").strip()
         selected = authority_store.select_engine(
             created.reference,
             engine=engine,
@@ -219,10 +447,12 @@ def execute_with_v3_recovery(
     from woodchopping.ui.handicap_ui import build_prediction_execution_context
 
     ask = input if input_fn is None else input_fn
+    counts = root_state.setdefault("prediction_engine_operational_counts", {}) if isinstance(root_state, dict) else {}
     while True:
         try:
             return action()
         except V3RecoveryRequired as error:
+            counts["recovery_count"] = int(counts.get("recovery_count", 0)) + 1
             print("\n[RECOVERY REQUIRED] STRATHMARK V3 returned an ambiguous outcome.")
             print(f"Command: {error.command_key}")
             print("No marks were accepted and V2 fallback remains forbidden.")
@@ -237,9 +467,483 @@ def execute_with_v3_recovery(
                 print("[WARN] The exact command is still ambiguous; no conflicting work was started.")
                 continue
         except V3ClientError as error:
+            counts["failure_count"] = int(counts.get("failure_count", 0)) + 1
             print(f"\n[BLOCKED] Selected V3 engine could not complete: {error}")
             print("No V2 fallback occurred and no partial mark sheet was accepted.")
             return None
+
+
+def _v3_receipt_rows(value: Any):
+    """Yield mutable result rows carrying V3 receipt evidence."""
+    if isinstance(value, dict):
+        if value.get("receipt_id") and str(value.get("engine_version", "")).startswith("3."):
+            yield value
+        for child in value.values():
+            yield from _v3_receipt_rows(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _v3_receipt_rows(child)
+
+
+def acknowledge_v3_issued_marks(
+    root_state: Dict[str, Any],
+    approval_rows: list[Mapping[str, Any]],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    issued_at_utc: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> str | None:
+    """Acknowledge accepted receipts once and bind the issue batch to local rows."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    bindings = sorted(
+        (
+            {
+                "receipt_id": str(row["receipt_id"]),
+                "receipt_digest": str(row["receipt_content_digest"]),
+            }
+            for row in approval_rows
+        ),
+        key=lambda item: item["receipt_id"],
+    )
+    if not bindings:
+        raise ValueError("accepted V3 marks require at least one receipt binding")
+    receipt_ids = [binding["receipt_id"] for binding in bindings]
+    existing = root_state.setdefault("v3_issue_batches", {})
+    existing_batches = {existing.get(receipt_id) for receipt_id in receipt_ids}
+    if len(existing_batches) == 1 and None not in existing_batches:
+        return str(existing_batches.pop())
+    if any(batch is not None for batch in existing_batches):
+        raise RuntimeError("accepted V3 receipts have conflicting local issue-batch state")
+
+    context = build_prediction_execution_context(root_state, authority_store)
+    identity_material = "\0".join((context.scope_id, *receipt_ids)).encode("utf-8")
+    proposed_payload = {
+        "schema_version": "strathmark-v3-issue-acknowledgment-request-v1",
+        "upstream_issue_id": f"issue:{hashlib.sha256(identity_material).hexdigest()}",
+        "receipt_bindings": bindings,
+        "issued_at_utc": issued_at_utc or _utc_milliseconds(),
+        "deadline_ms": 10_000,
+    }
+    pending = root_state.setdefault("v3_pending_issue_acknowledgments", {})
+    pending_key = proposed_payload["upstream_issue_id"]
+    payload = pending.setdefault(pending_key, proposed_payload)
+    if [item["receipt_id"] for item in payload.get("receipt_bindings", ())] != receipt_ids:
+        raise RuntimeError("pending V3 issue acknowledgment conflicts with accepted receipts")
+    response = execute_with_v3_recovery(
+        lambda: v3_adapter.acknowledge_issue(context, payload),
+        root_state=root_state,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        input_fn=input_fn,
+    )
+    if response is None:
+        return None
+    issue_batch_id = _apply_v3_issue_acknowledgment(root_state, payload, response)
+    pending.pop(pending_key, None)
+    return issue_batch_id
+
+
+def _apply_v3_issue_acknowledgment(
+    root_state: Dict[str, Any],
+    payload: Mapping[str, Any],
+    response: Mapping[str, Any],
+) -> str:
+    """Apply one exact acknowledgment response to its pending receipt set."""
+    receipt_ids = [str(item["receipt_id"]) for item in payload["receipt_bindings"]]
+    issue_batch_id = str(response["issue_batch_id"])
+    returned_ids = set(response.get("receipt_ids", ()))
+    if returned_ids != set(receipt_ids):
+        raise RuntimeError("V3 issue acknowledgment did not cover the accepted receipts exactly")
+    existing = root_state.setdefault("v3_issue_batches", {})
+    for receipt_id in receipt_ids:
+        existing[receipt_id] = issue_batch_id
+    for row in _v3_receipt_rows(root_state):
+        if row.get("receipt_id") in returned_ids:
+            row["issue_batch_id"] = issue_batch_id
+    return issue_batch_id
+
+
+def _recover_pending_v3_issue_acknowledgments(
+    root_state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    input_fn: Callable[[str], str] | None,
+) -> bool:
+    """Finish accepted issue obligations before declaring the queue complete."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    pending = root_state.get("v3_pending_issue_acknowledgments", {})
+    if not pending:
+        return True
+    context = build_prediction_execution_context(root_state, authority_store)
+    for pending_key in sorted(tuple(pending)):
+        payload = pending[pending_key]
+        response = execute_with_v3_recovery(
+            lambda payload=payload: v3_adapter.acknowledge_issue(context, payload),
+            root_state=root_state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        )
+        if response is None:
+            root_state["v3_issue_status"] = "accepted_unacknowledged"
+            return False
+        _apply_v3_issue_acknowledgment(root_state, payload, response)
+        pending.pop(pending_key, None)
+    root_state["v3_issue_status"] = "issued"
+    return True
+
+
+def _settle_v3_recorded_round(
+    root_state: Dict[str, Any],
+    round_object: Dict[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    observed_at_utc: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> bool:
+    """Settle canonical recorded times against their exact issued receipt."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    if round_object.get("v3_settlement_status") == "settled":
+        return True
+    rows = list(_v3_receipt_rows(round_object.get("handicap_results", [])))
+    if not rows:
+        raise RuntimeError("recorded V3 field has no receipt-bound mark rows")
+    receipts = {str(row["receipt_id"]) for row in rows}
+    if len(receipts) != 1:
+        raise RuntimeError("one recorded field must settle exactly one V3 receipt")
+    receipt_id = receipts.pop()
+    issue_batch_id = root_state.get("v3_issue_batches", {}).get(receipt_id)
+    if not issue_batch_id:
+        raise RuntimeError("recorded V3 field has not been acknowledged as issued")
+    actual_results = round_object.get("actual_results", {})
+    results = []
+    for row in rows:
+        name = str(row["name"])
+        if name not in actual_results:
+            raise RuntimeError("recorded V3 field lacks a complete observed-time result")
+        results.append(
+            {
+                "competitor_id": str(row["competitor_id"]),
+                "status": "completion",
+                "raw_time_ms": round(float(actual_results[name]) * 1000),
+                "penalty_ms": None,
+                "source_revision": int(round_object.get("result_source_revision", 1)),
+            }
+        )
+    context = build_prediction_execution_context(root_state, authority_store)
+    proposed_payload = {
+        "schema_version": "strathmark-v3-settlement-request-v1",
+        "issue_batch_id": issue_batch_id,
+        "receipt_id": receipt_id,
+        "results": results,
+        "observed_at_utc": observed_at_utc or _utc_milliseconds(),
+        "deadline_ms": 10_000,
+    }
+    payload = round_object.setdefault("v3_pending_settlement_request", proposed_payload)
+    if payload.get("receipt_id") != receipt_id or payload.get("issue_batch_id") != issue_batch_id:
+        raise RuntimeError("pending V3 settlement conflicts with the recorded field")
+    response = execute_with_v3_recovery(
+        lambda: v3_adapter.settle_result(context, payload),
+        root_state=root_state,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        input_fn=input_fn,
+    )
+    if response is None:
+        round_object["v3_settlement_status"] = "recorded_unsettled"
+        return False
+    if response.get("receipt_id") != receipt_id:
+        raise RuntimeError("V3 settlement response does not bind the recorded receipt")
+    round_object["v3_settlement_status"] = "settled"
+    round_object["v3_settlement_id"] = response["settlement_id"]
+    round_object.pop("v3_pending_settlement_request", None)
+    return True
+
+
+def record_and_settle_v3_round(
+    root_state: Dict[str, Any],
+    event: Mapping[str, Any],
+    round_object: Dict[str, Any],
+    *,
+    write_action: Callable[[], bool],
+    authority_store: Any,
+    v3_adapter: Any,
+    observed_at_utc: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> bool:
+    """Write once, then retry only V3 settlement until it is durable."""
+    del event
+    authority = resolve_prediction_engine(root_state, authority_store)
+    if authority.engine != "v3":
+        return bool(write_action())
+    if not round_object.get("canonical_results_recorded"):
+        if not write_action():
+            return False
+        round_object["canonical_results_recorded"] = True
+    return _settle_v3_recorded_round(
+        root_state,
+        round_object,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        observed_at_utc=observed_at_utc,
+        input_fn=input_fn,
+    )
+
+
+def record_and_settle_v3_single_event(
+    single_event_state: Dict[str, Any],
+    round_object: Dict[str, Any],
+    *,
+    write_action: Callable[[], bool],
+    authority_store: Any,
+    v3_adapter: Any,
+    observed_at_utc: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> bool:
+    """Write and settle a real single-event round against its root authority."""
+    return record_and_settle_v3_round(
+        single_event_state,
+        single_event_state,
+        round_object,
+        write_action=write_action,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        observed_at_utc=observed_at_utc,
+        input_fn=input_fn,
+    )
+
+
+def _v3_closure_rounds(root_state: Mapping[str, Any]) -> tuple[list[tuple[Dict[str, Any], set[str]]], set[str]]:
+    issued = {str(receipt_id) for receipt_id in root_state.get("v3_issue_batches", {})}
+    rounds: list[tuple[Dict[str, Any], set[str]]] = []
+    observed: set[str] = set()
+    events = root_state.get("events")
+    if isinstance(events, list):
+        round_groups = [event.get("rounds", ()) for event in events if isinstance(event, Mapping)]
+    else:
+        round_groups = [root_state.get("rounds", ())]
+    for round_group in round_groups:
+        if not isinstance(round_group, list):
+            continue
+        for round_object in round_group:
+            if not isinstance(round_object, dict):
+                continue
+            receipt_ids = {
+                str(row["receipt_id"])
+                for row in _v3_receipt_rows(round_object.get("handicap_results", ()))
+                if row.get("issue_batch_id") or row.get("receipt_id") in issued
+            }
+            if receipt_ids:
+                observed.update(receipt_ids)
+                rounds.append((round_object, receipt_ids))
+    return rounds, issued - observed
+
+
+def _set_v3_closure_block(root_state: Dict[str, Any], status: str, **evidence: Any) -> None:
+    root_state["prediction_engine_closure"] = {"status": status, "engine": "v3", **evidence}
+
+
+def _close_completed_v3_scope(
+    root_state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    closed_at_utc: str,
+    input_fn: Callable[[str], str] | None,
+) -> None:
+    """Close exact settled V3 rounds and then their scope, or name the block."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    if root_state.get("prediction_engine_closure", {}).get("status") == "closed":
+        return
+    if not callable(getattr(v3_adapter, "close_round", None)) or not callable(getattr(v3_adapter, "close_scope", None)):
+        _set_v3_closure_block(root_state, "blocked_adapter_unavailable")
+        return
+    rounds, missing_receipts = _v3_closure_rounds(root_state)
+    if missing_receipts:
+        _set_v3_closure_block(
+            root_state,
+            "blocked_missing_receipt_evidence",
+            receipt_ids=sorted(missing_receipts),
+        )
+        return
+    if not rounds:
+        _set_v3_closure_block(root_state, "blocked_no_issued_receipts")
+        return
+    unsettled = sorted(
+        receipt_id
+        for round_object, receipt_ids in rounds
+        if round_object.get("v3_settlement_status") != "settled" or not round_object.get("v3_settlement_id")
+        for receipt_id in receipt_ids
+    )
+    if unsettled:
+        _set_v3_closure_block(root_state, "blocked_unsettled_receipts", receipt_ids=unsettled)
+        return
+    missing_round_ids = sorted(
+        receipt_id
+        for round_object, receipt_ids in rounds
+        if not isinstance(round_object.get("v3_round_id"), str) or not round_object["v3_round_id"].strip()
+        for receipt_id in receipt_ids
+    )
+    if missing_round_ids:
+        _set_v3_closure_block(root_state, "blocked_missing_round_identity", receipt_ids=missing_round_ids)
+        return
+
+    grouped_rounds: dict[str, list[Dict[str, Any]]] = {}
+    for round_object, _receipt_ids in rounds:
+        grouped_rounds.setdefault(str(round_object["v3_round_id"]), []).append(round_object)
+
+    context = build_prediction_execution_context(root_state, authority_store)
+    for round_id, local_rounds in sorted(grouped_rounds.items()):
+        if all(round_object.get("v3_round_close_status") == "closed" for round_object in local_rounds):
+            continue
+        proposed = {
+            "schema_version": "strathmark-v3-round-close-request-v1",
+            "round_id": round_id,
+            "closed_at_utc": closed_at_utc,
+            "deadline_ms": 10_000,
+        }
+        pending_payloads = [
+            round_object.get("v3_pending_round_close_request")
+            for round_object in local_rounds
+            if round_object.get("v3_pending_round_close_request") is not None
+        ]
+        payload = pending_payloads[0] if pending_payloads else proposed
+        if any(item != payload for item in pending_payloads) or payload.get("round_id") != round_id:
+            _set_v3_closure_block(root_state, "blocked_conflicting_round_close")
+            return
+        for round_object in local_rounds:
+            round_object["v3_pending_round_close_request"] = payload
+        response = execute_with_v3_recovery(
+            lambda payload=payload: v3_adapter.close_round(context, payload),
+            root_state=root_state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        )
+        if response is None:
+            _set_v3_closure_block(root_state, "blocked_round_close", round_id=round_id)
+            return
+        if (
+            response.get("round_id") != round_id
+            or not str(response.get("closure_id", "")).startswith("round_closure:")
+            or response.get("status") not in {"closed", "recovered"}
+        ):
+            _set_v3_closure_block(root_state, "blocked_invalid_round_close", round_id=round_id)
+            return
+        for round_object in local_rounds:
+            round_object["v3_round_close_status"] = "closed"
+            round_object["v3_round_close_receipt"] = dict(response)
+            round_object.pop("v3_pending_round_close_request", None)
+
+    proposed_scope = {
+        "schema_version": "strathmark-v3-scope-close-request-v1",
+        "scope_id": context.scope_id,
+        "closed_at_utc": closed_at_utc,
+        "deadline_ms": 10_000,
+    }
+    scope_payload = root_state.setdefault("v3_pending_scope_close_request", proposed_scope)
+    if scope_payload.get("scope_id") != context.scope_id:
+        _set_v3_closure_block(root_state, "blocked_conflicting_scope_close")
+        return
+    response = execute_with_v3_recovery(
+        lambda: v3_adapter.close_scope(context, scope_payload),
+        root_state=root_state,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        input_fn=input_fn,
+    )
+    if response is None:
+        _set_v3_closure_block(root_state, "blocked_scope_close")
+        return
+    if (
+        response.get("scope_id") != context.scope_id
+        or response.get("status") not in {"closed", "recovered"}
+        or not isinstance(response.get("authority_sequence"), int)
+    ):
+        _set_v3_closure_block(root_state, "blocked_invalid_scope_close")
+        return
+    root_state["v3_scope_close_receipt"] = dict(response)
+    root_state.pop("v3_pending_scope_close_request", None)
+    root_state["prediction_engine_closure"] = {
+        "status": "closed",
+        "engine": "v3",
+        "round_ids": sorted(grouped_rounds),
+        "scope_id": context.scope_id,
+    }
+
+
+def finalize_completed_competition(
+    root_state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any = None,
+    input_fn: Callable[[str], str] | None = None,
+    prompt_for_feedback: bool = True,
+    closed_at_utc: str | None = None,
+) -> dict[str, Any]:
+    """Finalize local comparison evidence and safely close supported V3 scopes."""
+    from woodchopping.ui.engine_comparison import build_engine_comparison_from_completed_state
+
+    events = root_state.get("events")
+    if isinstance(events, list):
+        completed = bool(events) and all(
+            isinstance(event, Mapping) and event.get("status") == "completed" for event in events
+        )
+    else:
+        rounds = root_state.get("rounds")
+        completed = (
+            isinstance(rounds, list)
+            and bool(rounds)
+            and all(
+                isinstance(round_object, Mapping) and round_object.get("status") == "completed"
+                for round_object in rounds
+            )
+            and isinstance(root_state.get("final_results"), Mapping)
+            and bool(root_state["final_results"])
+        )
+    if not completed:
+        raise ValueError("engine comparison requires a completed competition")
+    authority = resolve_prediction_engine(root_state, authority_store)
+    if authority.engine == "v3":
+        _close_completed_v3_scope(
+            root_state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            closed_at_utc=closed_at_utc or _utc_milliseconds(),
+            input_fn=input_fn,
+        )
+    else:
+        root_state["prediction_engine_closure"] = {"status": "local_comparison_complete", "engine": "v2"}
+
+    records = root_state.setdefault("engine_comparison_records", [])
+    existing = next(
+        (
+            record
+            for record in records
+            if isinstance(record, Mapping) and record.get("competition_id") == authority.reference.scope_id
+        ),
+        None,
+    )
+    if existing is not None:
+        return existing
+    feedback = None
+    if prompt_for_feedback:
+        ask = input if input_fn is None else input_fn
+        feedback = ask("Optional prediction-engine feedback (Enter to skip): ").strip() or None
+    record = build_engine_comparison_from_completed_state(
+        root_state,
+        authority=authority,
+        judge_feedback=feedback,
+    )
+    records.append(record)
+    return record
 
 
 def review_v3_approval_queue(
@@ -253,6 +957,23 @@ def review_v3_approval_queue(
     from woodchopping.ui.handicap_ui import build_prediction_execution_context
 
     ask = input if input_fn is None else input_fn
+    if not isinstance(state, dict):
+        raise TypeError("V3 approval workflow requires mutable competition state")
+    if state.get("v3_pending_issue_acknowledgments"):
+        if not callable(getattr(v3_adapter, "acknowledge_issue", None)):
+            state["v3_issue_status"] = "accepted_unacknowledged"
+            print("\n[BLOCKED] The V3 adapter cannot retry pending issue acknowledgment.")
+            print("The approval queue cannot be declared complete yet.")
+            return []
+        if not _recover_pending_v3_issue_acknowledgments(
+            state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        ):
+            print("\n[BLOCKED] Accepted V3 receipts still require exact issue acknowledgment.")
+            print("The approval queue cannot be declared complete yet.")
+            return []
     context = build_prediction_execution_context(state, authority_store)
     decisions: list[dict[str, Any]] = []
 
@@ -339,7 +1060,51 @@ def review_v3_approval_queue(
             "decided_at_utc": _utc_milliseconds(),
             "deadline_ms": 10_000,
         }
-        decisions.append(v3_adapter.decide_approval(context, payload))
+        decision = v3_adapter.decide_approval(context, payload)
+        decisions.append(decision)
+        _record_prediction_review_evidence(state, selected, action)
+        accepted_actions = {
+            "ordinary_batch_accept",
+            "degraded_batch_accept",
+            "individual_accept",
+            "override_submitted",
+        }
+        if action in accepted_actions and callable(getattr(v3_adapter, "acknowledge_issue", None)):
+            issue_batch_id = acknowledge_v3_issued_marks(
+                state,
+                list(selected),
+                authority_store=authority_store,
+                v3_adapter=v3_adapter,
+                input_fn=input_fn,
+            )
+            if issue_batch_id is None:
+                state["v3_issue_status"] = "accepted_unacknowledged"
+                return decisions
+            state["v3_issue_status"] = "issued"
+
+
+def _record_prediction_review_evidence(
+    state: Dict[str, Any],
+    selected: list[Mapping[str, Any]],
+    action: str,
+) -> None:
+    """Retain pseudonymous review facts for later observational comparison."""
+    evidence = state.setdefault("prediction_review_evidence", [])
+    by_field = {item.get("field_id"): item for item in evidence if isinstance(item, dict)}
+    for row in selected:
+        field_id = row.get("field_id")
+        if not isinstance(field_id, str) or not field_id.startswith("field:"):
+            continue
+        classification = row.get("classification")
+        if classification not in {"green", "amber", "red"}:
+            lane = row.get("lane")
+            classification = lane if lane in {"green", "amber", "red"} else "unknown"
+        current = by_field.get(field_id)
+        if current is None:
+            current = {"field_id": field_id, "classification": classification, "interventions": []}
+            evidence.append(current)
+            by_field[field_id] = current
+        current["interventions"] = sorted({*current.get("interventions", ()), action})
 
 
 def _reject_unsupported_bracket_events(tournament_state: Dict) -> bool:
@@ -2234,6 +2999,13 @@ def generate_complete_day_schedule(
                 updated = dict(heat)
                 updated["competitors_df"] = ordered
                 updated["handicap_results"] = marks
+                from woodchopping.ui.prediction_context import derive_scope_identity
+
+                updated["v3_round_id"] = derive_scope_identity(
+                    authority.reference.scope_id,
+                    "round",
+                    f"event-{event_id}",
+                )
                 materialized.append(updated)
             event["handicap_results_all"] = [item for heat in materialized for item in heat["handicap_results"]]
             return materialized
@@ -2579,6 +3351,13 @@ def sequential_results_workflow(
         event_idx, event_obj, round_obj = get_next_incomplete_round(tournament_state)
 
         if event_idx is None:
+            if authority_store is not None:
+                finalize_completed_competition(
+                    tournament_state,
+                    authority_store=authority_store,
+                    v3_adapter=getattr(engine_router, "v3_adapter", None),
+                )
+                auto_save_multi_event(tournament_state, authority_store=authority_store)
             print(f"\n{'=' * 70}")
             print("  [OK] ALL EVENTS COMPLETED!")
             print(f"{'=' * 70}")
@@ -2614,18 +3393,46 @@ def sequential_results_workflow(
                 "event": event_obj["event_code"],
             }
 
-            # Record results using existing function
-            entry_succeeded = append_results_to_excel(
-                heat_assignment_df,  # Legacy param (not used)
-                event_wood,
-                round_object=round_obj,
-                tournament_state=tournament_state,
-                event_name=event_obj["event_name"],  # Pass event name for HeatID
-            )
+            def write_results() -> bool:
+                return append_results_to_excel(
+                    heat_assignment_df,  # Legacy param (not used)
+                    event_wood,
+                    round_object=round_obj,
+                    tournament_state=tournament_state,
+                    event_name=event_obj["event_name"],  # Pass event name for HeatID
+                )
+
+            use_v3_settlement = False
+            v3_adapter = None
+            if authority_store is not None and engine_router is not None:
+                authority = resolve_prediction_engine(tournament_state, authority_store)
+                use_v3_settlement = authority.engine == "v3" and event_obj.get("event_type") != "championship"
+                if use_v3_settlement:
+                    v3_adapter = getattr(engine_router, "v3_adapter", None)
+                    if v3_adapter is None:
+                        raise RuntimeError("selected V3 engine has no settlement adapter")
+            if use_v3_settlement:
+                entry_succeeded = record_and_settle_v3_round(
+                    tournament_state,
+                    event_obj,
+                    round_obj,
+                    write_action=write_results,
+                    authority_store=authority_store,
+                    v3_adapter=v3_adapter,
+                )
+            else:
+                entry_succeeded = write_results()
 
             if not entry_succeeded:
-                print("\n[WARN] Results were not saved. This round remains open for retry.")
-                auto_save_multi_event(tournament_state)
+                if round_obj.get("canonical_results_recorded"):
+                    print("\n[WARN] Results were saved, but V3 settlement remains blocked for exact retry.")
+                    print("The Excel rows will not be written again on the next attempt.")
+                else:
+                    print("\n[WARN] Results were not saved. This round remains open for retry.")
+                if authority_store is None:
+                    auto_save_multi_event(tournament_state)
+                else:
+                    auto_save_multi_event(tournament_state, authority_store=authority_store)
                 input("\nPress Enter to continue...")
                 continue
 
@@ -2695,6 +3502,15 @@ def sequential_results_workflow(
                             authority_root_state=tournament_state,
                         )
 
+                        if authority_store is not None and engine_router is not None:
+                            authority = resolve_prediction_engine(tournament_state, authority_store)
+                            if authority.engine == "v3" and event_obj.get("event_type") != "championship":
+                                from woodchopping.ui.prediction_context import derive_scope_identity
+
+                                round_id = derive_scope_identity(authority.reference.scope_id, "round", "round")
+                                for next_round in next_rounds:
+                                    next_round["v3_round_id"] = round_id
+
                         # Add to event rounds
                         event_obj["rounds"].extend(next_rounds)
                         print(f"[OK] {len(next_rounds)} {next_type} round(s) generated")
@@ -2712,7 +3528,10 @@ def sequential_results_workflow(
                 event_obj["status"] = "in_progress"
 
             # Auto-save
-            auto_save_multi_event(tournament_state)
+            if authority_store is None:
+                auto_save_multi_event(tournament_state)
+            else:
+                auto_save_multi_event(tournament_state, authority_store=authority_store)
 
             input("\nPress Enter to continue to next round...")
 

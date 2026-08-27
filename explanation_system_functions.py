@@ -106,6 +106,12 @@ marks and results remain immutable and auditable.
 V2 is the established deterministic production baseline. V3 is the adaptive
 ensemble and may be used only in the mode proven by its readiness response.
 Both use the same woodchopping handicap purpose and judge approval workflow.
+V3 first produces a signed pre-field raw-time forecast for seeding. That
+forecast cannot contain a mark. Only after exact heat membership and stand
+positions exist may V3 assemble a complete field-relative mark sheet.
+Ordinary green/amber fields can be batch approved; flagged fields are reviewed
+one at a time. An ambiguous command displays its durable identity and requires
+the judge to retry that exact command or leave the scope blocked.
 Championship and bracket Mark 3 rules do not become handicap calculations and
 remain unchanged regardless of the selected prediction engine.
 """)

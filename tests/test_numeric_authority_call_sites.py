@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -42,6 +43,14 @@ def _selected_state(tmp_path, *, engine="v2", owner_kind="single_event"):
 def test_actor_identifier_is_normalized_for_strathmark():
     assert normalize_actor_identifier(" Judge One ") == "actor:judge-one"
     assert normalize_actor_identifier("actor:judge-one") == "actor:judge-one"
+
+
+def test_single_event_result_entry_settles_and_finalizes_selected_engine() -> None:
+    source = (Path(__file__).resolve().parents[1] / "MainProgramV5_2.py").read_text(encoding="utf-8")
+
+    assert "record_and_settle_v3_single_event(" in source
+    assert "finalize_completed_competition(" in source
+    assert 'derive_scope_identity(authority.scope_id, "round", "single-event")' in source
 
 
 def test_first_numeric_boundary_locks_and_reconstructs_canonical_context(tmp_path):
