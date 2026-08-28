@@ -475,6 +475,54 @@ def test_ambiguous_timeout_is_durable_and_exact_retry_reuses_idempotency(tmp_pat
     assert transport.calls[0][2]["headers"]["Idempotency-Key"] == transport.calls[1][2]["headers"]["Idempotency-Key"]
 
 
+def test_preexisting_pending_command_requires_deliberate_recovery_before_resend(
+    tmp_path,
+):
+    client, transport = _client(
+        tmp_path,
+        [
+            _Response(
+                200,
+                {
+                    "schema_version": "strathmark-v3-scope-close-response-v1",
+                    "scope_id": "tournament:show",
+                    "authority_sequence": 8,
+                    "status": "recovered",
+                },
+            )
+        ],
+    )
+    payload = {
+        "schema_version": "strathmark-v3-scope-close-request-v1",
+        "scope_id": "tournament:show",
+        "closed_at_utc": "2026-08-27T17:00:00.000Z",
+        "deadline_ms": 1000,
+    }
+    command_key = client._command_key(
+        _context(),
+        "close_scope",
+        client._semantic_identity("close_scope", payload),
+    )
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    client.command_store.begin(
+        command_key=command_key,
+        operation="close_scope",
+        method="POST",
+        path="/v3/scopes/close",
+        request_digest=_canonical_digest(payload),
+        request_json=encoded,
+    )
+
+    with pytest.raises(V3RecoveryRequired) as caught:
+        client.close_scope(_context(), payload)
+
+    assert caught.value.command_key == command_key
+    assert transport.calls == []
+    assert client.command_store.get(command_key).state == "recovery_required"
+    assert client.retry_recovery(command_key, _context())["status"] == "recovered"
+    assert len(transport.calls) == 1
+
+
 @pytest.mark.parametrize("status_code", [408, 429, 500, 503])
 def test_ambiguous_http_status_requires_exact_recovery(tmp_path, status_code):
     client, _ = _client(tmp_path, [_Response(status_code, {"code": "uncertain"})])

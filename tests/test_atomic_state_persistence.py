@@ -396,6 +396,55 @@ def test_source_ui_wrappers_delegate_and_report_multi_save_outcome(monkeypatch):
         state_persistence.install_persistence_guards()
 
 
+def test_installed_ui_autosaves_forward_authority_store(tmp_path, monkeypatch):
+    """Package-level exports must not discard authority after guards install."""
+    from woodchopping import ui
+    from woodchopping.ui import multi_event_ui
+    from woodchopping.ui.prediction_context import (
+        PredictionAuthorityStore,
+        attach_authority_reference,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+
+    single_scope = store.create_scope(owner_kind="single_event", scope_id="strathex:installed-single")
+    single_selected = store.select_engine(
+        single_scope.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    single = _single_state("installed-single")
+    attach_authority_reference(single, single_selected.reference)
+
+    multi_scope = store.create_scope(owner_kind="tournament", scope_id="strathex:installed-multi")
+    multi_selected = store.select_engine(
+        multi_scope.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    multi = _multi_state("installed-multi")
+    attach_authority_reference(multi, multi_selected.reference)
+
+    assert ui.auto_save_state(single, authority_store=store)
+    assert ui.auto_save_multi_event(multi, authority_store=store)
+    assert (tmp_path / "saves" / "tournament_state.json").exists()
+    assert (tmp_path / "saves" / "multi_tournament_state.json").exists()
+
+    multi_event_ui.configure_prediction_authority_store(store)
+    assert multi_event_ui.auto_save_multi_event(multi)
+
+
 def test_atomic_state_persists_only_authority_reference_and_resolves_it(tmp_path):
     from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
 
@@ -427,8 +476,11 @@ def test_atomic_state_persists_only_authority_reference_and_resolves_it(tmp_path
     assert loaded["prediction_authority_runtime"]["engine"] == "v2"
 
 
-def test_authority_ahead_of_json_blocks_resume_after_json_save_failure(tmp_path, monkeypatch):
-    from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
+def test_authority_ahead_of_json_reconciles_last_valid_save_after_checkpoint_failure(tmp_path, monkeypatch):
+    from woodchopping.ui.prediction_context import (
+        PredictionAuthorityStore,
+        attach_authority_reference,
+    )
 
     target = tmp_path / "state.json"
     store = PredictionAuthorityStore(tmp_path / "authority.db")
@@ -447,23 +499,30 @@ def test_authority_ahead_of_json_blocks_resume_after_json_save_failure(tmp_path,
     attach_authority_reference(state, v2.reference)
     assert state_persistence.save_tournament_state(state, str(target), authority_store=store)
 
-    changed = store.select_engine(
+    changed = store.lock(
         v2.reference,
-        engine="v3",
-        actor="judge:local",
-        selected_at="2026-08-27T15:01:00Z",
-        reason_code="evaluation",
-        mode="rehearsal",
-        contract_identity="v3-consumer/1",
-        source_identity="strathmark:abc123",
+        boundary="first_authoritative_numeric_action",
+        locked_at="2026-08-27T15:01:00Z",
     )
     attach_authority_reference(state, changed.reference)
     monkeypatch.setattr(
-        state_persistence, "_write_temp_file", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full"))
+        state_persistence,
+        "_write_temp_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
     )
     assert not state_persistence.save_tournament_state(state, str(target), authority_store=store)
 
-    assert state_persistence.load_tournament_state(str(target), authority_store=store) is None
+    loaded = state_persistence.load_tournament_state(str(target), authority_store=store)
+
+    assert loaded is not None
+    assert loaded["prediction_authority_ref"] == changed.reference.to_json()
+    assert loaded["prediction_authority_runtime"]["engine"] == "v2"
+    assert loaded["prediction_authority_runtime"]["locked"] is True
+    audit = store.list_reconciliations(changed.reference.scope_id)
+    assert len(audit) == 1
+    assert audit[0]["from_revision"] == v2.reference.revision
+    assert audit[0]["to_revision"] == changed.reference.revision
+    assert audit[0]["reason"] == "durable_save_reference_behind_canonical_authority"
 
 
 def test_multi_event_child_authority_override_is_rejected(tmp_path):

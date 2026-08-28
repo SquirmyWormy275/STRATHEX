@@ -162,6 +162,19 @@ class PredictionAuthorityStore:
                     normalized_path TEXT NOT NULL,
                     FOREIGN KEY (scope_id) REFERENCES prediction_scopes(scope_id)
                 );
+                CREATE TABLE IF NOT EXISTS authority_reconciliations (
+                    reconciliation_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    scope_id TEXT NOT NULL,
+                    save_id TEXT NOT NULL,
+                    normalized_path TEXT NOT NULL,
+                    from_revision INTEGER NOT NULL,
+                    from_digest TEXT NOT NULL,
+                    to_revision INTEGER NOT NULL,
+                    to_digest TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    reconciled_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (scope_id) REFERENCES prediction_scopes(scope_id)
+                );
                 """
             )
             row = connection.execute("SELECT store_id FROM authority_meta WHERE singleton = 1").fetchone()
@@ -267,16 +280,15 @@ class PredictionAuthorityStore:
         except sqlite3.IntegrityError as exc:
             raise AuthorityStateError(f"scope already exists: {scope_id}") from exc
 
-    def resolve(self, reference: AuthorityReference | Mapping[str, Any]) -> SelectionReceipt:
-        if not isinstance(reference, AuthorityReference):
-            reference = AuthorityReference.from_json(reference)
-        if reference.authority_store_id != self.store_id:
-            raise AuthorityStateError("authority store identity mismatch")
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT save_id, revision, payload_json, digest FROM prediction_scopes WHERE scope_id = ?",
-                (reference.scope_id,),
-            ).fetchone()
+    def _resolve_with_connection(
+        self,
+        connection: sqlite3.Connection,
+        reference: AuthorityReference,
+    ) -> SelectionReceipt:
+        row = connection.execute(
+            "SELECT save_id, revision, payload_json, digest FROM prediction_scopes WHERE scope_id = ?",
+            (reference.scope_id,),
+        ).fetchone()
         if row is None:
             raise AuthorityStateError("prediction authority scope is missing")
         if row["save_id"] != reference.save_id:
@@ -288,32 +300,43 @@ class PredictionAuthorityStore:
             raise AuthorityStateError("prediction authority canonical digest mismatch")
         return self._receipt(payload, reference)
 
-    def _mutate(self, reference: AuthorityReference, changes: Mapping[str, Any]) -> SelectionReceipt:
-        current = self.resolve(reference)
-        payload = {
-            "scope_id": current.reference.scope_id,
-            "owner_kind": current.owner_kind,
-            "revision": current.reference.revision + 1,
-            "engine": current.engine,
-            "actor": current.actor,
-            "selected_at": current.selected_at,
-            "reason_code": current.reason_code,
-            "reason_note": current.reason_note,
-            "mode": current.mode,
-            "contract_identity": current.contract_identity,
-            "source_identity": current.source_identity,
-            "pre_field_signer_trust": current.pre_field_signer_trust,
-            "locked": current.locked,
-            "lock_boundary": current.lock_boundary,
-            "locked_at": current.locked_at,
-            "status": current.status,
-            "migration_status": current.migration_status,
-            "abandoned_by": current.abandoned_by,
-            "abandonment_reason": current.abandonment_reason,
-            "abandoned_at": current.abandoned_at,
-        }
-        payload.update(changes)
+    def resolve(self, reference: AuthorityReference | Mapping[str, Any]) -> SelectionReceipt:
+        if not isinstance(reference, AuthorityReference):
+            reference = AuthorityReference.from_json(reference)
+        if reference.authority_store_id != self.store_id:
+            raise AuthorityStateError("authority store identity mismatch")
         with self._connect() as connection:
+            return self._resolve_with_connection(connection, reference)
+
+    def _mutate(self, reference: AuthorityReference, changes: Mapping[str, Any]) -> SelectionReceipt:
+        if reference.authority_store_id != self.store_id:
+            raise AuthorityStateError("authority store identity mismatch")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._resolve_with_connection(connection, reference)
+            payload = {
+                "scope_id": current.reference.scope_id,
+                "owner_kind": current.owner_kind,
+                "revision": current.reference.revision + 1,
+                "engine": current.engine,
+                "actor": current.actor,
+                "selected_at": current.selected_at,
+                "reason_code": current.reason_code,
+                "reason_note": current.reason_note,
+                "mode": current.mode,
+                "contract_identity": current.contract_identity,
+                "source_identity": current.source_identity,
+                "pre_field_signer_trust": current.pre_field_signer_trust,
+                "locked": current.locked,
+                "lock_boundary": current.lock_boundary,
+                "locked_at": current.locked_at,
+                "status": current.status,
+                "migration_status": current.migration_status,
+                "abandoned_by": current.abandoned_by,
+                "abandonment_reason": current.abandonment_reason,
+                "abandoned_at": current.abandoned_at,
+            }
+            payload.update(changes)
             return self._write(connection, payload, save_id=current.reference.save_id)
 
     def select_engine(
@@ -418,6 +441,76 @@ class PredictionAuthorityStore:
         if row is None or row["normalized_path"] != normalized:
             raise AuthorityStateError("authority reference is not reconciled to this save path")
         return receipt
+
+    def reconcile_save_path(self, reference: AuthorityReference, path: str | Path) -> SelectionReceipt:
+        """Advance a proven older save pointer to canonical authority without rollback."""
+        if reference.authority_store_id != self.store_id:
+            raise AuthorityStateError("authority store identity mismatch")
+        normalized = str(Path(path).resolve()).casefold()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            binding = connection.execute(
+                "SELECT scope_id, normalized_path FROM authority_save_bindings WHERE save_id = ?",
+                (reference.save_id,),
+            ).fetchone()
+            if binding is None or binding["scope_id"] != reference.scope_id or binding["normalized_path"] != normalized:
+                raise AuthorityStateError("authority reference is not reconciled to this save path")
+
+            historical = connection.execute(
+                """SELECT digest FROM prediction_scope_history
+                   WHERE scope_id = ? AND revision = ?""",
+                (reference.scope_id, reference.revision),
+            ).fetchone()
+            if historical is None or historical["digest"] != reference.digest:
+                raise AuthorityStateError("saved authority reference is not canonical history")
+
+            current_row = connection.execute(
+                "SELECT save_id, revision, payload_json, digest FROM prediction_scopes WHERE scope_id = ?",
+                (reference.scope_id,),
+            ).fetchone()
+            if current_row is None or current_row["save_id"] != reference.save_id:
+                raise AuthorityStateError("prediction authority save identity mismatch")
+            current_revision = int(current_row["revision"])
+            if current_revision < reference.revision:
+                raise AuthorityStateError("saved authority reference is ahead of canonical authority")
+            current_reference = AuthorityReference(
+                authority_store_id=reference.authority_store_id,
+                scope_id=reference.scope_id,
+                revision=current_revision,
+                digest=str(current_row["digest"]),
+                save_id=reference.save_id,
+            )
+            receipt = self._resolve_with_connection(connection, current_reference)
+            if current_revision > reference.revision:
+                connection.execute(
+                    """INSERT INTO authority_reconciliations(
+                           scope_id, save_id, normalized_path, from_revision, from_digest,
+                           to_revision, to_digest, reason
+                       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        reference.scope_id,
+                        reference.save_id,
+                        normalized,
+                        reference.revision,
+                        reference.digest,
+                        current_revision,
+                        current_reference.digest,
+                        "durable_save_reference_behind_canonical_authority",
+                    ),
+                )
+            return receipt
+
+    def list_reconciliations(self, scope_id: str) -> list[dict[str, Any]]:
+        """Return ordered reconciliation audit facts for operator review and tests."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT scope_id, save_id, normalized_path, from_revision, from_digest,
+                          to_revision, to_digest, reason, reconciled_at
+                   FROM authority_reconciliations WHERE scope_id = ?
+                   ORDER BY reconciliation_id""",
+                (_required_text(scope_id, "scope_id"),),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
 
 def attach_authority_reference(

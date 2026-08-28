@@ -35,6 +35,14 @@ _EVENT_FORMATS = frozenset({"single_heat", "heats_to_finals", "heats_to_semis_to
 _EVENT_TYPES = frozenset({"handicap", "championship", "bracket"})
 
 
+def _configured_authority_store(authority_store: Any) -> Any:
+    """Recover the process store that legacy multi-event autosaves were given."""
+    if authority_store is not None:
+        return authority_store
+    multi_event_ui = importlib.import_module("woodchopping.ui.multi_event_ui")
+    return multi_event_ui._configured_authority_store(None)
+
+
 def _validate_authority_reference(payload: dict[str, Any], *, child: bool = False) -> None:
     """Validate the opaque JSON pointer without copying canonical authority into JSON."""
     from woodchopping.ui.prediction_context import AuthorityReference
@@ -470,6 +478,7 @@ def save_tournament_state(
     try:
         payload = _serialize_single_state(tournament_state)
         if "prediction_authority_ref" in payload:
+            authority_store = _configured_authority_store(authority_store)
             if authority_store is None:
                 raise ValueError("prediction authority store is required to save selected-engine state")
             from woodchopping.ui.prediction_context import AuthorityReference
@@ -493,11 +502,19 @@ def load_tournament_state(
     try:
         payload = _load_with_recovery(filename, _validate_single_state)
         state = _deserialize_single_state(payload)
-        from woodchopping.ui.prediction_context import runtime_authority_status
-
-        state["prediction_authority_runtime"] = runtime_authority_status(
-            state, authority_store, save_path=filename if authority_store is not None else None
+        from woodchopping.ui.prediction_context import (
+            AuthorityReference,
+            attach_authority_reference,
+            runtime_authority_status,
         )
+
+        if "prediction_authority_ref" in state:
+            authority_store = _configured_authority_store(authority_store)
+        if authority_store is not None and "prediction_authority_ref" in state:
+            saved_reference = AuthorityReference.from_json(state["prediction_authority_ref"])
+            canonical = authority_store.reconcile_save_path(saved_reference, filename)
+            attach_authority_reference(state, canonical.reference)
+        state["prediction_authority_runtime"] = runtime_authority_status(state, authority_store)
         print(f"Tournament state loaded from {filename}")
         return state
     except FileNotFoundError:
@@ -508,8 +525,16 @@ def load_tournament_state(
         return None
 
 
-def auto_save_state(tournament_state: Dict[str, Any]) -> bool:
-    return save_tournament_state(tournament_state, "saves/tournament_state.json")
+def auto_save_state(
+    tournament_state: Dict[str, Any],
+    *,
+    authority_store: Any = None,
+) -> bool:
+    return save_tournament_state(
+        tournament_state,
+        "saves/tournament_state.json",
+        authority_store=authority_store,
+    )
 
 
 def save_multi_event_tournament(
@@ -522,6 +547,7 @@ def save_multi_event_tournament(
     try:
         payload = _serialize_multi_state(tournament_state)
         if "prediction_authority_ref" in payload:
+            authority_store = _configured_authority_store(authority_store)
             if authority_store is None:
                 raise ValueError("prediction authority store is required to save selected-engine state")
             from woodchopping.ui.prediction_context import AuthorityReference
@@ -545,10 +571,21 @@ def load_multi_event_tournament(
     try:
         payload = _load_with_recovery(filename, _validate_multi_state)
         tournament_state = _deserialize_multi_state(payload)
-        from woodchopping.ui.prediction_context import runtime_authority_status
+        from woodchopping.ui.prediction_context import (
+            AuthorityReference,
+            attach_authority_reference,
+            runtime_authority_status,
+        )
 
+        if "prediction_authority_ref" in tournament_state:
+            authority_store = _configured_authority_store(authority_store)
+        if authority_store is not None and "prediction_authority_ref" in tournament_state:
+            saved_reference = AuthorityReference.from_json(tournament_state["prediction_authority_ref"])
+            canonical = authority_store.reconcile_save_path(saved_reference, filename)
+            attach_authority_reference(tournament_state, canonical.reference)
         tournament_state["prediction_authority_runtime"] = runtime_authority_status(
-            tournament_state, authority_store, save_path=filename if authority_store is not None else None
+            tournament_state,
+            authority_store,
         )
         print(f"\n[OK] Tournament state loaded from {filename}")
         print(f"[OK] Tournament: {tournament_state.get('tournament_name', 'Unknown')}")
@@ -562,8 +599,16 @@ def load_multi_event_tournament(
         return None
 
 
-def auto_save_multi_event(tournament_state: Dict[str, Any]) -> bool:
-    return save_multi_event_tournament(tournament_state, "saves/multi_tournament_state.json")
+def auto_save_multi_event(
+    tournament_state: Dict[str, Any],
+    *,
+    authority_store: Any = None,
+) -> bool:
+    return save_multi_event_tournament(
+        tournament_state,
+        "saves/multi_tournament_state.json",
+        authority_store=authority_store,
+    )
 
 
 def install_persistence_guards() -> None:

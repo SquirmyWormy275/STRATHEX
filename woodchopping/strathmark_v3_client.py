@@ -24,7 +24,7 @@ from woodchopping.v3_authority_store import V3CommandStore
 
 FROZEN_V3_CONTRACT_DIGEST = "20174ab13d32c74419e90bfdc73e6b5d5e3e888e1a6cf098f20e585c3bf2ec24"
 FROZEN_V3_CONTRACT_VERSION = "strathmark.v3-consumer-contract.v7"
-FROZEN_V3_SOURCE_COMMIT = "9008a680e91653352d4a1e1379a9060af30a2ca9"
+FROZEN_V3_SOURCE_COMMIT = "1ede920505e90a3015ad3338a140ef96029e0b72"
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _FIELD_RECEIPT_CONTENT_KEYS = (
     "schema_version",
@@ -502,7 +502,7 @@ class V3HttpClient:
             operation,
             self._semantic_identity(operation, payload),
         )
-        record = self.command_store.begin(
+        record, created = self.command_store.begin_with_status(
             command_key=command_key,
             operation=operation,
             method="POST",
@@ -514,6 +514,9 @@ class V3HttpClient:
             assert record.response is not None
             return record.response
         if record.state == "recovery_required" and not retry_recovery:
+            raise V3RecoveryRequired(command_key)
+        if record.state == "pending" and not created and not retry_recovery:
+            self.command_store.mark_recovery_required(command_key, "preexisting_pending_command")
             raise V3RecoveryRequired(command_key)
         if record.state == "rejected":
             raise V3ClientError("V3 command was previously rejected")

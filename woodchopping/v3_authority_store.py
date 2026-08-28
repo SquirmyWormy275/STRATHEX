@@ -75,18 +75,42 @@ class V3CommandStore:
         request_digest: str,
         request_json: str,
     ) -> V3CommandRecord:
+        record, _created = self.begin_with_status(
+            command_key=command_key,
+            operation=operation,
+            method=method,
+            path=path,
+            request_digest=request_digest,
+            request_json=request_json,
+        )
+        return record
+
+    def begin_with_status(
+        self,
+        *,
+        command_key: str,
+        operation: str,
+        method: str,
+        path: str,
+        request_digest: str,
+        request_json: str,
+    ) -> tuple[V3CommandRecord, bool]:
+        """Create a command once and report whether this caller owns first send."""
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
             existing = connection.execute("SELECT * FROM v3_commands WHERE command_key = ?", (command_key,)).fetchone()
             if existing is not None:
                 record = self._record(existing)
                 if record.request_digest != request_digest or record.operation != operation:
                     raise ValueError("V3 command identity is already bound to different input")
-                return record
+                return record, False
             connection.execute(
                 "INSERT INTO v3_commands VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, NULL)",
                 (command_key, operation, method, path, request_digest, request_json),
             )
-        return self.get(command_key)
+            created = connection.execute("SELECT * FROM v3_commands WHERE command_key = ?", (command_key,)).fetchone()
+            assert created is not None
+            return self._record(created), True
 
     def acknowledge(self, command_key: str, response: dict[str, Any]) -> None:
         encoded = json.dumps(response, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
