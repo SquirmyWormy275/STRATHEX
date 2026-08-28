@@ -24,7 +24,7 @@ from woodchopping.v3_authority_store import V3CommandStore
 
 FROZEN_V3_CONTRACT_DIGEST = "20174ab13d32c74419e90bfdc73e6b5d5e3e888e1a6cf098f20e585c3bf2ec24"
 FROZEN_V3_CONTRACT_VERSION = "strathmark.v3-consumer-contract.v7"
-FROZEN_V3_SOURCE_COMMIT = "4585b63d49bec9cdac8506e6d2d793f87a2e3447"
+FROZEN_V3_SOURCE_COMMIT = "9008a680e91653352d4a1e1379a9060af30a2ca9"
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _FIELD_RECEIPT_CONTENT_KEYS = (
     "schema_version",
