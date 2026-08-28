@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ast
+import importlib
 import json
 import os
 from pathlib import Path
@@ -255,3 +257,308 @@ def test_ui_modules_are_patched_to_atomic_implementations():
     assert tournament_ui.load_tournament_state is state_persistence.load_tournament_state
     assert multi_event_ui.save_multi_event_tournament is state_persistence.save_multi_event_tournament
     assert multi_event_ui.load_multi_event_tournament is state_persistence.load_multi_event_tournament
+
+
+def _function_keywords(source_path: Path, function_name: str) -> set[str]:
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    function = next(
+        node
+        for node in tree.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == function_name
+    )
+    return {argument.arg for argument in (*function.args.args, *function.args.kwonlyargs)}
+
+
+def test_main_authority_store_calls_match_source_ui_wrapper_signatures():
+    """Validate Main's keyword calls without importing its interactive loop."""
+    repository = Path(__file__).resolve().parents[1]
+    main_tree = ast.parse((repository / "MainProgramV5_2.py").read_text(encoding="utf-8"))
+    persistence_calls = {
+        node.func.id
+        for node in ast.walk(main_tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and any(keyword.arg == "authority_store" for keyword in node.keywords)
+        and node.func.id
+        in {
+            "save_tournament_state",
+            "load_tournament_state",
+            "save_multi_event_tournament",
+            "load_multi_event_tournament",
+        }
+    }
+
+    assert persistence_calls == {
+        "save_tournament_state",
+        "load_tournament_state",
+        "save_multi_event_tournament",
+        "load_multi_event_tournament",
+    }
+    for function_name in persistence_calls:
+        module_name = "tournament_ui.py" if "multi_event" not in function_name else "multi_event_ui.py"
+        assert "authority_store" in _function_keywords(
+            repository / "woodchopping" / "ui" / module_name,
+            function_name,
+        )
+
+
+def test_source_ui_wrappers_delegate_and_report_multi_save_outcome(monkeypatch):
+    from woodchopping.ui import multi_event_ui, tournament_ui
+
+    sentinel_store = object()
+    calls = []
+
+    def fake_single_save(state, filename, *, authority_store=None):
+        calls.append(("single", state, filename, authority_store))
+        return True
+
+    def fake_multi_save(state, filename, *, authority_store=None):
+        calls.append(("multi", state, filename, authority_store))
+        return True
+
+    single_loaded = {"all_competitors_df": pd.DataFrame()}
+    multi_loaded = {"events": [], "competitor_roster_df": pd.DataFrame()}
+
+    def fake_single_load(filename, *, authority_store=None):
+        calls.append(("single_load", filename, authority_store))
+        return single_loaded
+
+    def fake_multi_load(filename, *, authority_store=None):
+        calls.append(("multi_load", filename, authority_store))
+        return multi_loaded
+
+    single_state = {"all_competitors_df": pd.DataFrame()}
+    multi_state = {"events": []}
+
+    # Reload exposes the source wrappers that package initialization normally
+    # replaces with the canonical functions. Restore the guard after the check.
+    importlib.reload(tournament_ui)
+    importlib.reload(multi_event_ui)
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(state_persistence, "save_tournament_state", fake_single_save)
+            patch.setattr(state_persistence, "save_multi_event_tournament", fake_multi_save)
+            patch.setattr(state_persistence, "load_tournament_state", fake_single_load)
+            patch.setattr(state_persistence, "load_multi_event_tournament", fake_multi_load)
+
+            single_result = tournament_ui.save_tournament_state(
+                single_state,
+                "single.json",
+                authority_store=sentinel_store,
+            )
+            multi_result = multi_event_ui.save_multi_event_tournament(
+                multi_state,
+                "multi.json",
+                authority_store=sentinel_store,
+            )
+            assert (
+                tournament_ui.load_tournament_state(
+                    "single.json",
+                    authority_store=sentinel_store,
+                )
+                is single_loaded
+            )
+            assert (
+                multi_event_ui.load_multi_event_tournament(
+                    "multi.json",
+                    authority_store=sentinel_store,
+                )
+                is multi_loaded
+            )
+            assert tournament_ui.auto_save_state(single_state, authority_store=sentinel_store) is None
+            assert multi_event_ui.auto_save_multi_event(multi_state, authority_store=sentinel_store) is True
+            multi_event_ui.configure_prediction_authority_store(sentinel_store)
+            assert multi_event_ui.auto_save_multi_event(multi_state) is True
+
+        assert single_result is None
+        assert multi_result is True
+        assert calls[0][0::2] == ("single", "single.json")
+        assert calls[0][1] is single_state
+        assert calls[0][3] is sentinel_store
+        assert calls[1][0::2] == ("multi", "multi.json")
+        assert calls[1][1] is multi_state
+        assert calls[1][3] is sentinel_store
+        assert calls[2] == ("single_load", "single.json", sentinel_store)
+        assert calls[3] == ("multi_load", "multi.json", sentinel_store)
+        assert calls[4][0] == "single"
+        assert calls[4][1] is single_state
+        assert calls[4][2:] == ("saves/tournament_state.json", sentinel_store)
+        assert calls[5][0] == "multi"
+        assert calls[5][1] is multi_state
+        assert calls[5][2:] == ("saves/multi_tournament_state.json", sentinel_store)
+        assert calls[6][0] == "multi"
+        assert calls[6][1] is multi_state
+        assert calls[6][2:] == ("saves/multi_tournament_state.json", sentinel_store)
+    finally:
+        for module in (tournament_ui, multi_event_ui):
+            if hasattr(module, "_atomic_state_persistence_installed"):
+                delattr(module, "_atomic_state_persistence_installed")
+        state_persistence.install_persistence_guards()
+
+
+def test_installed_ui_autosaves_forward_authority_store(tmp_path, monkeypatch):
+    """Package-level exports must not discard authority after guards install."""
+    from woodchopping import ui
+    from woodchopping.ui import multi_event_ui
+    from woodchopping.ui.prediction_context import (
+        PredictionAuthorityStore,
+        attach_authority_reference,
+    )
+
+    monkeypatch.chdir(tmp_path)
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+
+    single_scope = store.create_scope(owner_kind="single_event", scope_id="strathex:installed-single")
+    single_selected = store.select_engine(
+        single_scope.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    single = _single_state("installed-single")
+    attach_authority_reference(single, single_selected.reference)
+
+    multi_scope = store.create_scope(owner_kind="tournament", scope_id="strathex:installed-multi")
+    multi_selected = store.select_engine(
+        multi_scope.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    multi = _multi_state("installed-multi")
+    attach_authority_reference(multi, multi_selected.reference)
+
+    assert ui.auto_save_state(single, authority_store=store)
+    assert ui.auto_save_multi_event(multi, authority_store=store)
+    assert (tmp_path / "saves" / "tournament_state.json").exists()
+    assert (tmp_path / "saves" / "multi_tournament_state.json").exists()
+
+    multi_event_ui.configure_prediction_authority_store(store)
+    assert multi_event_ui.auto_save_multi_event(multi)
+
+
+def test_atomic_state_persists_only_authority_reference_and_resolves_it(tmp_path):
+    from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
+
+    target = tmp_path / "state.json"
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    created = store.create_scope(owner_kind="single_event", scope_id="strathex:atomic-001")
+    selected = store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    state = _single_state("authority")
+    attach_authority_reference(state, selected.reference)
+
+    assert state_persistence.save_tournament_state(state, str(target), authority_store=store)
+    raw = json.loads(target.read_text(encoding="utf-8"))
+    assert raw["prediction_authority_ref"] == selected.reference.to_json()
+    assert "selected_engine" not in raw
+    assert "judge:local" not in target.read_text(encoding="utf-8")
+
+    loaded = state_persistence.load_tournament_state(str(target), authority_store=store)
+    assert loaded is not None
+    assert loaded["prediction_authority_runtime"]["status"] == "ready"
+    assert loaded["prediction_authority_runtime"]["engine"] == "v2"
+
+
+def test_authority_ahead_of_json_reconciles_last_valid_save_after_checkpoint_failure(tmp_path, monkeypatch):
+    from woodchopping.ui.prediction_context import (
+        PredictionAuthorityStore,
+        attach_authority_reference,
+    )
+
+    target = tmp_path / "state.json"
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    created = store.create_scope(owner_kind="single_event", scope_id="strathex:atomic-002")
+    v2 = store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    state = _single_state("before")
+    attach_authority_reference(state, v2.reference)
+    assert state_persistence.save_tournament_state(state, str(target), authority_store=store)
+
+    changed = store.lock(
+        v2.reference,
+        boundary="first_authoritative_numeric_action",
+        locked_at="2026-08-27T15:01:00Z",
+    )
+    attach_authority_reference(state, changed.reference)
+    monkeypatch.setattr(
+        state_persistence,
+        "_write_temp_file",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("disk full")),
+    )
+    assert not state_persistence.save_tournament_state(state, str(target), authority_store=store)
+
+    loaded = state_persistence.load_tournament_state(str(target), authority_store=store)
+
+    assert loaded is not None
+    assert loaded["prediction_authority_ref"] == changed.reference.to_json()
+    assert loaded["prediction_authority_runtime"]["engine"] == "v2"
+    assert loaded["prediction_authority_runtime"]["locked"] is True
+    audit = store.list_reconciliations(changed.reference.scope_id)
+    assert len(audit) == 1
+    assert audit[0]["from_revision"] == v2.reference.revision
+    assert audit[0]["to_revision"] == changed.reference.revision
+    assert audit[0]["reason"] == "durable_save_reference_behind_canonical_authority"
+
+
+def test_multi_event_child_authority_override_is_rejected(tmp_path):
+    payload = _multi_state("override")
+    payload["prediction_authority_ref"] = {
+        "authority_store_id": "store-1",
+        "scope_id": "strathex:root",
+        "revision": 1,
+        "digest": "a" * 64,
+        "save_id": "save-1",
+    }
+    payload["events"][0]["prediction_authority_ref"] = dict(payload["prediction_authority_ref"])
+
+    assert not state_persistence.save_multi_event_tournament(payload, str(tmp_path / "multi.json"))
+
+
+def test_copied_save_requires_explicit_authority_reconciliation(tmp_path):
+    from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
+
+    original = tmp_path / "original.json"
+    copied = tmp_path / "copied.json"
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    created = store.create_scope(owner_kind="single_event", scope_id="strathex:copy-001")
+    selected = store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="v2/2.0.0",
+        source_identity="strathmark:a231ad6",
+    )
+    state = _single_state("copy")
+    attach_authority_reference(state, selected.reference)
+    assert state_persistence.save_tournament_state(state, str(original), authority_store=store)
+    copied.write_bytes(original.read_bytes())
+
+    assert state_persistence.load_tournament_state(str(copied), authority_store=store) is None

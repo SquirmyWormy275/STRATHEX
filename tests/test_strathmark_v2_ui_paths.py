@@ -11,7 +11,9 @@ import woodchopping.ui.championship_simulator as championship_simulator
 import woodchopping.ui.multi_event_ui as multi_event_ui
 import woodchopping.ui.schedule_printout as schedule_printout
 import woodchopping.ui.tournament_ui as tournament_ui
+from woodchopping.engine_selection import EngineRouter
 from woodchopping.ui.bracket_ui import generate_bracket_seeds
+from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
 from woodchopping.ui.prediction_display import (
     display_basic_prediction_table,
     display_comprehensive_prediction_analysis,
@@ -19,7 +21,7 @@ from woodchopping.ui.prediction_display import (
 )
 
 
-def test_bracket_seeding_uses_one_v2_field_calculation(monkeypatch):
+def test_bracket_seeding_uses_one_v2_field_calculation(monkeypatch, tmp_path):
     calls = []
 
     def fake_calculate(competitors_df, species, diameter, quality, event_code, results_df, **kwargs):
@@ -55,7 +57,6 @@ def test_bracket_seeding_uses_one_v2_field_calculation(monkeypatch):
             },
         ]
 
-    monkeypatch.setattr(handicaps, "calculate_ai_enhanced_handicaps", fake_calculate)
     monkeypatch.setattr(data, "load_results_df", lambda: pd.DataFrame())
     competitors = pd.DataFrame(
         {
@@ -64,6 +65,32 @@ def test_bracket_seeding_uses_one_v2_field_calculation(monkeypatch):
         }
     )
 
+    store = PredictionAuthorityStore(tmp_path / "bracket-authority.db")
+    created = store.create_scope(owner_kind="single_event", scope_id="single-event:bracket")
+    selected = store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="actor:judge-one",
+        selected_at="2026-08-27T16:00:00.000Z",
+        reason_code="judge_selection",
+        mode="production",
+        contract_identity="contract-v2",
+        source_identity="source-v2",
+    )
+    state = {}
+    attach_authority_reference(state, selected.reference)
+
+    def v2_adapter(**request):
+        return fake_calculate(
+            request["competitors_df"],
+            request["wood_species"],
+            request["wood_diameter"],
+            request["wood_quality"],
+            request["event_code"],
+            request["results_df"],
+            prediction_as_of=request.get("prediction_as_of"),
+        )
+
     predictions = generate_bracket_seeds(
         competitors,
         "S01",
@@ -71,6 +98,10 @@ def test_bracket_seeding_uses_one_v2_field_calculation(monkeypatch):
         5,
         "SB",
         prediction_as_of=date(2026, 8, 18),
+        root_state=state,
+        authority_store=store,
+        engine_router=EngineRouter(v2_adapter=v2_adapter),
+        authority_checkpoint_callback=lambda _state: True,
     )
 
     assert len(calls) == 1
@@ -150,7 +181,7 @@ def test_manual_override_without_forecast_interval_displays_safely(capsys):
     assert "Manual Override" in output
 
 
-def test_advancing_field_calculation_failure_does_not_generate_partial_round(monkeypatch, capsys):
+def test_advancing_field_without_authority_is_rejected(monkeypatch):
     monkeypatch.setattr(data, "load_results_df", lambda: pd.DataFrame())
     monkeypatch.setattr(handicaps, "calculate_ai_enhanced_handicaps", lambda *args, **kwargs: None)
     roster = pd.DataFrame(
@@ -170,9 +201,9 @@ def test_advancing_field_calculation_failure_does_not_generate_partial_round(mon
         "prediction_as_of": "2026-08-18",
     }
 
-    assert tournament_ui.generate_next_round(state, roster["competitor_name"].tolist(), "final") == []
+    with pytest.raises(ValueError, match="prediction authority"):
+        tournament_ui.generate_next_round(state, roster["competitor_name"].tolist(), "final")
     assert state["rounds"] == []
-    assert "No next round was generated" in capsys.readouterr().out
 
 
 def test_championship_prediction_failure_aborts_the_whole_field(monkeypatch, capsys):

@@ -335,7 +335,14 @@ def edit_event_entries(tournament_state: Dict) -> Dict:
     return tournament_state
 
 
-def manage_scratches(tournament_state: Dict) -> Dict:
+def manage_scratches(
+    tournament_state: Dict,
+    *,
+    authority_store=None,
+    engine_router=None,
+    forecast_adapter=None,
+    authority_checkpoint_callback=None,
+) -> Dict:
     """Manage day-of competitor scratches (withdrawals) (NEW V5.1).
 
     For regular events: Remove from heats/rounds
@@ -415,6 +422,15 @@ def manage_scratches(tournament_state: Dict) -> Dict:
         input("\nPress Enter to continue...")
         return tournament_state
 
+    bracket_rounds = event.get("rounds", []) if event_type == "bracket" else []
+    bracket_requires_regeneration = bool(bracket_rounds) and not any(
+        match.get("status") == "completed"
+        for round_object in bracket_rounds
+        for match in round_object.get("matches", [])
+    )
+    if bracket_requires_regeneration and (authority_store is None or engine_router is None):
+        raise ValueError("prediction authority store and engine router are required before bracket regeneration")
+
     # Mark as withdrawn in event
     event["competitor_status"][comp_name] = "withdrawn"
 
@@ -464,6 +480,12 @@ def manage_scratches(tournament_state: Dict) -> Dict:
                     event["wood_quality"],
                     event["event_code"],
                     prediction_as_of=ensure_prediction_as_of(event),
+                    root_state=tournament_state,
+                    authority_child=event,
+                    authority_store=authority_store,
+                    engine_router=engine_router,
+                    forecast_adapter=forecast_adapter,
+                    authority_checkpoint_callback=authority_checkpoint_callback,
                 )
 
                 rounds = generate_bracket_with_byes(predictions)

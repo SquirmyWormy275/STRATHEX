@@ -2,7 +2,7 @@
 
 ## Competitor identity
 
-Roster rows carry stable competitor IDs and display names. STRATHEX passes both to STRATHMARK. Name remains judge-facing; ID anchors prediction population state and future trusted persistence.
+Roster rows carry stable competitor IDs and display names. Name remains local and judge-facing. V3 receives only namespaced pseudonymous identifiers and calculation-required sporting facts.
 
 ## Historical result
 
@@ -17,6 +17,7 @@ Single and multi-event state includes:
 - format, rounds, status, advancement, and placements;
 - handicap results including v2 metadata;
 - one persisted `prediction_as_of`;
+- an immutable reference to the canonical SQLite engine-selection authority;
 - optional payout and adjustment records.
 
 ## Persistence systems
@@ -24,7 +25,9 @@ Single and multi-event state includes:
 - Excel: judge-canonical results.
 - JSON save: recoverable workflow state.
 - ResultStore: best-effort local historical evidence.
-- PredictionLedger: immutable STRATHMARK prediction receipts and settlements; not used by public STRATHEX calculation.
-- `POST /calculate`: stateless; it reads only the request.
+- V2 PredictionLedger: separate from public V2 calculation.
+- V3 command ledger: durable pending, acknowledged, or recovery-required command identity.
+- V3 receipts: immutable forecast, field, review, issue, and settlement evidence for V3-selected scopes.
+- `POST /calculate`: stateless V2 route; it reads only the request.
 
 Do not describe these stores as automatically synchronized or cross-store atomic.

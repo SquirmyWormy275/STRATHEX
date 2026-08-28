@@ -36,7 +36,6 @@ from woodchopping.data import (
     load_competitors_df,
     load_results_df,
 )
-from woodchopping.handicaps import calculate_ai_enhanced_handicaps
 from woodchopping.prediction_context import ensure_prediction_as_of
 from woodchopping.simulation import simulate_and_assess_handicaps
 from woodchopping.strathmark_adapter import MAX_STRATHMARK_FIELD_SIZE
@@ -64,26 +63,41 @@ from woodchopping.ui.error_display import (
     display_warning,
 )
 from woodchopping.ui.handicap_ui import (
+    build_engine_router,
+    calculate_authoritative_field,
+    calculate_authoritative_seeding,
     judge_approval,
     manual_adjust_handicaps,
+    normalize_actor_identifier,
 )
 from woodchopping.ui.multi_event_ui import (
     add_event_to_tournament,
     approve_event_handicaps,
     assign_competitors_to_events,  # NEW V5.1
     calculate_all_event_handicaps,
+    configure_prediction_authority_store,
     create_multi_event_tournament,
+    display_prediction_engine_banner,
+    execute_with_v3_recovery,
+    finalize_completed_competition,
     generate_complete_day_schedule,
     generate_tournament_summary,
     load_multi_event_tournament,
+    prompt_loaded_prediction_authority,
+    record_and_settle_v3_single_event,
     remove_event_from_tournament,
+    resolve_prediction_engine,
+    review_v3_approval_queue,
     save_multi_event_tournament,
+    select_prediction_engine_for_scope,
     sequential_results_workflow,
     setup_tournament_roster,  # NEW V5.1
+    unavailable_v3_readiness,
     view_analyze_all_handicaps,
     view_tournament_schedule,
     view_wood_count,
 )
+from woodchopping.ui.prediction_context import PredictionAuthorityStore, derive_scope_identity
 from woodchopping.ui.prediction_display import (
     display_basic_prediction_table,
     display_comprehensive_prediction_analysis,
@@ -209,6 +223,69 @@ multi_event_tournament_state = {
     "schedule": [],  # Complete day schedule across all events
     "results": [],  # Final results across all events
 }
+
+# One local SQLite authority store owns engine selection and lock state. JSON
+# saves contain only the immutable reference produced by this store.
+_prediction_authority_store = PredictionAuthorityStore(
+    os.getenv("STRATHEX_PREDICTION_AUTHORITY_DB", "saves/prediction_authority.db")
+)
+configure_prediction_authority_store(_prediction_authority_store)
+
+try:
+    from woodchopping.strathmark_v3_client import (
+        V3RuntimeConfigurationError,
+        build_v3_client,
+    )
+except ImportError:
+    # Selection readiness explains the exact configuration problem. Keeping the
+    # adapter absent makes a selected V3 scope fail closed, never fall back.
+    _v3_engine_adapter = None
+else:
+    try:
+        _v3_engine_adapter = build_v3_client()
+    except V3RuntimeConfigurationError:
+        _v3_engine_adapter = None
+
+_prediction_engine_router = build_engine_router(v3_adapter=_v3_engine_adapter)
+
+
+def _v3_readiness_provider():
+    """Use the authenticated V3 client when installed; otherwise fail closed."""
+    if _v3_engine_adapter is None:
+        return unavailable_v3_readiness()
+    return _v3_engine_adapter.selector_readiness()
+
+
+def _judge_actor() -> str:
+    """Return display/audit identity; STRATHMARK credentials remain separate."""
+    return normalize_actor_identifier(os.getenv("STRATHEX_JUDGE_ID", "local-judge"))
+
+
+def _checkpoint_single_prediction_state(state: dict) -> bool:
+    """Persist a new canonical authority reference before numeric work."""
+    return save_tournament_state(
+        state,
+        "saves/tournament_state.json",
+        authority_store=_prediction_authority_store,
+    )
+
+
+def _checkpoint_multi_prediction_state(state: dict) -> bool:
+    """Persist tournament authority/recovery state at consequential boundaries."""
+    return save_multi_event_tournament(
+        state,
+        "saves/multi_tournament_state.json",
+        authority_store=_prediction_authority_store,
+    )
+
+
+def _create_multi_event_with_engine() -> dict:
+    return create_multi_event_tournament(
+        authority_store=_prediction_authority_store,
+        readiness_provider=_v3_readiness_provider,
+        actor=_judge_actor(),
+    )
+
 
 ## Competitor Selection Menu
 """ Official will be presented with a list of competitors
@@ -541,6 +618,54 @@ def single_event_menu():
     heat_assignment_df = pd.DataFrame()
     heat_assignment_names = []
 
+    def materialize_exact_heat_marks(heats):
+        """Replace V3 seed forecasts with exact field-relative marks."""
+        authority = resolve_prediction_engine(tournament_state, _prediction_authority_store)
+        if authority.engine != "v3":
+            return heats
+        results_df = load_results_df()
+        prediction_as_of = ensure_prediction_as_of(tournament_state)
+        competitor_index = tournament_state["all_competitors_df"].set_index("competitor_name")
+        materialized = []
+        for heat_index, heat in enumerate(heats, 1):
+            ordered = competitor_index.loc[heat["competitors"]].reset_index()
+            marks = calculate_authoritative_field(
+                root_state=tournament_state,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+                field_local_id=f"single-event:heat-{heat_index}",
+                round_local_id="single-event",
+                round_ordinal=1,
+                stand_local_ids=[f"heat-{heat_index}-stand-{item + 1}" for item in range(len(ordered))],
+                competitors_df=ordered,
+                wood_species=wood_selection["species"],
+                wood_diameter=wood_selection["size_mm"],
+                wood_quality=wood_selection["quality"],
+                event_code=wood_selection["event"],
+                results_df=results_df,
+                prediction_as_of=prediction_as_of,
+                checkpoint_callback=_checkpoint_single_prediction_state,
+            )
+            if len(marks) != len(ordered) or any("mark" not in item for item in marks):
+                raise RuntimeError("V3 did not return a complete exact-field mark sheet")
+            updated = dict(heat)
+            updated["competitors_df"] = ordered
+            updated["handicap_results"] = marks
+            updated["v3_round_id"] = derive_scope_identity(authority.scope_id, "round", "single-event")
+            materialized.append(updated)
+        tournament_state["handicap_results_all"] = [item for heat in materialized for item in heat["handicap_results"]]
+        return materialized
+
+    # A single event owns one deliberate choice for all of its rounds. The
+    # authority remains unlocked until the first numeric action in U5.
+    select_prediction_engine_for_scope(
+        tournament_state,
+        authority_store=_prediction_authority_store,
+        owner_kind="single_event",
+        readiness_provider=_v3_readiness_provider,
+        actor=_judge_actor(),
+    )
+
     while True:
         os.system("cls" if os.name == "nt" else "clear")
         # Display banner based on tournament format
@@ -565,6 +690,8 @@ def single_event_menu():
             print("║" + "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━".center(68) + "║")
             print("║" + " " * 68 + "║")
             print("╚" + "═" * 68 + "╝")
+
+        display_prediction_engine_banner(tournament_state, _prediction_authority_store)
 
         # Show current configuration status (including payouts)
         if tournament_state.get("event_name"):
@@ -947,15 +1074,21 @@ def single_event_menu():
             # Use existing calculate_ai_enhanced_handicaps function with progress
             results_df = load_results_df()
             prediction_as_of = ensure_prediction_as_of(tournament_state)
-            handicap_results = calculate_ai_enhanced_handicaps(
-                tournament_state["all_competitors_df"],
-                wood_selection["species"],
-                wood_selection["size_mm"],
-                wood_selection["quality"],
-                wood_selection["event"],
-                results_df,
+            handicap_results = calculate_authoritative_seeding(
+                root_state=tournament_state,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+                field_local_id="single-event:initial",
+                competitors_df=tournament_state["all_competitors_df"],
+                wood_species=wood_selection["species"],
+                wood_diameter=wood_selection["size_mm"],
+                wood_quality=wood_selection["quality"],
+                event_code=wood_selection["event"],
+                results_df=results_df,
                 progress_callback=show_progress,
                 prediction_as_of=prediction_as_of,
+                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                checkpoint_callback=_checkpoint_single_prediction_state,
             )
 
             if not handicap_results:
@@ -984,6 +1117,29 @@ def single_event_menu():
             # View handicaps + comprehensive analysis (NEW 5-PHASE FLOW - REGULAR MODE ONLY)
             if not tournament_state.get("handicap_results_all"):
                 print("\nERROR: Calculate handicaps first (Option 5)")
+                input("\nPress Enter to return to menu...")
+                continue
+            if any("mark" not in row for row in tournament_state["handicap_results_all"]):
+                print("\nV3 pre-field forecasts are ready for balanced heat generation.")
+                print("Marks are field-relative and will be calculated after Option 9 creates exact heats.")
+                input("\nPress Enter to return to menu...")
+                continue
+            authority = resolve_prediction_engine(tournament_state, _prediction_authority_store)
+            if authority.engine == "v3":
+                if _v3_engine_adapter is None:
+                    print("\n[BLOCKED] Selected V3 engine is unavailable; no V2 fallback is permitted.")
+                else:
+                    execute_with_v3_recovery(
+                        lambda: review_v3_approval_queue(
+                            tournament_state,
+                            authority_store=_prediction_authority_store,
+                            v3_adapter=_v3_engine_adapter,
+                            checkpoint_callback=_checkpoint_single_prediction_state,
+                        ),
+                        root_state=tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
                 input("\nPress Enter to return to menu...")
                 continue
 
@@ -1149,6 +1305,19 @@ def single_event_menu():
                     }
                 ]
 
+                if _v3_engine_adapter is not None:
+                    recovered_heats = execute_with_v3_recovery(
+                        lambda: materialize_exact_heat_marks(heats),
+                        root_state=tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+                    if recovered_heats is None:
+                        input("\nPress Enter to return to menu...")
+                        continue
+                    heats = recovered_heats
+                else:
+                    heats = materialize_exact_heat_marks(heats)
                 tournament_state["rounds"] = heats
 
                 # Display heat assignment
@@ -1178,6 +1347,19 @@ def single_event_menu():
                     num_heats,
                 )
 
+                if _v3_engine_adapter is not None:
+                    recovered_heats = execute_with_v3_recovery(
+                        lambda: materialize_exact_heat_marks(heats),
+                        root_state=tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+                    if recovered_heats is None:
+                        input("\nPress Enter to return to menu...")
+                        continue
+                    heats = recovered_heats
+                else:
+                    heats = materialize_exact_heat_marks(heats)
                 tournament_state["rounds"] = heats
 
                 # Display heat assignments
@@ -1195,7 +1377,11 @@ def single_event_menu():
                 print(f"{'=' * 70}")
 
             # Auto-save
-            auto_save_state(tournament_state)
+            save_tournament_state(
+                tournament_state,
+                "saves/tournament_state.json",
+                authority_store=_prediction_authority_store,
+            )
             print("\n[OK] Tournament state auto-saved")
             input("\nPress Enter to return to menu...")
 
@@ -1256,6 +1442,13 @@ def single_event_menu():
                         wood_selection["quality"],
                         wood_selection["event"],
                         prediction_as_of=ensure_prediction_as_of(tournament_state),
+                        root_state=tournament_state,
+                        authority_store=_prediction_authority_store,
+                        engine_router=_prediction_engine_router,
+                        forecast_adapter=(
+                            _v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None
+                        ),
+                        authority_checkpoint_callback=_checkpoint_single_prediction_state,
                     )
                 except (ValueError, RuntimeError) as error:
                     print(f"\n[WARN] Bracket seeding failed: {error}")
@@ -1333,28 +1526,62 @@ def single_event_menu():
                 print(f"\n{'=' * 70}")
                 print(f"  RECORDING RESULTS FOR {selected_heat['round_name']}")
                 print(f"{'=' * 70}")
-                entry_succeeded = append_results_to_excel(
-                    heat_assignment_df,
-                    wood_selection,
-                    round_object=selected_heat,
-                    tournament_state=tournament_state,
-                )
+
+                def write_results() -> bool:
+                    return append_results_to_excel(
+                        heat_assignment_df,
+                        wood_selection,
+                        round_object=selected_heat,
+                        tournament_state=tournament_state,
+                    )
+
+                authority = resolve_prediction_engine(tournament_state, _prediction_authority_store)
+                if authority.engine == "v3":
+                    if _v3_engine_adapter is None:
+                        raise RuntimeError("selected V3 engine has no settlement adapter")
+                    entry_succeeded = record_and_settle_v3_single_event(
+                        tournament_state,
+                        selected_heat,
+                        write_action=write_results,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+                else:
+                    entry_succeeded = write_results()
 
                 if not entry_succeeded:
-                    print("\n[WARN] Results were not saved. This round remains open for retry.")
-                    auto_save_state(tournament_state)
+                    if selected_heat.get("canonical_results_recorded"):
+                        print("\n[WARN] Results were saved, but V3 settlement remains blocked for exact retry.")
+                        print("The Excel rows will not be written again on the next attempt.")
+                    else:
+                        print("\n[WARN] Results were not saved. This round remains open for retry.")
+                    save_tournament_state(
+                        tournament_state,
+                        "saves/tournament_state.json",
+                        authority_store=_prediction_authority_store,
+                    )
                     continue
 
                 # Select advancers
-                if complete_recorded_round(tournament_state, selected_heat, entry_succeeded):
+                terminal_round = complete_recorded_round(tournament_state, selected_heat, entry_succeeded)
+                if terminal_round:
                     print(f"\n[OK] {selected_heat['round_name']} completed")
                     print("[OK] Tournament results saved")
+                    finalize_completed_competition(
+                        tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
                 else:
                     advancers = select_heat_advancers(selected_heat)
                     print(f"\n[OK] {selected_heat['round_name']} completed")
                     print(f"[OK] Advancers: {', '.join(advancers)}")
 
-                auto_save_state(tournament_state)
+                save_tournament_state(
+                    tournament_state,
+                    "saves/tournament_state.json",
+                    authority_store=_prediction_authority_store,
+                )
 
             except (ValueError, IndexError):
                 print("Invalid selection.")
@@ -1443,6 +1670,10 @@ def single_event_menu():
                 next_type,
                 is_championship=False,
                 animate_selection=True,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                authority_checkpoint_callback=_checkpoint_single_prediction_state,
             )
             tournament_state["rounds"].extend(next_rounds)
 
@@ -1452,7 +1683,11 @@ def single_event_menu():
                 for name in round_obj["competitors"]:
                     print(f"  - {name}")
 
-            auto_save_state(tournament_state)
+            save_tournament_state(
+                tournament_state,
+                "saves/tournament_state.json",
+                authority_store=_prediction_authority_store,
+            )
 
         elif menu_choice == "12":
             # Option 12: Export Bracket to HTML (BRACKET MODE) or View Event Status (REGULAR MODE)
@@ -1525,7 +1760,11 @@ def single_event_menu():
 
         elif menu_choice == "15":
             # Save Event State (BOTH MODES)
-            save_tournament_state(tournament_state, "saves/tournament_state.json")
+            save_tournament_state(
+                tournament_state,
+                "saves/tournament_state.json",
+                authority_store=_prediction_authority_store,
+            )
 
         elif menu_choice == "16":
             # Return to Main Menu (BOTH MODES)
@@ -1545,6 +1784,7 @@ def multi_event_tournament_menu():
         # Display progress tracker if tournament exists
         if multi_event_tournament_state.get("tournament_name"):
             display_tournament_progress_tracker(multi_event_tournament_state)
+            display_prediction_engine_banner(multi_event_tournament_state, _prediction_authority_store)
         else:
             # Show banner only if no tournament
             print("\n╔" + "═" * 68 + "╗")
@@ -1589,9 +1829,11 @@ def multi_event_tournament_menu():
         if menu_choice == "s":
             # Quick save
             if multi_event_tournament_state.get("tournament_name"):
-                from woodchopping.ui.multi_event_ui import auto_save_multi_event
-
-                auto_save_multi_event(multi_event_tournament_state)
+                save_multi_event_tournament(
+                    multi_event_tournament_state,
+                    "saves/multi_tournament_state.json",
+                    authority_store=_prediction_authority_store,
+                )
                 display_success("Tournament saved successfully")
             else:
                 print("\n[WARN] No tournament to save")
@@ -1625,7 +1867,7 @@ def multi_event_tournament_menu():
 
         if menu_choice == "1":
             # Create New Tournament
-            multi_event_tournament_state = create_multi_event_tournament()
+            multi_event_tournament_state = _create_multi_event_with_engine()
 
         elif menu_choice == "2":
             # Define All Events (Add/Remove/View) - NEW SUBMENU
@@ -1637,7 +1879,7 @@ def multi_event_tournament_menu():
                     quick_action_key="1",
                 )
                 if choice == "1":
-                    multi_event_tournament_state = create_multi_event_tournament()
+                    multi_event_tournament_state = _create_multi_event_with_engine()
                 continue
 
             # Event management submenu loop
@@ -1659,7 +1901,10 @@ def multi_event_tournament_menu():
                 if event_choice == "1":
                     results_df = load_results_df()
                     multi_event_tournament_state = add_event_to_tournament(
-                        multi_event_tournament_state, comp_df, results_df
+                        multi_event_tournament_state,
+                        comp_df,
+                        results_df,
+                        authority_store=_prediction_authority_store,
                     )
                 elif event_choice == "2":
                     if not multi_event_tournament_state.get("events"):
@@ -1689,7 +1934,7 @@ def multi_event_tournament_menu():
                     quick_action_key="1",
                 )
                 if choice == "1":
-                    multi_event_tournament_state = create_multi_event_tournament()
+                    multi_event_tournament_state = _create_multi_event_with_engine()
                 continue
 
             multi_event_tournament_state = setup_tournament_roster(multi_event_tournament_state, comp_df)
@@ -1719,7 +1964,7 @@ def multi_event_tournament_menu():
                     quick_action_key="1",
                 )
                 if choice == "1":
-                    multi_event_tournament_state = create_multi_event_tournament()
+                    multi_event_tournament_state = _create_multi_event_with_engine()
                 continue
 
             # Submenu loop for entry fees and payouts
@@ -1766,7 +2011,14 @@ def multi_event_tournament_menu():
                 continue
 
             results_df = load_results_df()
-            multi_event_tournament_state = calculate_all_event_handicaps(multi_event_tournament_state, results_df)
+            multi_event_tournament_state = calculate_all_event_handicaps(
+                multi_event_tournament_state,
+                results_df,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                checkpoint_callback=_checkpoint_multi_prediction_state,
+            )
 
         elif menu_choice == "7":
             # Review & Analyze Handicaps
@@ -1788,7 +2040,27 @@ def multi_event_tournament_menu():
                 )
                 continue
 
-            approve_event_handicaps(multi_event_tournament_state)
+            authority = resolve_prediction_engine(
+                multi_event_tournament_state,
+                _prediction_authority_store,
+            )
+            if authority.engine == "v3":
+                if _v3_engine_adapter is None:
+                    print("\n[BLOCKED] Selected V3 engine is unavailable; no V2 fallback is permitted.")
+                else:
+                    execute_with_v3_recovery(
+                        lambda: review_v3_approval_queue(
+                            multi_event_tournament_state,
+                            authority_store=_prediction_authority_store,
+                            v3_adapter=_v3_engine_adapter,
+                            checkpoint_callback=_checkpoint_multi_prediction_state,
+                        ),
+                        root_state=multi_event_tournament_state,
+                        authority_store=_prediction_authority_store,
+                        v3_adapter=_v3_engine_adapter,
+                    )
+            else:
+                approve_event_handicaps(multi_event_tournament_state)
 
         elif menu_choice == "9":
             # Generate Complete Day Schedule
@@ -1799,7 +2071,12 @@ def multi_event_tournament_menu():
                 display_blocking_error("CANNOT GENERATE SCHEDULE", errors)
                 continue
 
-            multi_event_tournament_state = generate_complete_day_schedule(multi_event_tournament_state)
+            multi_event_tournament_state = generate_complete_day_schedule(
+                multi_event_tournament_state,
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+                authority_checkpoint_callback=_checkpoint_multi_prediction_state,
+            )
 
         elif menu_choice == "10":
             # Manage Scratches/Withdrawals - FULLY IMPLEMENTED
@@ -1825,6 +2102,10 @@ def multi_event_tournament_menu():
                 multi_event_tournament_state,
                 wood_selection,  # Legacy parameter
                 heat_assignment_df,  # Legacy parameter
+                authority_store=_prediction_authority_store,
+                engine_router=_prediction_engine_router,
+                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                authority_checkpoint_callback=_checkpoint_multi_prediction_state,
             )
 
         elif menu_choice == "12":
@@ -1885,7 +2166,11 @@ def multi_event_tournament_menu():
             if not filename:
                 filename = "saves/multi_tournament_state.json"
 
-            save_multi_event_tournament(multi_event_tournament_state, filename)
+            save_multi_event_tournament(
+                multi_event_tournament_state,
+                filename,
+                authority_store=_prediction_authority_store,
+            )
 
         elif menu_choice == "17":
             # Return to main menu
@@ -1916,7 +2201,21 @@ def championship_simulator_menu():
     print("║" + " " * 68 + "║")
     print("╚" + "═" * 68 + "╝")
 
-    run_championship_simulator(comp_df)
+    prediction_state = {}
+    select_prediction_engine_for_scope(
+        prediction_state,
+        authority_store=_prediction_authority_store,
+        owner_kind="single_event",
+        readiness_provider=_v3_readiness_provider,
+        actor=_judge_actor(),
+    )
+    run_championship_simulator(
+        comp_df,
+        prediction_state=prediction_state,
+        authority_store=_prediction_authority_store,
+        engine_router=_prediction_engine_router,
+        forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+    )
 
 
 ## Main Menu - Top Level Mode Selection
@@ -1981,8 +2280,17 @@ while True:
 
         if load_choice == "1":
             # Load single event
-            loaded_state = load_tournament_state("saves/tournament_state.json")
+            loaded_state = load_tournament_state(
+                "saves/tournament_state.json",
+                authority_store=_prediction_authority_store,
+            )
             if loaded_state:
+                prompt_loaded_prediction_authority(
+                    loaded_state,
+                    authority_store=_prediction_authority_store,
+                    actor=_judge_actor(),
+                    readiness_provider=_v3_readiness_provider,
+                )
                 tournament_state.update(loaded_state)
                 print("\n[OK] Single event state loaded successfully")
                 input("\nPress Enter to return to menu...")
@@ -1992,8 +2300,17 @@ while True:
             if not filename:
                 filename = "saves/multi_tournament_state.json"
 
-            loaded_multi_state = load_multi_event_tournament(filename)
+            loaded_multi_state = load_multi_event_tournament(
+                filename,
+                authority_store=_prediction_authority_store,
+            )
             if loaded_multi_state:
+                prompt_loaded_prediction_authority(
+                    loaded_multi_state,
+                    authority_store=_prediction_authority_store,
+                    actor=_judge_actor(),
+                    readiness_provider=_v3_readiness_provider,
+                )
                 multi_event_tournament_state.update(loaded_multi_state)
                 print("\n[OK] Multi-event tournament state loaded successfully")
                 input("\nPress Enter to return to menu...")
@@ -2028,13 +2345,21 @@ while True:
             save_choice = input("\nEnter your choice (1-3): ").strip()
 
             if save_choice == "1":
-                auto_save_state(tournament_state)
+                save_tournament_state(
+                    tournament_state,
+                    "saves/tournament_state.json",
+                    authority_store=_prediction_authority_store,
+                )
                 print("\n[OK] Single event state saved")
             elif save_choice == "2":
                 filename = input("\nEnter filename (default: saves/multi_tournament_state.json): ").strip()
                 if not filename:
                     filename = "saves/multi_tournament_state.json"
-                save_multi_event_tournament(multi_event_tournament_state, filename)
+                save_multi_event_tournament(
+                    multi_event_tournament_state,
+                    filename,
+                    authority_store=_prediction_authority_store,
+                )
 
         print("\nGoodbye!")
         break

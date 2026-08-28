@@ -12,6 +12,8 @@ import pandas as pd
 import pytest
 
 import woodchopping.strathmark_adapter as adapter
+from woodchopping.engine_selection import EngineRouter, PredictionExecutionContext
+from woodchopping.ui.prediction_context import PredictionAuthorityStore
 
 PREDICTION_AS_OF = date(2026, 8, 18)
 
@@ -207,6 +209,54 @@ def test_direct_transport_gives_v2_ownership_and_surfaces_audit_metadata(monkeyp
     assert result["ignored_factors"] == ["wood_quality", "tournament_results"]
     assert result["degraded"] is False
     assert result["transport"] == "python"
+
+
+def test_selected_v2_router_preserves_the_existing_projection_contract(tmp_path, monkeypatch):
+    class FakeCalculator:
+        def calculate(self, **kwargs):
+            return [_mark_result()]
+
+    monkeypatch.setattr(adapter, "HandicapCalculator", FakeCalculator)
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    created = store.create_scope(owner_kind="single_event", scope_id="strathex:v2-characterization")
+    selected = store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="judge-1",
+        selected_at="2026-08-27T16:00:00Z",
+        reason_code="judge_selection",
+        mode="production",
+        contract_identity="strathmark-v2-contract",
+        source_identity="strathmark-v2-source",
+    )
+    locked = store.lock(
+        selected.reference,
+        boundary="first_authoritative_numeric_action",
+        locked_at="2026-08-27T16:01:00Z",
+    )
+    context = PredictionExecutionContext.from_receipt(locked)
+    records = adapter.build_competitor_records(
+        ["Alice Axe"],
+        _history_df(),
+        competitor_id_map={"Alice Axe": "C001"},
+    )
+    request = {
+        "competitor_records": records,
+        "wood": adapter.build_wood_profile("S01", 300, 5),
+        "event_code": "SB",
+        "results_df": _history_df(),
+        "prediction_as_of": PREDICTION_AS_OF,
+        "transport": "python",
+    }
+    direct = adapter.calculate_handicap_results(**request)
+
+    routed = EngineRouter(
+        v2_adapter=adapter.calculate_handicap_results,
+        v3_adapter=lambda **kwargs: pytest.fail("V3 must not run for V2 authority"),
+    ).calculate_field(context, **request)
+
+    assert routed == direct
+    assert routed[0].keys() == direct[0].keys()
 
 
 def test_http_transport_sends_one_stateless_field_request_with_identity_and_cutoff(monkeypatch):

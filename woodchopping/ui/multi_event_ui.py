@@ -10,11 +10,11 @@ This module handles multi-event tournament operations including:
 - Multi-event state persistence
 """
 
-import copy
+import hashlib
 import itertools
-import json
-from datetime import datetime
-from typing import Dict, Optional, Tuple
+import re
+from datetime import datetime, timezone
+from typing import Any, Callable, Dict, Mapping, Optional, Tuple
 
 import pandas as pd
 
@@ -35,6 +35,1200 @@ from woodchopping.ui.tournament_ui import (
 
 # Import existing functions for reuse
 from woodchopping.ui.wood_ui import select_event_code, wood_menu
+
+V3ReadinessProvider = Callable[[], Mapping[str, Any]]
+_prediction_authority_store: Any = None
+
+_READINESS_LABELS = {
+    "checking": "CHECKING",
+    "production_ready": "PRODUCTION READY",
+    "rehearsal_ready": "REHEARSAL READY",
+    "ineligible": "INELIGIBLE",
+    "status_failed": "STATUS CHECK FAILED",
+}
+_SELECTION_REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+_V2_CONTRACT_IDENTITY = "strathmark-v2/2.0.0"
+_V2_SOURCE_IDENTITY = "strathmark:a231ad65fe82317516cc82a282761d73adb0c0e3"
+
+
+def configure_prediction_authority_store(authority_store: Any) -> None:
+    """Bind the process-local authority store used by legacy autosave call sites."""
+    global _prediction_authority_store
+    _prediction_authority_store = authority_store
+
+
+def _configured_authority_store(authority_store: Any) -> Any:
+    return authority_store if authority_store is not None else _prediction_authority_store
+
+
+def _utc_milliseconds() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def unavailable_v3_readiness() -> dict[str, str]:
+    """Fail closed until the runtime supplies an authenticated readiness check."""
+    return {
+        "status": "ineligible",
+        "message": "No authenticated STRATHMARK V3 readiness provider is configured.",
+    }
+
+
+def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
+    """Render a judge-facing V3 state without promoting it by implication."""
+    status = str(readiness.get("status", "status_failed"))
+    label = _READINESS_LABELS.get(status, _READINESS_LABELS["status_failed"])
+    detail = str(readiness.get("message") or "No readiness detail was returned.").strip()
+    qualification = {
+        "checking": "V3 cannot be selected until the check finishes.",
+        "production_ready": (
+            "The service passed its production checks, but this STRATHEX release "
+            "still selects V3 in rehearsal mode only."
+        ),
+        "rehearsal_ready": "V3 is rehearsal-only; this does not claim production readiness.",
+        "ineligible": "V3 cannot be selected for this scope.",
+        "status_failed": "Readiness is unknown; retry the check or select V2.",
+    }.get(status, "Readiness is unknown; retry the check or select V2.")
+    return f"V3: {label} - {detail} {qualification}"
+
+
+def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str, dict[str, str]]:
+    status = str(readiness.get("status", "status_failed"))
+    if status not in {"production_ready", "rehearsal_ready"}:
+        raise ValueError("V3 is not eligible for selection in its current readiness state")
+    contract_identity = str(readiness.get("contract_identity") or "").strip()
+    source_identity = str(readiness.get("source_identity") or "").strip()
+    if not contract_identity or not source_identity:
+        raise ValueError("V3 readiness did not return pinned contract and source identities")
+    signer_trust = readiness.get("pre_field_signer_trust")
+    if not isinstance(signer_trust, Mapping) or not signer_trust:
+        raise ValueError("V3 readiness did not return pinned pre-field signer trust")
+    # Service readiness is evidence, not cutover authority.  This release lets a
+    # judge exercise V3 as the selected numeric engine for a competition while
+    # preserving the explicit global boundary that V2 remains authoritative.
+    return (
+        "rehearsal",
+        contract_identity,
+        source_identity,
+        {str(key): str(value) for key, value in signer_trust.items()},
+    )
+
+
+def _read_v3_readiness(readiness_provider: V3ReadinessProvider) -> dict[str, Any]:
+    try:
+        return dict(readiness_provider())
+    except Exception as error:
+        return {
+            "status": "status_failed",
+            "message": f"Readiness check failed: {error}",
+        }
+
+
+def _scope_has_started_competition(value: Any) -> bool:
+    """Detect lifecycle evidence that makes a fresh selector unsafe."""
+    if isinstance(value, Mapping):
+        if value.get("status") in {"in_progress", "completed"}:
+            return True
+        if value.get("canonical_results_recorded") is True:
+            return True
+        if any(value.get(key) for key in ("actual_results", "results", "finish_order")):
+            return True
+        return any(_scope_has_started_competition(child) for child in value.values())
+    if isinstance(value, list):
+        return any(_scope_has_started_competition(child) for child in value)
+    return False
+
+
+def _scope_has_issued_or_resulted(value: Any) -> bool:
+    """Detect durable issue/result evidence without treating calculation as issue."""
+    if isinstance(value, Mapping):
+        if value.get("v3_issue_status") == "issued" or value.get("canonical_results_recorded") is True:
+            return True
+        if any(value.get(key) for key in ("issue_batch_id", "v3_issue_batches", "issued_at_utc")):
+            return True
+        if value.get("status") in {"in_progress", "completed"}:
+            return True
+        if any(value.get(key) for key in ("actual_results", "results", "finish_order")):
+            return True
+        return any(_scope_has_issued_or_resulted(child) for child in value.values())
+    if isinstance(value, list):
+        return any(_scope_has_issued_or_resulted(child) for child in value)
+    return False
+
+
+def inspect_loaded_prediction_authority(
+    state: Mapping[str, Any],
+    *,
+    authority_store: Any,
+    save_path: str | None = None,
+) -> dict[str, Any]:
+    """Return fail-closed judge actions for a loaded competition state."""
+    from woodchopping.ui.prediction_context import (
+        AuthorityStateError,
+        classify_legacy_state,
+        runtime_authority_status,
+    )
+
+    has_reference = "prediction_authority_ref" in state
+    classification = None if has_reference else classify_legacy_state(state)
+    try:
+        runtime = runtime_authority_status(state, authority_store, save_path=save_path)
+    except (AuthorityStateError, ValueError, TypeError) as error:
+        return {
+            "status": "reconciliation_required",
+            "classification": classification,
+            "numeric_work_allowed": False,
+            "selector_allowed": False,
+            "read_only": True,
+            "available_actions": (),
+            "message": f"Prediction authority could not be reconciled: {error}",
+        }
+
+    status = str(runtime["status"])
+    started = _scope_has_started_competition(state)
+    issued_or_resulted = _scope_has_issued_or_resulted(state)
+    actions: tuple[str, ...] = ()
+    selector_allowed = False
+    read_only = not bool(runtime.get("numeric_work_allowed"))
+
+    if status == "selection_required" and not started and classification == "selection_required":
+        actions = ("select_engine",)
+        selector_allowed = True
+        read_only = False
+    elif status == "legacy_v2_confirmation_required" and classification == status:
+        actions = ("confirm_legacy_v2",)
+        read_only = True
+    elif status == "ready":
+        actions = ("continue",)
+        read_only = False
+        if runtime.get("locked") is True and not issued_or_resulted:
+            actions += ("abandon_scope",)
+    elif status == "terminal":
+        actions = ("create_new_scope",)
+        read_only = True
+
+    return {
+        **runtime,
+        "classification": classification,
+        "selector_allowed": selector_allowed,
+        "read_only": read_only,
+        "available_actions": actions,
+        "issued_or_resulted": issued_or_resulted,
+    }
+
+
+def resume_loaded_prediction_authority(
+    state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    actor: str,
+    action: str | None = None,
+    confirmed: bool = False,
+    acted_at: str | None = None,
+    readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
+    input_fn: Callable[[str], str] | None = None,
+) -> dict[str, Any]:
+    """Apply only a judge action permitted by loaded-state classification."""
+    from woodchopping.ui.prediction_context import confirm_legacy_v2
+
+    decision = inspect_loaded_prediction_authority(state, authority_store=authority_store)
+    if action not in decision["available_actions"]:
+        return decision
+    if action == "select_engine":
+        owner_kind = "tournament" if isinstance(state.get("events"), list) else "single_event"
+        select_prediction_engine_for_scope(
+            state,
+            authority_store=authority_store,
+            owner_kind=owner_kind,
+            readiness_provider=readiness_provider,
+            actor=actor,
+            selected_at=acted_at,
+            input_fn=input_fn,
+        )
+    elif action == "confirm_legacy_v2":
+        if not confirmed:
+            return decision
+        confirm_legacy_v2(
+            state,
+            authority_store,
+            actor=actor,
+            confirmed_at=acted_at or _utc_milliseconds(),
+            contract_identity=_V2_CONTRACT_IDENTITY,
+            source_identity=_V2_SOURCE_IDENTITY,
+        )
+    return inspect_loaded_prediction_authority(state, authority_store=authority_store)
+
+
+def abandon_locked_prediction_scope(
+    state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    actor: str,
+    confirmed: bool,
+    reason: str,
+    abandoned_at: str | None = None,
+):
+    """Terminally abandon a locked, unissued scope while preserving its evidence."""
+    from woodchopping.ui.prediction_context import (
+        AuthorityStateError,
+        attach_authority_reference,
+    )
+
+    current = resolve_prediction_engine(state, authority_store)
+    if not current.locked:
+        raise AuthorityStateError("only a locked scope can be terminally abandoned")
+    if _scope_has_issued_or_resulted(state):
+        raise AuthorityStateError("issued or resulted scope cannot be terminally abandoned")
+    if not confirmed:
+        raise ValueError("terminal abandonment requires explicit confirmation")
+    if not isinstance(reason, str) or not reason.strip():
+        raise ValueError("terminal abandonment requires a reason")
+    abandoned = authority_store.abandon(
+        current.reference,
+        actor=actor,
+        reason=reason.strip(),
+        abandoned_at=abandoned_at or _utc_milliseconds(),
+    )
+    attach_authority_reference(state, abandoned.reference)
+    return abandoned
+
+
+def prompt_loaded_prediction_authority(
+    state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    actor: str,
+    readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
+    input_fn: Callable[[str], str] | None = None,
+) -> dict[str, Any]:
+    """Present only the deliberate recovery actions valid for a loaded scope."""
+    ask = input if input_fn is None else input_fn
+    decision = inspect_loaded_prediction_authority(state, authority_store=authority_store)
+    status = decision["status"]
+    if status == "selection_required" and decision["selector_allowed"]:
+        print("\n[PREDICTION AUTHORITY] This unstarted save has no engine selection.")
+        if ask("Select an engine now? (y/n): ").strip().lower() == "y":
+            return resume_loaded_prediction_authority(
+                state,
+                authority_store=authority_store,
+                actor=actor,
+                action="select_engine",
+                readiness_provider=readiness_provider,
+                input_fn=ask,
+            )
+    elif status == "legacy_v2_confirmation_required":
+        print("\n[PREDICTION AUTHORITY] Existing evidence consistently identifies V2.")
+        confirmed = ask("Explicitly bind this legacy save to V2? (y/n): ").strip().lower() == "y"
+        return resume_loaded_prediction_authority(
+            state,
+            authority_store=authority_store,
+            actor=actor,
+            action="confirm_legacy_v2",
+            confirmed=confirmed,
+        )
+    elif status == "reconciliation_required":
+        print("\n[READ ONLY] Prediction authority cannot be reconciled safely.")
+        print("Existing evidence remains visible, but new numeric work is blocked.")
+    elif status == "ready":
+        display_prediction_engine_banner(state, authority_store)
+        if "abandon_scope" in decision["available_actions"]:
+            choice = ask("Locked and unissued: A=terminally abandon, Enter=continue: ").strip().lower()
+            if choice == "a":
+                confirmed = ask("Type ABANDON to confirm: ").strip() == "ABANDON"
+                reason = ask("Abandonment reason (required): ").strip()
+                abandon_locked_prediction_scope(
+                    state,
+                    authority_store=authority_store,
+                    actor=actor,
+                    confirmed=confirmed,
+                    reason=reason,
+                )
+                return inspect_loaded_prediction_authority(state, authority_store=authority_store)
+    elif status == "terminal":
+        print("\n[READ ONLY] This scope was terminally abandoned; create a new competition to choose again.")
+    return inspect_loaded_prediction_authority(state, authority_store=authority_store)
+
+
+def select_prediction_engine_for_scope(
+    state: Dict,
+    *,
+    authority_store: Any,
+    owner_kind: str,
+    readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
+    actor: str = "local-judge",
+    selected_at: Optional[str] = None,
+    input_fn: Callable[[str], str] | None = None,
+):
+    """Require a deliberate V2/V3 choice and persist it in canonical authority."""
+    from woodchopping.ui.prediction_context import attach_authority_reference
+
+    readiness = _read_v3_readiness(readiness_provider)
+    created = authority_store.create_scope(owner_kind=owner_kind)
+    selected_at = selected_at or _utc_milliseconds()
+    ask = input if input_fn is None else input_fn
+
+    while True:
+        print(f"\n{'=' * 70}")
+        print("  SELECT PREDICTION ENGINE")
+        print(f"{'=' * 70}")
+        print("No engine is selected by default. The judge must choose deliberately.")
+        if owner_kind == "tournament":
+            print("This one choice is inherited by every event and round in the tournament.")
+        else:
+            print("This choice governs this single event and all of its rounds.")
+        print("\n1. STRATHMARK V2 - established production baseline")
+        print(f"2. STRATHMARK V3 - {format_v3_readiness(readiness)[4:]}")
+        if str(readiness.get("status")) in {"checking", "status_failed"}:
+            print("R. Retry V3 readiness check")
+        print("H. Explain the engine choice")
+
+        choice = ask("\nSelect prediction engine (1 or 2; no default): ").strip().lower()
+        if choice == "h":
+            import explanation_system_functions as explanations
+
+            explanations.show_prediction_engine_help()
+            continue
+        if choice == "r":
+            readiness = _read_v3_readiness(readiness_provider)
+            continue
+        if choice not in {"1", "2"}:
+            print("\n[WARN] A deliberate engine selection is required; nothing was selected.")
+            continue
+
+        engine = "v2" if choice == "1" else "v3"
+        if engine == "v2":
+            mode = "production"
+            contract_identity = _V2_CONTRACT_IDENTITY
+            source_identity = _V2_SOURCE_IDENTITY
+            pre_field_signer_trust = None
+        else:
+            try:
+                (
+                    mode,
+                    contract_identity,
+                    source_identity,
+                    pre_field_signer_trust,
+                ) = _validated_v3_readiness(readiness)
+            except ValueError as error:
+                print(f"\n[WARN] {error}. No engine was selected.")
+                continue
+
+        reason_code = ask("Selection reason code (required): ").strip()
+        if _SELECTION_REASON.fullmatch(reason_code) is None:
+            print(
+                "\n[WARN] Use a lowercase reason code beginning with a letter and containing "
+                "only letters, numbers, or underscores. No engine was selected."
+            )
+            continue
+        reason_note = ask("Selection note (optional): ").strip()
+        selected = authority_store.select_engine(
+            created.reference,
+            engine=engine,
+            actor=actor,
+            selected_at=selected_at,
+            reason_code=reason_code,
+            reason_note=reason_note or None,
+            mode=mode,
+            contract_identity=contract_identity,
+            source_identity=source_identity,
+            pre_field_signer_trust=pre_field_signer_trust,
+        )
+        attach_authority_reference(state, selected.reference)
+        print(f"\n[OK] STRATHMARK {engine.upper()} selected in {mode.upper()} mode")
+        print("[OK] No silent fallback to the other engine is permitted")
+        return selected
+
+
+def resolve_prediction_engine(state: Mapping[str, Any], authority_store: Any):
+    """Resolve the canonical engine receipt attached to a root state."""
+    from woodchopping.ui.prediction_context import resolve_authority_for_state
+
+    return resolve_authority_for_state(state, authority_store)
+
+
+def display_prediction_engine_banner(state: Mapping[str, Any], authority_store: Any) -> None:
+    """Display the persistent engine/mode/lock reminder for a root scope."""
+    try:
+        receipt = resolve_prediction_engine(state, authority_store)
+    except Exception as error:
+        print(f"PREDICTION ENGINE: ATTENTION REQUIRED ({error})")
+        return
+    lock_label = "LOCKED" if receipt.locked else "UNLOCKED"
+    print(f"PREDICTION ENGINE: {receipt.engine.upper()} | MODE: {receipt.mode.upper()} | {lock_label}")
+    print("Championship and bracket Mark 3 rules remain unchanged.")
+
+
+def display_inherited_prediction_engine(tournament_state: Mapping[str, Any], authority_store: Any) -> None:
+    """Explain tournament inheritance at child-event setup without a selector."""
+    receipt = resolve_prediction_engine(tournament_state, authority_store)
+    print(f"Prediction engine: STRATHMARK {receipt.engine.upper()} ({receipt.mode.upper()})")
+    print("This tournament choice is inherited by every event and round.")
+    print("It cannot be changed per event; create a new tournament scope to choose differently.")
+
+
+def execute_with_v3_recovery(
+    action: Callable[[], Any],
+    *,
+    root_state: Mapping[str, Any],
+    authority_store: Any,
+    v3_adapter: Any,
+    input_fn: Callable[[str], str] | None = None,
+) -> Any | None:
+    """Run one V3 action with deliberate, visible exact-command recovery."""
+    from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    ask = input if input_fn is None else input_fn
+    counts = root_state.setdefault("prediction_engine_operational_counts", {}) if isinstance(root_state, dict) else {}
+    while True:
+        try:
+            return action()
+        except V3RecoveryRequired as error:
+            counts["recovery_count"] = int(counts.get("recovery_count", 0)) + 1
+            print("\n[RECOVERY REQUIRED] STRATHMARK V3 returned an ambiguous outcome.")
+            print(f"Command: {error.command_key}")
+            print("No marks were accepted and V2 fallback remains forbidden.")
+            print("R. Retry this exact durable command")
+            print("C. Cancel and leave the competition blocked")
+            if ask("Choose R or C: ").strip().lower() != "r":
+                return None
+            context = build_prediction_execution_context(root_state, authority_store)
+            try:
+                v3_adapter.retry_recovery(error.command_key, context)
+            except V3RecoveryRequired:
+                print("[WARN] The exact command is still ambiguous; no conflicting work was started.")
+                continue
+        except V3ClientError as error:
+            counts["failure_count"] = int(counts.get("failure_count", 0)) + 1
+            print(f"\n[BLOCKED] Selected V3 engine could not complete: {error}")
+            print("No V2 fallback occurred and no partial mark sheet was accepted.")
+            return None
+
+
+def _v3_receipt_rows(value: Any):
+    """Yield mutable result rows carrying V3 receipt evidence."""
+    if isinstance(value, dict):
+        if value.get("receipt_id") and str(value.get("engine_version", "")).startswith("3."):
+            yield value
+        for child in value.values():
+            yield from _v3_receipt_rows(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _v3_receipt_rows(child)
+
+
+def acknowledge_v3_issued_marks(
+    root_state: Dict[str, Any],
+    approval_rows: list[Mapping[str, Any]],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    issued_at_utc: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> str | None:
+    """Acknowledge accepted receipts once and bind the issue batch to local rows."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    bindings = sorted(
+        (
+            {
+                "receipt_id": str(row["receipt_id"]),
+                "receipt_digest": str(row["receipt_content_digest"]),
+            }
+            for row in approval_rows
+        ),
+        key=lambda item: item["receipt_id"],
+    )
+    if not bindings:
+        raise ValueError("accepted V3 marks require at least one receipt binding")
+    receipt_ids = [binding["receipt_id"] for binding in bindings]
+    existing = root_state.setdefault("v3_issue_batches", {})
+    existing_batches = {existing.get(receipt_id) for receipt_id in receipt_ids}
+    if len(existing_batches) == 1 and None not in existing_batches:
+        return str(existing_batches.pop())
+    if any(batch is not None for batch in existing_batches):
+        raise RuntimeError("accepted V3 receipts have conflicting local issue-batch state")
+
+    context = build_prediction_execution_context(root_state, authority_store)
+    identity_material = "\0".join((context.scope_id, *receipt_ids)).encode("utf-8")
+    proposed_payload = {
+        "schema_version": "strathmark-v3-issue-acknowledgment-request-v1",
+        "upstream_issue_id": f"issue:{hashlib.sha256(identity_material).hexdigest()}",
+        "receipt_bindings": bindings,
+        "issued_at_utc": issued_at_utc or _utc_milliseconds(),
+        "deadline_ms": 10_000,
+    }
+    pending = root_state.setdefault("v3_pending_issue_acknowledgments", {})
+    pending_key = proposed_payload["upstream_issue_id"]
+    payload = pending.setdefault(pending_key, proposed_payload)
+    if [item["receipt_id"] for item in payload.get("receipt_bindings", ())] != receipt_ids:
+        raise RuntimeError("pending V3 issue acknowledgment conflicts with accepted receipts")
+    response = execute_with_v3_recovery(
+        lambda: v3_adapter.acknowledge_issue(context, payload),
+        root_state=root_state,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        input_fn=input_fn,
+    )
+    if response is None:
+        return None
+    issue_batch_id = _apply_v3_issue_acknowledgment(root_state, payload, response)
+    pending.pop(pending_key, None)
+    return issue_batch_id
+
+
+def _apply_v3_issue_acknowledgment(
+    root_state: Dict[str, Any],
+    payload: Mapping[str, Any],
+    response: Mapping[str, Any],
+) -> str:
+    """Apply one exact acknowledgment response to its pending receipt set."""
+    receipt_ids = [str(item["receipt_id"]) for item in payload["receipt_bindings"]]
+    issue_batch_id = str(response["issue_batch_id"])
+    returned_ids = set(response.get("receipt_ids", ()))
+    if returned_ids != set(receipt_ids):
+        raise RuntimeError("V3 issue acknowledgment did not cover the accepted receipts exactly")
+    existing = root_state.setdefault("v3_issue_batches", {})
+    for receipt_id in receipt_ids:
+        existing[receipt_id] = issue_batch_id
+    for row in _v3_receipt_rows(root_state):
+        if row.get("receipt_id") in returned_ids:
+            row["issue_batch_id"] = issue_batch_id
+    return issue_batch_id
+
+
+def _recover_pending_v3_issue_acknowledgments(
+    root_state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    input_fn: Callable[[str], str] | None,
+) -> bool:
+    """Finish accepted issue obligations before declaring the queue complete."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    pending = root_state.get("v3_pending_issue_acknowledgments", {})
+    if not pending:
+        return True
+    context = build_prediction_execution_context(root_state, authority_store)
+    for pending_key in sorted(tuple(pending)):
+        payload = pending[pending_key]
+        response = execute_with_v3_recovery(
+            lambda payload=payload: v3_adapter.acknowledge_issue(context, payload),
+            root_state=root_state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        )
+        if response is None:
+            root_state["v3_issue_status"] = "accepted_unacknowledged"
+            return False
+        _apply_v3_issue_acknowledgment(root_state, payload, response)
+        pending.pop(pending_key, None)
+    root_state["v3_issue_status"] = "issued"
+    return True
+
+
+def _settle_v3_recorded_round(
+    root_state: Dict[str, Any],
+    round_object: Dict[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    observed_at_utc: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> bool:
+    """Settle canonical recorded times against their exact issued receipt."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    if round_object.get("v3_settlement_status") == "settled":
+        return True
+    rows = list(_v3_receipt_rows(round_object.get("handicap_results", [])))
+    if not rows:
+        raise RuntimeError("recorded V3 field has no receipt-bound mark rows")
+    receipts = {str(row["receipt_id"]) for row in rows}
+    if len(receipts) != 1:
+        raise RuntimeError("one recorded field must settle exactly one V3 receipt")
+    receipt_id = receipts.pop()
+    issue_batch_id = root_state.get("v3_issue_batches", {}).get(receipt_id)
+    if not issue_batch_id:
+        raise RuntimeError("recorded V3 field has not been acknowledged as issued")
+    actual_results = round_object.get("actual_results", {})
+    results = []
+    for row in rows:
+        name = str(row["name"])
+        if name not in actual_results:
+            raise RuntimeError("recorded V3 field lacks a complete observed-time result")
+        results.append(
+            {
+                "competitor_id": str(row["competitor_id"]),
+                "status": "completion",
+                "raw_time_ms": round(float(actual_results[name]) * 1000),
+                "penalty_ms": None,
+                "source_revision": int(round_object.get("result_source_revision", 1)),
+            }
+        )
+    context = build_prediction_execution_context(root_state, authority_store)
+    proposed_payload = {
+        "schema_version": "strathmark-v3-settlement-request-v1",
+        "issue_batch_id": issue_batch_id,
+        "receipt_id": receipt_id,
+        "results": results,
+        "observed_at_utc": observed_at_utc or _utc_milliseconds(),
+        "deadline_ms": 10_000,
+    }
+    payload = round_object.setdefault("v3_pending_settlement_request", proposed_payload)
+    if payload.get("receipt_id") != receipt_id or payload.get("issue_batch_id") != issue_batch_id:
+        raise RuntimeError("pending V3 settlement conflicts with the recorded field")
+    response = execute_with_v3_recovery(
+        lambda: v3_adapter.settle_result(context, payload),
+        root_state=root_state,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        input_fn=input_fn,
+    )
+    if response is None:
+        round_object["v3_settlement_status"] = "recorded_unsettled"
+        return False
+    if response.get("receipt_id") != receipt_id:
+        raise RuntimeError("V3 settlement response does not bind the recorded receipt")
+    round_object["v3_settlement_status"] = "settled"
+    round_object["v3_settlement_id"] = response["settlement_id"]
+    round_object.pop("v3_pending_settlement_request", None)
+    return True
+
+
+def record_and_settle_v3_round(
+    root_state: Dict[str, Any],
+    event: Mapping[str, Any],
+    round_object: Dict[str, Any],
+    *,
+    write_action: Callable[[], bool],
+    authority_store: Any,
+    v3_adapter: Any,
+    observed_at_utc: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> bool:
+    """Write once, then retry only V3 settlement until it is durable."""
+    del event
+    authority = resolve_prediction_engine(root_state, authority_store)
+    if authority.engine != "v3":
+        return bool(write_action())
+    if not round_object.get("canonical_results_recorded"):
+        if not write_action():
+            return False
+        round_object["canonical_results_recorded"] = True
+    return _settle_v3_recorded_round(
+        root_state,
+        round_object,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        observed_at_utc=observed_at_utc,
+        input_fn=input_fn,
+    )
+
+
+def record_and_settle_v3_single_event(
+    single_event_state: Dict[str, Any],
+    round_object: Dict[str, Any],
+    *,
+    write_action: Callable[[], bool],
+    authority_store: Any,
+    v3_adapter: Any,
+    observed_at_utc: str | None = None,
+    input_fn: Callable[[str], str] | None = None,
+) -> bool:
+    """Write and settle a real single-event round against its root authority."""
+    return record_and_settle_v3_round(
+        single_event_state,
+        single_event_state,
+        round_object,
+        write_action=write_action,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        observed_at_utc=observed_at_utc,
+        input_fn=input_fn,
+    )
+
+
+def _v3_closure_rounds(root_state: Mapping[str, Any]) -> tuple[list[tuple[Dict[str, Any], set[str]]], set[str]]:
+    issued = {str(receipt_id) for receipt_id in root_state.get("v3_issue_batches", {})}
+    rounds: list[tuple[Dict[str, Any], set[str]]] = []
+    observed: set[str] = set()
+    events = root_state.get("events")
+    if isinstance(events, list):
+        round_groups = [event.get("rounds", ()) for event in events if isinstance(event, Mapping)]
+    else:
+        round_groups = [root_state.get("rounds", ())]
+    for round_group in round_groups:
+        if not isinstance(round_group, list):
+            continue
+        for round_object in round_group:
+            if not isinstance(round_object, dict):
+                continue
+            receipt_ids = {
+                str(row["receipt_id"])
+                for row in _v3_receipt_rows(round_object.get("handicap_results", ()))
+                if row.get("issue_batch_id") or row.get("receipt_id") in issued
+            }
+            if receipt_ids:
+                observed.update(receipt_ids)
+                rounds.append((round_object, receipt_ids))
+    return rounds, issued - observed
+
+
+def _set_v3_closure_block(root_state: Dict[str, Any], status: str, **evidence: Any) -> None:
+    root_state["prediction_engine_closure"] = {"status": status, "engine": "v3", **evidence}
+
+
+def _close_completed_v3_scope(
+    root_state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    closed_at_utc: str,
+    input_fn: Callable[[str], str] | None,
+) -> None:
+    """Close exact settled V3 rounds and then their scope, or name the block."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    if root_state.get("prediction_engine_closure", {}).get("status") == "closed":
+        return
+    if not callable(getattr(v3_adapter, "close_round", None)) or not callable(getattr(v3_adapter, "close_scope", None)):
+        _set_v3_closure_block(root_state, "blocked_adapter_unavailable")
+        return
+    rounds, missing_receipts = _v3_closure_rounds(root_state)
+    if missing_receipts:
+        _set_v3_closure_block(
+            root_state,
+            "blocked_missing_receipt_evidence",
+            receipt_ids=sorted(missing_receipts),
+        )
+        return
+    if not rounds:
+        _set_v3_closure_block(root_state, "blocked_no_issued_receipts")
+        return
+    unsettled = sorted(
+        receipt_id
+        for round_object, receipt_ids in rounds
+        if round_object.get("v3_settlement_status") != "settled" or not round_object.get("v3_settlement_id")
+        for receipt_id in receipt_ids
+    )
+    if unsettled:
+        _set_v3_closure_block(root_state, "blocked_unsettled_receipts", receipt_ids=unsettled)
+        return
+    missing_round_ids = sorted(
+        receipt_id
+        for round_object, receipt_ids in rounds
+        if not isinstance(round_object.get("v3_round_id"), str) or not round_object["v3_round_id"].strip()
+        for receipt_id in receipt_ids
+    )
+    if missing_round_ids:
+        _set_v3_closure_block(root_state, "blocked_missing_round_identity", receipt_ids=missing_round_ids)
+        return
+
+    grouped_rounds: dict[str, list[Dict[str, Any]]] = {}
+    for round_object, _receipt_ids in rounds:
+        grouped_rounds.setdefault(str(round_object["v3_round_id"]), []).append(round_object)
+
+    context = build_prediction_execution_context(root_state, authority_store)
+    for round_id, local_rounds in sorted(grouped_rounds.items()):
+        if all(round_object.get("v3_round_close_status") == "closed" for round_object in local_rounds):
+            continue
+        proposed = {
+            "schema_version": "strathmark-v3-round-close-request-v1",
+            "round_id": round_id,
+            "closed_at_utc": closed_at_utc,
+            "deadline_ms": 10_000,
+        }
+        pending_payloads = [
+            round_object.get("v3_pending_round_close_request")
+            for round_object in local_rounds
+            if round_object.get("v3_pending_round_close_request") is not None
+        ]
+        payload = pending_payloads[0] if pending_payloads else proposed
+        if any(item != payload for item in pending_payloads) or payload.get("round_id") != round_id:
+            _set_v3_closure_block(root_state, "blocked_conflicting_round_close")
+            return
+        for round_object in local_rounds:
+            round_object["v3_pending_round_close_request"] = payload
+        response = execute_with_v3_recovery(
+            lambda payload=payload: v3_adapter.close_round(context, payload),
+            root_state=root_state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        )
+        if response is None:
+            _set_v3_closure_block(root_state, "blocked_round_close", round_id=round_id)
+            return
+        if (
+            response.get("round_id") != round_id
+            or not str(response.get("closure_id", "")).startswith("round_closure:")
+            or response.get("status") not in {"closed", "recovered"}
+        ):
+            _set_v3_closure_block(root_state, "blocked_invalid_round_close", round_id=round_id)
+            return
+        for round_object in local_rounds:
+            round_object["v3_round_close_status"] = "closed"
+            round_object["v3_round_close_receipt"] = dict(response)
+            round_object.pop("v3_pending_round_close_request", None)
+
+    proposed_scope = {
+        "schema_version": "strathmark-v3-scope-close-request-v1",
+        "scope_id": context.scope_id,
+        "closed_at_utc": closed_at_utc,
+        "deadline_ms": 10_000,
+    }
+    scope_payload = root_state.setdefault("v3_pending_scope_close_request", proposed_scope)
+    if scope_payload.get("scope_id") != context.scope_id:
+        _set_v3_closure_block(root_state, "blocked_conflicting_scope_close")
+        return
+    response = execute_with_v3_recovery(
+        lambda: v3_adapter.close_scope(context, scope_payload),
+        root_state=root_state,
+        authority_store=authority_store,
+        v3_adapter=v3_adapter,
+        input_fn=input_fn,
+    )
+    if response is None:
+        _set_v3_closure_block(root_state, "blocked_scope_close")
+        return
+    if (
+        response.get("scope_id") != context.scope_id
+        or response.get("status") not in {"closed", "recovered"}
+        or not isinstance(response.get("authority_sequence"), int)
+    ):
+        _set_v3_closure_block(root_state, "blocked_invalid_scope_close")
+        return
+    root_state["v3_scope_close_receipt"] = dict(response)
+    root_state.pop("v3_pending_scope_close_request", None)
+    root_state["prediction_engine_closure"] = {
+        "status": "closed",
+        "engine": "v3",
+        "round_ids": sorted(grouped_rounds),
+        "scope_id": context.scope_id,
+    }
+
+
+def finalize_completed_competition(
+    root_state: Dict[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any = None,
+    input_fn: Callable[[str], str] | None = None,
+    prompt_for_feedback: bool = True,
+    closed_at_utc: str | None = None,
+) -> dict[str, Any]:
+    """Finalize local comparison evidence and safely close supported V3 scopes."""
+    from woodchopping.ui.engine_comparison import build_engine_comparison_from_completed_state
+
+    events = root_state.get("events")
+    if isinstance(events, list):
+        completed = bool(events) and all(
+            isinstance(event, Mapping) and event.get("status") == "completed" for event in events
+        )
+    else:
+        rounds = root_state.get("rounds")
+        completed = (
+            isinstance(rounds, list)
+            and bool(rounds)
+            and all(
+                isinstance(round_object, Mapping) and round_object.get("status") == "completed"
+                for round_object in rounds
+            )
+            and isinstance(root_state.get("final_results"), Mapping)
+            and bool(root_state["final_results"])
+        )
+    if not completed:
+        raise ValueError("engine comparison requires a completed competition")
+    authority = resolve_prediction_engine(root_state, authority_store)
+    if authority.engine == "v3":
+        _close_completed_v3_scope(
+            root_state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            closed_at_utc=closed_at_utc or _utc_milliseconds(),
+            input_fn=input_fn,
+        )
+    else:
+        root_state["prediction_engine_closure"] = {"status": "local_comparison_complete", "engine": "v2"}
+
+    records = root_state.setdefault("engine_comparison_records", [])
+    existing = next(
+        (
+            record
+            for record in records
+            if isinstance(record, Mapping) and record.get("competition_id") == authority.reference.scope_id
+        ),
+        None,
+    )
+    if existing is not None:
+        return existing
+    feedback = None
+    if prompt_for_feedback:
+        ask = input if input_fn is None else input_fn
+        feedback = ask("Optional prediction-engine feedback (Enter to skip): ").strip() or None
+    record = build_engine_comparison_from_completed_state(
+        root_state,
+        authority=authority,
+        judge_feedback=feedback,
+    )
+    records.append(record)
+    return record
+
+
+def review_v3_approval_queue(
+    state: Mapping[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    input_fn: Callable[[str], str] | None = None,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
+) -> list[dict[str, Any]]:
+    """Batch ordinary fields and force exception fields through individual review."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    ask = input if input_fn is None else input_fn
+    if not isinstance(state, dict):
+        raise TypeError("V3 approval workflow requires mutable competition state")
+    if checkpoint_callback is None:
+        raise ValueError("V3 approval workflow requires a durable checkpoint callback")
+    decisions: list[dict[str, Any]] = []
+    pending_approval = state.get("v3_pending_approval_decision")
+    if pending_approval is not None:
+        decision = _complete_pending_v3_approval(
+            state,
+            pending_approval,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+            checkpoint_callback=checkpoint_callback,
+        )
+        if decision is None:
+            saved_decision = pending_approval.get("decision") if isinstance(pending_approval, Mapping) else None
+            if isinstance(saved_decision, dict):
+                decisions.append(saved_decision)
+            return decisions
+        decisions.append(decision)
+    if state.get("v3_pending_issue_acknowledgments"):
+        if not callable(getattr(v3_adapter, "acknowledge_issue", None)):
+            state["v3_issue_status"] = "accepted_unacknowledged"
+            print("\n[BLOCKED] The V3 adapter cannot retry pending issue acknowledgment.")
+            print("The approval queue cannot be declared complete yet.")
+            return []
+        if not _recover_pending_v3_issue_acknowledgments(
+            state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        ):
+            print("\n[BLOCKED] Accepted V3 receipts still require exact issue acknowledgment.")
+            print("The approval queue cannot be declared complete yet.")
+            return []
+        if not checkpoint_callback(state):
+            raise RuntimeError("recovered V3 issue acknowledgment could not be checkpointed")
+    context = build_prediction_execution_context(state, authority_store)
+
+    def binding(row: Mapping[str, Any]) -> dict[str, Any]:
+        return {
+            "field_id": row["field_id"],
+            "receipt_id": row["receipt_id"],
+            "receipt_digest": row["receipt_content_digest"],
+            "receipt_revision": row["receipt_revision"],
+            "upstream_field_revision": row["upstream_field_revision"],
+            "row_digest": row["row_digest"],
+            "call_order": row["call_order"],
+        }
+
+    while True:
+        page = v3_adapter.approval_page(
+            context,
+            tournament_id=context.scope_id,
+            offset=0,
+            limit=100,
+        )
+        rows = [row for row in page.get("rows", []) if row.get("decision_state") == "undecided"]
+        if not rows:
+            print("\n[OK] No undecided V3 fields remain in the approval queue.")
+            return decisions
+        ordinary = [row for row in rows if row.get("ordinary_batch_eligible") is True]
+        degraded = [row for row in rows if row.get("degraded_batch_eligible") is True]
+        flagged = [row for row in rows if row not in ordinary and row not in degraded]
+        print(f"\nV3 APPROVAL QUEUE: {len(ordinary)} ordinary | {len(degraded)} degraded | {len(flagged)} flagged")
+
+        selected: list[Mapping[str, Any]]
+        action: str
+        reason_code: str
+        if ordinary:
+            if (
+                ask(f"Approve {len(ordinary)} ordinary green/amber field(s) as one batch? (y/n): ").strip().lower()
+                != "y"
+            ):
+                return decisions
+            selected = ordinary
+            action = "ordinary_batch_accept"
+            reason_code = "judge_batch_review"
+        elif degraded:
+            if ask(f"Approve {len(degraded)} degraded field(s) as one explicit batch? (y/n): ").strip().lower() != "y":
+                return decisions
+            selected = degraded
+            action = "degraded_batch_accept"
+            reason_code = "judge_degraded_review"
+        else:
+            row = flagged[0]
+            detail = v3_adapter.approval_detail(
+                context,
+                tournament_id=context.scope_id,
+                snapshot_id=page["snapshot_id"],
+                receipt_id=row["receipt_id"],
+            )
+            print(f"\nFLAGGED FIELD {row['field_id']} | lane={row.get('lane', 'unknown')}")
+            print(f"Rules: {', '.join(row.get('causal_rule_codes', [])) or 'none'}")
+            print(f"Affected competitors: {len(row.get('affected_competitors', []))}")
+            print(f"Detail evidence loaded: {bool(detail.get('detail'))}")
+            choice = ask("A=accept, X=exclude, D=defer, C=cancel: ").strip().lower()
+            if choice == "c":
+                return decisions
+            actions = {"a": "individual_accept", "x": "exclude", "d": "defer"}
+            if choice not in actions:
+                print("[WARN] No decision recorded; choose A, X, D, or C.")
+                continue
+            selected = [row]
+            action = actions[choice]
+            reason_code = f"judge_{action}"
+        payload = {
+            "schema_version": "strathmark-v3-approval-decision-request-v1",
+            "tournament_id": context.scope_id,
+            "snapshot_id": page["snapshot_id"],
+            "action": action,
+            "selected": [binding(row) for row in selected],
+            "excluded": [],
+            "actor_metadata": {
+                "asserted_actor_id": context.selected_by_actor_id,
+                "trust_model": "local_os_user",
+            },
+            "reason_code": reason_code,
+            "superseded_receipt_id": None,
+            "decided_at_utc": _utc_milliseconds(),
+            "deadline_ms": 10_000,
+        }
+        pending = {
+            "payload": payload,
+            "selected": [dict(row) for row in selected],
+            "action": action,
+        }
+        state["v3_pending_approval_decision"] = pending
+        if not checkpoint_callback(state):
+            raise RuntimeError("pending V3 approval decision could not be checkpointed")
+        decision = _complete_pending_v3_approval(
+            state,
+            pending,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+            checkpoint_callback=checkpoint_callback,
+        )
+        if decision is None:
+            saved_decision = pending.get("decision")
+            if isinstance(saved_decision, dict):
+                decisions.append(saved_decision)
+            return decisions
+        decisions.append(decision)
+
+
+def _complete_pending_v3_approval(
+    state: Dict[str, Any],
+    pending: Mapping[str, Any],
+    *,
+    authority_store: Any,
+    v3_adapter: Any,
+    input_fn: Callable[[str], str] | None,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool],
+) -> dict[str, Any] | None:
+    """Finish one durable decision, local evidence, and issue acknowledgment."""
+    from woodchopping.ui.handicap_ui import build_prediction_execution_context
+
+    if not isinstance(pending, dict):
+        raise RuntimeError("pending V3 approval decision is malformed")
+    payload = pending.get("payload")
+    selected = pending.get("selected")
+    action = pending.get("action")
+    if not isinstance(payload, dict) or not isinstance(selected, list) or not isinstance(action, str):
+        raise RuntimeError("pending V3 approval decision is incomplete")
+    context = build_prediction_execution_context(state, authority_store)
+    decision = pending.get("decision")
+    if decision is None:
+        decision = execute_with_v3_recovery(
+            lambda: v3_adapter.decide_approval(context, payload),
+            root_state=state,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        )
+        if decision is None:
+            return None
+        if not isinstance(decision, dict):
+            raise RuntimeError("V3 approval decision response is malformed")
+        pending["decision"] = decision
+        if not checkpoint_callback(state):
+            raise RuntimeError("accepted V3 approval decision could not be checkpointed")
+
+    _record_prediction_review_evidence(state, selected, action)
+    pending["local_evidence_recorded"] = True
+    if not checkpoint_callback(state):
+        raise RuntimeError("V3 local review evidence could not be checkpointed")
+
+    accepted_actions = {
+        "ordinary_batch_accept",
+        "degraded_batch_accept",
+        "individual_accept",
+        "override_submitted",
+    }
+    if action in accepted_actions and callable(getattr(v3_adapter, "acknowledge_issue", None)):
+        issue_batch_id = acknowledge_v3_issued_marks(
+            state,
+            selected,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            input_fn=input_fn,
+        )
+        if issue_batch_id is None:
+            state["v3_issue_status"] = "accepted_unacknowledged"
+            checkpoint_callback(state)
+            return None
+        state["v3_issue_status"] = "issued"
+        pending["issue_batch_id"] = issue_batch_id
+        if not checkpoint_callback(state):
+            raise RuntimeError("V3 issue acknowledgment could not be checkpointed")
+
+    state.pop("v3_pending_approval_decision", None)
+    if not checkpoint_callback(state):
+        raise RuntimeError("completed V3 approval state could not be checkpointed")
+    return decision
+
+
+def _record_prediction_review_evidence(
+    state: Dict[str, Any],
+    selected: list[Mapping[str, Any]],
+    action: str,
+) -> None:
+    """Retain pseudonymous review facts for later observational comparison."""
+    evidence = state.setdefault("prediction_review_evidence", [])
+    by_field = {item.get("field_id"): item for item in evidence if isinstance(item, dict)}
+    for row in selected:
+        field_id = row.get("field_id")
+        if not isinstance(field_id, str) or not field_id.startswith("field:"):
+            continue
+        classification = row.get("classification")
+        if classification not in {"green", "amber", "red"}:
+            lane = row.get("lane")
+            classification = lane if lane in {"green", "amber", "red"} else "unknown"
+        current = by_field.get(field_id)
+        if current is None:
+            current = {"field_id": field_id, "classification": classification, "interventions": []}
+            evidence.append(current)
+            by_field[field_id] = current
+        current["interventions"] = sorted({*current.get("interventions", ()), action})
 
 
 def _reject_unsupported_bracket_events(tournament_state: Dict) -> bool:
@@ -65,7 +1259,13 @@ def _event_competition_has_started(event: Dict) -> bool:
     return False
 
 
-def create_multi_event_tournament() -> Dict:
+def create_multi_event_tournament(
+    *,
+    authority_store: Any = None,
+    readiness_provider: V3ReadinessProvider = unavailable_v3_readiness,
+    actor: str = "local-judge",
+    selected_at: Optional[str] = None,
+) -> Dict:
     """Create a new multi-event tournament structure.
 
     Prompts judge for:
@@ -103,6 +1303,16 @@ def create_multi_event_tournament() -> Dict:
         "current_event_index": 0,
         "events": [],
     }
+
+    if authority_store is not None:
+        select_prediction_engine_for_scope(
+            tournament_state,
+            authority_store=authority_store,
+            owner_kind="tournament",
+            readiness_provider=readiness_provider,
+            actor=actor,
+            selected_at=selected_at,
+        )
 
     print(f"\n[OK] Tournament '{tournament_name}' created for {tournament_date}")
     print("[OK] You can now add events to this tournament")
@@ -195,146 +1405,70 @@ def setup_tournament_roster(tournament_state: Dict, comp_df: pd.DataFrame) -> Di
     return tournament_state
 
 
-def save_multi_event_tournament(tournament_state: Dict, filename: str = "saves/multi_tournament_state.json") -> None:
-    """Save multi-event tournament state to JSON file.
-
-    Handles DataFrame serialization and NumPy type conversion for all events and rounds.
+def save_multi_event_tournament(
+    tournament_state: Dict,
+    filename: str = "saves/multi_tournament_state.json",
+    *,
+    authority_store: Any = None,
+) -> bool:
+    """Save multi-event state through the canonical persistence layer.
 
     Args:
         tournament_state: Multi-event tournament state dictionary
         filename: Output filename (default: saves/multi_tournament_state.json)
+        authority_store: Optional canonical prediction-authority store
     """
-    import numpy as np
+    from woodchopping.ui import state_persistence
 
-    class NumpyEncoder(json.JSONEncoder):
-        """Custom JSON encoder for NumPy types."""
-
-        def default(self, obj):
-            if isinstance(obj, (np.integer, np.int64, np.int32)):
-                return int(obj)
-            elif isinstance(obj, (np.floating, np.float64, np.float32)):
-                return float(obj)
-            elif isinstance(obj, np.ndarray):
-                return obj.tolist()
-            return super().default(obj)
-
-    try:
-        # Deep copy to avoid mutating original
-        state_copy = copy.deepcopy(tournament_state)
-
-        # Convert top-level DataFrames (V5.1)
-        if "competitor_roster_df" in state_copy and isinstance(state_copy["competitor_roster_df"], pd.DataFrame):
-            state_copy["competitor_roster_df"] = state_copy["competitor_roster_df"].to_dict("records")
-
-        # Convert DataFrames to dict records for JSON serialization
-        for event in state_copy.get("events", []):
-            # Convert event-level DataFrame
-            if "all_competitors_df" in event and isinstance(event["all_competitors_df"], pd.DataFrame):
-                event["all_competitors_df"] = event["all_competitors_df"].to_dict("records")
-
-            # Convert round-level DataFrames
-            for round_obj in event.get("rounds", []):
-                if "competitors_df" in round_obj and isinstance(round_obj["competitors_df"], pd.DataFrame):
-                    round_obj["competitors_df"] = round_obj["competitors_df"].to_dict("records")
-
-        # Write to JSON with custom encoder for NumPy types
-        with open(filename, "w", encoding="utf-8") as f:
-            json.dump(state_copy, f, indent=2, ensure_ascii=False, cls=NumpyEncoder)
-
-        print(f"\n[OK] Tournament state saved to {filename}")
-
-    except Exception as e:
-        print(f"\n[WARN] Error saving tournament state: {e}")
+    return state_persistence.save_multi_event_tournament(
+        tournament_state,
+        filename,
+        authority_store=_configured_authority_store(authority_store),
+    )
 
 
 def load_multi_event_tournament(
     filename: str = "saves/multi_tournament_state.json",
+    *,
+    authority_store: Any = None,
 ) -> Optional[Dict]:
-    """Load multi-event tournament state from JSON file.
-
-    Reconstructs DataFrames from dict records.
+    """Load multi-event state through the canonical persistence layer.
 
     Args:
         filename: Input filename (default: saves/multi_tournament_state.json)
+        authority_store: Optional canonical prediction-authority store
 
     Returns:
         dict: Loaded tournament state, or None if load failed
     """
-    try:
-        with open(filename, "r", encoding="utf-8") as f:
-            tournament_state = json.load(f)
+    from woodchopping.ui import state_persistence
 
-        # Reconstruct top-level DataFrames (V5.1)
-        if "competitor_roster_df" in tournament_state and isinstance(tournament_state["competitor_roster_df"], list):
-            tournament_state["competitor_roster_df"] = pd.DataFrame(tournament_state["competitor_roster_df"])
-
-        # Reconstruct DataFrames
-        for event in tournament_state.get("events", []):
-            # Reconstruct event-level DataFrame
-            if "all_competitors_df" in event and isinstance(event["all_competitors_df"], list):
-                event["all_competitors_df"] = pd.DataFrame(event["all_competitors_df"])
-
-            # Reconstruct round-level DataFrames
-            for round_obj in event.get("rounds", []):
-                if "competitors_df" in round_obj and isinstance(round_obj["competitors_df"], list):
-                    round_obj["competitors_df"] = pd.DataFrame(round_obj["competitors_df"])
-
-            # Backward compatibility: add event_type for legacy tournaments
-            if "event_type" not in event:
-                event["event_type"] = "handicap"
-
-            # Backward compatibility: add payout_config for legacy tournaments (V4.5)
-            if "payout_config" not in event:
-                event["payout_config"] = None
-
-            # Backward compatibility: add competitor_status to events (V5.1)
-            if "competitor_status" not in event:
-                event["competitor_status"] = {name: "active" for name in event.get("all_competitors", [])}
-
-        # Backward compatibility: add tournament_roster for legacy tournaments (V5.1)
-        if "tournament_roster" not in tournament_state:
-            # Legacy tournament - build minimal roster from event assignments
-            all_comp_names = set()
-            for event in tournament_state.get("events", []):
-                all_comp_names.update(event.get("all_competitors", []))
-
-            # Build minimal roster
-            tournament_state["tournament_roster"] = [
-                {
-                    "competitor_name": name,
-                    "competitor_id": "",
-                    "events_entered": [],  # Empty - legacy tournaments already have events populated
-                    "entry_fees_paid": {},
-                }
-                for name in sorted(all_comp_names)
-            ]
-            tournament_state["entry_fee_tracking_enabled"] = False
-            tournament_state["competitor_roster_df"] = pd.DataFrame()
-
-        print(f"\n[OK] Tournament state loaded from {filename}")
-        print(f"[OK] Tournament: {tournament_state.get('tournament_name', 'Unknown')}")
-        print(f"[OK] Events: {tournament_state.get('total_events', 0)}")
-
-        return tournament_state
-
-    except FileNotFoundError:
-        print(f"\n[WARN] Tournament file '{filename}' not found")
-        return None
-    except Exception as e:
-        print(f"\n[WARN] Error loading tournament state: {e}")
-        return None
+    return state_persistence.load_multi_event_tournament(
+        filename,
+        authority_store=_configured_authority_store(authority_store),
+    )
 
 
-def auto_save_multi_event(tournament_state: Dict) -> None:
+def auto_save_multi_event(tournament_state: Dict, *, authority_store: Any = None) -> bool:
     """Auto-save multi-event tournament state with default filename.
 
     Args:
         tournament_state: Multi-event tournament state dictionary
     """
-    save_multi_event_tournament(tournament_state, "saves/multi_tournament_state.json")
+    return save_multi_event_tournament(
+        tournament_state,
+        "saves/multi_tournament_state.json",
+        authority_store=authority_store,
+    )
 
 
-def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, results_df: pd.DataFrame) -> Dict:
+def add_event_to_tournament(
+    tournament_state: Dict,
+    comp_df: pd.DataFrame,
+    results_df: pd.DataFrame,
+    *,
+    authority_store: Any = None,
+) -> Dict:
     """Add a new event to the tournament (wood, format, competitors ONLY).
 
     Sequential workflow:
@@ -361,6 +1495,8 @@ def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, resul
     print(f"Tournament: {tournament_state.get('tournament_name', 'Unknown')}")
     print(f"Current events: {tournament_state.get('total_events', 0)}")
     print(f"{'=' * 70}")
+    if authority_store is not None:
+        display_inherited_prediction_engine(tournament_state, authority_store)
 
     # Generate event ID
     event_order = tournament_state["total_events"] + 1
@@ -559,15 +1695,31 @@ def add_event_to_tournament(tournament_state: Dict, comp_df: pd.DataFrame, resul
     print("Status: PENDING (awaiting competitor assignment)")
     print(f"{'=' * 70}")
 
-    # Auto-save
-    auto_save_multi_event(tournament_state)
+    # Auto-save through canonical authority when this tournament has a selected
+    # engine. Legacy callers without an authority store retain the old path.
+    if authority_store is None:
+        auto_save_multi_event(tournament_state)
+    else:
+        save_multi_event_tournament(
+            tournament_state,
+            "saves/multi_tournament_state.json",
+            authority_store=authority_store,
+        )
 
     input("\nPress Enter to continue...")
 
     return tournament_state
 
 
-def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFrame) -> Dict:
+def calculate_all_event_handicaps(
+    tournament_state: Dict,
+    results_df: pd.DataFrame,
+    *,
+    authority_store: Any = None,
+    engine_router: Any = None,
+    forecast_adapter: Any = None,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
+) -> Dict:
     """Calculate handicaps for ALL events in the tournament (BATCH OPERATION).
 
     This is the key function for the batch handicap workflow. It processes all
@@ -699,16 +1851,38 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
         # Calculate handicaps for this event
         staged_event = dict(event)
         event_cutoff = ensure_prediction_as_of(staged_event, fallback=tournament_cutoff)
-        handicap_results = calculate_ai_enhanced_handicaps(
-            event["all_competitors_df"],
-            event["wood_species"],
-            event["wood_diameter"],
-            event["wood_quality"],
-            event["event_code"],
-            results_df,
-            progress_callback=show_progress,
-            prediction_as_of=event_cutoff,
-        )
+        from woodchopping.ui.handicap_ui import calculate_authoritative_seeding
+
+        if authority_store is None or engine_router is None:
+            handicap_results = calculate_ai_enhanced_handicaps(
+                event["all_competitors_df"],
+                event["wood_species"],
+                event["wood_diameter"],
+                event["wood_quality"],
+                event["event_code"],
+                results_df,
+                progress_callback=show_progress,
+                prediction_as_of=event_cutoff,
+            )
+        else:
+            handicap_results = calculate_authoritative_seeding(
+                root_state=tournament_state,
+                child=event,
+                authority_store=authority_store,
+                engine_router=engine_router,
+                field_local_id=f"event:{event.get('event_id', event.get('event_name', event_idx))}:initial",
+                round_local_id=f"event-{event.get('event_id', event.get('event_name', event_idx))}",
+                competitors_df=event["all_competitors_df"],
+                wood_species=event["wood_species"],
+                wood_diameter=event["wood_diameter"],
+                wood_quality=event["wood_quality"],
+                event_code=event["event_code"],
+                results_df=results_df,
+                progress_callback=show_progress,
+                prediction_as_of=event_cutoff,
+                forecast_adapter=forecast_adapter,
+                checkpoint_callback=checkpoint_callback,
+            )
 
         if not handicap_results:
             progress_display.finish("No handicap results returned")
@@ -758,8 +1932,10 @@ def calculate_all_event_handicaps(tournament_state: Dict, results_df: pd.DataFra
     print(f"{'=' * 70}")
 
     # Auto-save
-    auto_save_multi_event(tournament_state)
-    print("\n[OK] Tournament state auto-saved")
+    if authority_store is None:
+        auto_save_multi_event(tournament_state)
+    else:
+        auto_save_multi_event(tournament_state, authority_store=authority_store)
 
     input("\nPress Enter to continue...")
     return tournament_state
@@ -801,6 +1977,11 @@ def analyze_single_event(event: Dict, event_index: int, tournament_state: Dict) 
 
     if not event["handicap_results_all"]:
         print("\n[WARN] No handicaps calculated for this event.")
+        input("\nPress Enter to continue...")
+        return
+    if event.get("event_type") != "championship" and any("mark" not in row for row in event["handicap_results_all"]):
+        print("\nV3 pre-field forecasts are ready for schedule generation.")
+        print("Exact field-relative marks are created only after the event's heats and stands exist.")
         input("\nPress Enter to continue...")
         return
 
@@ -898,7 +2079,6 @@ def analyze_single_event(event: Dict, event_index: int, tournament_state: Dict) 
         print("  You can now manually adjust handicaps for this event in the Approval menu.")
         # Auto-save
         auto_save_multi_event(tournament_state)
-        print("[OK] Tournament state auto-saved")
     else:
         print("\n[WARN] Analysis not marked complete")
         print("  Manual handicap adjustments will not be available for this event.")
@@ -1075,7 +2255,6 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                     print(f"\n[OK] All handicaps approved by {initials} at {timestamp}")
                     # Auto-save
                     auto_save_multi_event(tournament_state)
-                    print("[OK] Tournament state auto-saved")
                 else:
                     print("\n[WARN] Approval cancelled")
 
@@ -1159,7 +2338,6 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                     print(f"\n[OK] Championship marks approved by {initials} at {timestamp}")
                     # Auto-save
                     auto_save_multi_event(tournament_state)
-                    print("[OK] Tournament state auto-saved")
                 else:
                     print("\n[WARN] Approval cancelled")
 
@@ -1195,7 +2373,6 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                 print(f"\n[OK] Handicaps approved by {initials} at {timestamp}")
                 # Auto-save
                 auto_save_multi_event(tournament_state)
-                print("[OK] Tournament state auto-saved")
             else:
                 print("\n[WARN] Approval cancelled")
 
@@ -1317,7 +2494,6 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                 print(f"\n[OK] Adjusted handicaps approved by {initials} at {timestamp}")
                 # Auto-save
                 auto_save_multi_event(tournament_state)
-                print("[OK] Tournament state auto-saved")
             else:
                 print("\n[WARN] Approval cancelled - adjustments saved but not approved")
 
@@ -1835,7 +3011,13 @@ def assign_competitors_to_events(tournament_state: Dict) -> Dict:
     return tournament_state
 
 
-def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
+def generate_complete_day_schedule(
+    tournament_state: Dict,
+    *,
+    authority_store: Any = None,
+    engine_router: Any = None,
+    authority_checkpoint_callback: Callable[[Dict[str, Any]], None] | None = None,
+) -> Dict:
     """Generate initial heats for ALL events in tournament.
 
     For each event:
@@ -1877,6 +3059,8 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
     if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
 
+    v3_results_df = None
+
     # Generate heats for each event
     for event in tournament_state["events"]:
         # Get event type indicator
@@ -1897,6 +3081,58 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
         num_competitors = len(event["all_competitors"])
         num_stands = event["num_stands"]
 
+        def materialize_v3_marks(heats):
+            nonlocal v3_results_df
+            if authority_store is None or engine_router is None:
+                return heats
+            authority = resolve_prediction_engine(tournament_state, authority_store)
+            if authority.engine != "v3" or event_type == "championship":
+                return heats
+            from woodchopping.data import load_results_df
+            from woodchopping.ui.handicap_ui import calculate_authoritative_field
+
+            event_id = event.get("event_id", event.get("event_name", "event"))
+            if v3_results_df is None:
+                v3_results_df = load_results_df()
+            competitor_index = event["all_competitors_df"].set_index("competitor_name")
+            materialized = []
+            for heat_index, heat in enumerate(heats, 1):
+                ordered = competitor_index.loc[heat["competitors"]].reset_index()
+                marks = calculate_authoritative_field(
+                    root_state=tournament_state,
+                    child=event,
+                    authority_store=authority_store,
+                    engine_router=engine_router,
+                    field_local_id=f"event:{event_id}:heat-{heat_index}",
+                    round_local_id=f"event-{event_id}",
+                    stand_local_ids=[
+                        f"event-{event_id}-heat-{heat_index}-stand-{ordinal + 1}" for ordinal in range(len(ordered))
+                    ],
+                    competitors_df=ordered,
+                    wood_species=event["wood_species"],
+                    wood_diameter=event["wood_diameter"],
+                    wood_quality=event["wood_quality"],
+                    event_code=event["event_code"],
+                    results_df=v3_results_df,
+                    prediction_as_of=event.get("prediction_as_of", tournament_state.get("prediction_as_of")),
+                    authority_checkpoint_callback=authority_checkpoint_callback,
+                )
+                if len(marks) != len(ordered) or any("mark" not in item for item in marks):
+                    raise RuntimeError("V3 did not return a complete exact-field mark sheet")
+                updated = dict(heat)
+                updated["competitors_df"] = ordered
+                updated["handicap_results"] = marks
+                from woodchopping.ui.prediction_context import derive_scope_identity
+
+                updated["v3_round_id"] = derive_scope_identity(
+                    authority.reference.scope_id,
+                    "round",
+                    f"event-{event_id}",
+                )
+                materialized.append(updated)
+            event["handicap_results_all"] = [item for heat in materialized for item in heat["handicap_results"]]
+            return materialized
+
         # Check format
         if event["format"] == "single_heat":
             # Single heat mode
@@ -1915,6 +3151,20 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
                     "advancers": [],
                 }
             ]
+            if authority_store is not None and engine_router is not None:
+                v3_adapter = getattr(engine_router, "v3_adapter", None)
+                if v3_adapter is not None:
+                    recovered = execute_with_v3_recovery(
+                        lambda: materialize_v3_marks(heats),
+                        root_state=tournament_state,
+                        authority_store=authority_store,
+                        v3_adapter=v3_adapter,
+                    )
+                    if recovered is None:
+                        return tournament_state
+                    heats = recovered
+                else:
+                    heats = materialize_v3_marks(heats)
 
             # Display detailed stand assignments
             print(f"\n{'-' * 70}")
@@ -1958,6 +3208,20 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
                 stands_per_heat,  # Use optimal stands per heat, not total available stands
                 num_heats,
             )
+            if authority_store is not None and engine_router is not None:
+                v3_adapter = getattr(engine_router, "v3_adapter", None)
+                if v3_adapter is not None:
+                    recovered = execute_with_v3_recovery(
+                        lambda: materialize_v3_marks(heats),
+                        root_state=tournament_state,
+                        authority_store=authority_store,
+                        v3_adapter=v3_adapter,
+                    )
+                    if recovered is None:
+                        return tournament_state
+                    heats = recovered
+                else:
+                    heats = materialize_v3_marks(heats)
 
             # Display detailed heat assignments with stand numbers
             for heat in heats:
@@ -1999,7 +3263,10 @@ def generate_complete_day_schedule(tournament_state: Dict) -> Dict:
     print("All events ready for competition!")
 
     # Auto-save
-    auto_save_multi_event(tournament_state)
+    if authority_store is None:
+        auto_save_multi_event(tournament_state)
+    else:
+        auto_save_multi_event(tournament_state, authority_store=authority_store)
 
     input("\nPress Enter to continue...")
     return tournament_state
@@ -2155,7 +3422,16 @@ def display_event_progress(event_obj: Dict, current_round: Dict) -> None:
     print(f"Status: {current_round['status']}")
 
 
-def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, heat_assignment_df: pd.DataFrame) -> Dict:
+def sequential_results_workflow(
+    tournament_state: Dict,
+    wood_selection: Dict,
+    heat_assignment_df: pd.DataFrame,
+    *,
+    authority_store: Any = None,
+    engine_router: Any = None,
+    forecast_adapter: Any = None,
+    authority_checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
+) -> Dict:
     """Sequential results entry workflow for all events in tournament.
 
     Guides judge through recording results for all rounds across all events.
@@ -2200,6 +3476,13 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
         event_idx, event_obj, round_obj = get_next_incomplete_round(tournament_state)
 
         if event_idx is None:
+            if authority_store is not None:
+                finalize_completed_competition(
+                    tournament_state,
+                    authority_store=authority_store,
+                    v3_adapter=getattr(engine_router, "v3_adapter", None),
+                )
+                auto_save_multi_event(tournament_state, authority_store=authority_store)
             print(f"\n{'=' * 70}")
             print("  [OK] ALL EVENTS COMPLETED!")
             print(f"{'=' * 70}")
@@ -2235,18 +3518,46 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
                 "event": event_obj["event_code"],
             }
 
-            # Record results using existing function
-            entry_succeeded = append_results_to_excel(
-                heat_assignment_df,  # Legacy param (not used)
-                event_wood,
-                round_object=round_obj,
-                tournament_state=tournament_state,
-                event_name=event_obj["event_name"],  # Pass event name for HeatID
-            )
+            def write_results() -> bool:
+                return append_results_to_excel(
+                    heat_assignment_df,  # Legacy param (not used)
+                    event_wood,
+                    round_object=round_obj,
+                    tournament_state=tournament_state,
+                    event_name=event_obj["event_name"],  # Pass event name for HeatID
+                )
+
+            use_v3_settlement = False
+            v3_adapter = None
+            if authority_store is not None and engine_router is not None:
+                authority = resolve_prediction_engine(tournament_state, authority_store)
+                use_v3_settlement = authority.engine == "v3" and event_obj.get("event_type") != "championship"
+                if use_v3_settlement:
+                    v3_adapter = getattr(engine_router, "v3_adapter", None)
+                    if v3_adapter is None:
+                        raise RuntimeError("selected V3 engine has no settlement adapter")
+            if use_v3_settlement:
+                entry_succeeded = record_and_settle_v3_round(
+                    tournament_state,
+                    event_obj,
+                    round_obj,
+                    write_action=write_results,
+                    authority_store=authority_store,
+                    v3_adapter=v3_adapter,
+                )
+            else:
+                entry_succeeded = write_results()
 
             if not entry_succeeded:
-                print("\n[WARN] Results were not saved. This round remains open for retry.")
-                auto_save_multi_event(tournament_state)
+                if round_obj.get("canonical_results_recorded"):
+                    print("\n[WARN] Results were saved, but V3 settlement remains blocked for exact retry.")
+                    print("The Excel rows will not be written again on the next attempt.")
+                else:
+                    print("\n[WARN] Results were not saved. This round remains open for retry.")
+                if authority_store is None:
+                    auto_save_multi_event(tournament_state)
+                else:
+                    auto_save_multi_event(tournament_state, authority_store=authority_store)
                 input("\nPress Enter to continue...")
                 continue
 
@@ -2310,6 +3621,12 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
                             all_advancers,
                             next_type,
                             is_championship=(event_obj.get("event_type") == "championship"),
+                            authority_store=authority_store,
+                            engine_router=engine_router,
+                            authority_child=event_obj,
+                            authority_root_state=tournament_state,
+                            forecast_adapter=forecast_adapter,
+                            authority_checkpoint_callback=authority_checkpoint_callback,
                         )
 
                         # Add to event rounds
@@ -2329,7 +3646,10 @@ def sequential_results_workflow(tournament_state: Dict, wood_selection: Dict, he
                 event_obj["status"] = "in_progress"
 
             # Auto-save
-            auto_save_multi_event(tournament_state)
+            if authority_store is None:
+                auto_save_multi_event(tournament_state)
+            else:
+                auto_save_multi_event(tournament_state, authority_store=authority_store)
 
             input("\nPress Enter to continue to next round...")
 

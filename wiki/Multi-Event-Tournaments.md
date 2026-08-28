@@ -1,10 +1,10 @@
 # Multi-Event Tournaments
 
-A multi-event day stores tournament metadata, a shared roster, event-specific competitors, wood, format, rounds, marks, schedules, results, and payouts.
+A multi-event day stores tournament metadata, one deliberate root engine selection, a shared roster, event-specific competitors, wood, format, rounds, marks, schedules, results, and payouts. Child events and rounds inherit the root selection and never expose their own selector.
 
 The tournament date becomes the default exclusive STRATHMARK evidence cutoff. Each event persists its own copy so save/reload and recalculation remain reproducible.
 
-Batch handicap calculation calls STRATHMARK v2 once per handicap field. Championship events keep mark 3. Later rounds recalculate their advancing field under the original cutoff; they do not apply 97/3 same-day weighting.
+With V2 selected, batch handicap calculation preserves the established V2 field contract. With V3 selected, mark-free forecasts support initial seeding; exact field membership and stand assignments are then sent for complete field-relative marks. Championship events keep mark 3. Later rounds inherit the tournament engine and recalculate their advancing field under its evidence contract; they never switch engines or apply an undocumented fallback.
 
 Recalculation is blocked once results entry begins. Recalculating a scheduled event invalidates its generated heats. If recalculation fails, the affected event's previous marks and pending rounds are cleared and its status becomes `recalculation_failed`. Results entry and schedule export stay blocked until that event calculates successfully and the day schedule is regenerated.
 

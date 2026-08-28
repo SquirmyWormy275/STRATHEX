@@ -15,6 +15,7 @@ dependencies = [
     "numpy",
     "openpyxl",
     "requests",
+    "cryptography>=43,<47",
     # STRATHMARK is the handicap calculation engine, released under the Apache License 2.0.
     # License compatibility: STRATHEX is MIT and Apache 2.0 is a compatible permissive license.
     # STRATHMARK 2.0.0 is distributed from GitHub rather than PyPI. Pin the
@@ -47,7 +48,12 @@ allow-direct-references = true
 path = "woodchopping/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["woodchopping", "config.py"]
+only-include = [
+    "woodchopping",
+    "config.py",
+    "explanation_system_functions.py",
+    "MainProgramV5_2.py",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1,7 +1,7 @@
 # System Status
 
-**Current target:** STRATHEX 7.0.0 with STRATHMARK 2.0.0
-**Status date:** 2026-08-18
+**Current target:** competition-scoped STRATHMARK V2/V3 selection in STRATHEX
+**Status date:** 2026-08-27
 
 ## Implemented
 
@@ -16,17 +16,23 @@
 - Pre-v2 ResultStore backup and stable competition IDs.
 - Single/multi-event replay and bracket-bye regression coverage.
 - Maintained docs, in-app help, and versioned wiki source aligned to v2.
+- Deliberate no-default engine selection at single-event or tournament root.
+- Tournament-wide inheritance with no child-event override and no engine fallback.
+- Readiness-gated V3 rehearsal using authenticated loopback lifecycle calls.
+- Mark-free V3 pre-field seeding forecasts followed by exact-field mark assembly.
+- Durable V3 recovery identities and exception-first approval review.
 
 ## Explicit boundaries
 
 - Excel and ResultStore are not transactionally atomic together.
 - Public HTTP calculation is stateless and unauthenticated.
-- PredictionLedger trusted receipts are not enabled for STRATHEX.
+- V2 PredictionLedger trusted routes remain separate; V3-selected scopes use signed V3 lifecycle receipts.
 - Remote HTTP requires HTTPS; loopback HTTP is for the demo.
 - Simulation remains local and is not transport-parity with the capped REST simulation endpoint.
 - Undated and same-day results are excluded by the v2 prior-only contract.
 - Wood quality and same-tournament times do not change v2 numerics.
 - Legacy local XGBoost/LLM modules are compatibility/history code, not live prediction authority.
+- V3 production mode is unavailable in this STRATHEX release. Even a service-level `production_ready` result is displayed as readiness evidence and bound to rehearsal mode; a separate explicit cutover release is required.
 
 ## Remaining release operations
 

@@ -462,3 +462,41 @@ def test_bracket_with_byes_resumes_to_champion_without_result_writes(tmp_path):
     assert state["completed_matches"] == state["total_matches"]
     assert not list(tmp_path.glob("*.xlsx"))
     assert not list(tmp_path.glob("*.db"))
+
+
+def test_tournament_children_inherit_one_root_selection_across_replay(tmp_path):
+    from woodchopping.ui.prediction_context import (
+        PredictionAuthorityStore,
+        attach_authority_reference,
+        resolve_authority_for_state,
+    )
+
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    created = store.create_scope(owner_kind="tournament", scope_id="strathex:tournament-001")
+    selected = store.select_engine(
+        created.reference,
+        engine="v3",
+        actor="judge:local",
+        selected_at="2026-08-27T15:00:00Z",
+        reason_code="evaluation",
+        mode="rehearsal",
+        contract_identity="v3-consumer/1",
+        source_identity="strathmark:abc123",
+    )
+    tournament = {
+        "tournament_name": "Inheritance Day",
+        "events": [
+            {"event_id": "event-1", "event_name": "300mm SB", "rounds": []},
+            {"event_id": "event-2", "event_name": "275mm UH", "rounds": []},
+        ],
+        "total_events": 2,
+    }
+    attach_authority_reference(tournament, selected.reference)
+    path = tmp_path / "multi.json"
+
+    assert save_multi_event_tournament(tournament, str(path), authority_store=store)
+    restored = load_multi_event_tournament(str(path), authority_store=store)
+    assert restored is not None
+    assert all("prediction_authority_ref" not in event for event in restored["events"])
+    for event in restored["events"]:
+        assert resolve_authority_for_state(restored, store, child=event).engine == "v3"

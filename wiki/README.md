@@ -1,6 +1,6 @@
 # STRATHEX Wiki Source
 
-This directory is the canonical, versioned source for the STRATHEX GitHub wiki. It describes STRATHEX 7.0.0 and STRATHMARK 2.0.0.
+This directory is the canonical, versioned source for the STRATHEX GitHub wiki. It describes the competition-scoped STRATHMARK V2/V3 selection workflow. V2 remains the production baseline and V3 remains readiness-gated; these pages do not authorize a global V3 cutover.
 
 A repository merge does not update GitHub's separate wiki repository. Publication is a release operation:
 
