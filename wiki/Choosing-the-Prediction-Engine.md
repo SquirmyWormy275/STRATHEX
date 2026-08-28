@@ -27,6 +27,11 @@ Ordinary green/amber fields can be mass approved. Degraded fields require a sepa
 
 There is no fallback between engines. If V3 is unavailable, incompatible, incomplete, or ambiguous, new numeric work stops. For an ambiguous command, STRATHEX displays its durable identity and the judge may retry that exact command or leave the scope blocked. Existing issued marks and results are never re-ranked.
 
+V3 service credentials are installation controls, not competition choices. STRATHEX
+stores only an environment-variable or OS-keyring reference and rereads it for every
+request. Rotation and revocation are performed by the deployment administrator; the
+judge workflow never displays or saves the one-time replacement secret.
+
 ## Championship events
 
 Championship and bracket scratch rules remain Mark 3. The selected engine may supply supported predictions or seeding, but it does not turn a scratch event into a handicap race.

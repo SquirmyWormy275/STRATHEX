@@ -48,7 +48,12 @@ allow-direct-references = true
 path = "woodchopping/__init__.py"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["woodchopping", "config.py"]
+only-include = [
+    "woodchopping",
+    "config.py",
+    "explanation_system_functions.py",
+    "MainProgramV5_2.py",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

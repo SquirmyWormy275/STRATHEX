@@ -22,6 +22,8 @@ def test_wheel_includes_package_and_required_top_level_config():
     assert pyproject["tool"]["hatch"]["build"]["targets"]["wheel"]["only-include"] == [
         "woodchopping",
         "config.py",
+        "explanation_system_functions.py",
+        "MainProgramV5_2.py",
     ]
 
 

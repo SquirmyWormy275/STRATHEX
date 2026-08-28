@@ -33,6 +33,7 @@ The returned contract includes predicted time, legal mark, method, confidence, e
 - `python` is the default: direct in-process `HandicapCalculator.calculate()`, offline-capable.
 - `http` is explicit: one stateless `POST /calculate` per common-wood field after validating the audited `/openapi.json` 2.0.0 request/response shape.
 - V3 uses a separate authenticated loopback-only HTTP client pinned to one reviewed V3 consumer-contract digest and source commit. Its credentials are referenced through an environment-variable name or OS keyring and are never persisted.
+- Credential rotation and revocation are installation-administration operations, not judge or competition-root actions. The judge client deliberately does not persist the one-time credential returned by `/v3/credentials/rotate`; it resolves its configured environment/keyring reference for every request, so an administrator can rotate the service credential out of band without rewriting tournament state. The authenticated deployment procedure must store the replacement before revoking the prior digest.
 - HTTP mode never falls back to Python.
 - Loopback HTTP is allowed. Remote API URLs require HTTPS. Redirects and URLs containing credentials, paths, queries, or fragments are rejected. OpenAPI and calculation response bodies are bounded to 4 MiB.
 - The HTTP calculation endpoint does not read ResultStore and does not write PredictionLedger.
