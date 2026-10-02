@@ -3490,6 +3490,13 @@ def sequential_results_workflow(
     Returns:
         dict: Updated tournament_state with recorded results
     """
+    from woodchopping.ui.official_eligibility import require_official_eligibility
+
+    try:
+        require_official_eligibility(tournament_state, authority_store=_configured_authority_store(authority_store))
+    except ValueError as error:
+        print(f"\n[BLOCKED] {error}")
+        return tournament_state
     if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
 

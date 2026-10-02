@@ -179,3 +179,78 @@ def test_worker_timeout_is_a_typed_failure(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, "run", timeout)
     with pytest.raises(V3ClientError, match="could not complete"):
         candidate._run("status")
+
+
+@pytest.mark.parametrize("key,value", [("source_digest", None), ("formula_digest", "invalid"), ("package_version", "")])
+def test_malformed_readiness_is_a_typed_failure(tmp_path, monkeypatch, key, value):
+    _, identity = local_candidate(tmp_path, monkeypatch)
+    identity[key] = value
+    with pytest.raises(V3ClientError, match="source identity"):
+        LocalV3Candidate(
+            python=Path(__file__), ml_bundle=tmp_path, workbook=tmp_path / "synthetic.xlsx", snapshot_root=tmp_path
+        )
+
+
+def test_root_authority_blocks_championship_exports_and_bracket_results(tmp_path, monkeypatch):
+    from woodchopping.ui import multi_event_ui
+    from woodchopping.ui.bracket_ui import record_match_result, sequential_match_entry_workflow
+    from woodchopping.ui.schedule_printout import generate_printable_schedule
+
+    candidate, _ = local_candidate(tmp_path, monkeypatch)
+    _, state = locked_context(tmp_path, candidate)
+    store = PredictionAuthorityStore(tmp_path / "authority.db")
+    monkeypatch.setattr(multi_event_ui, "_prediction_authority_store", store)
+    state["events"] = [{"format": "championship", "marks": [3, 3]}]
+    monkeypatch.setattr("builtins.input", lambda _: pytest.fail("result prompt must not be reached"))
+    assert multi_event_ui.sequential_results_workflow(state, {}, None, authority_store=store) is state
+    with pytest.raises(ValueError, match="cannot be exported"):
+        generate_printable_schedule(state, authority_store=store)
+    assert sequential_match_entry_workflow(state) is state
+    with pytest.raises(ValueError, match="official"):
+        record_match_result(state, "synthetic-match", 30, 40, 1, 2)
+    assert "rounds" not in state
+
+
+@pytest.mark.parametrize("bad", [float("nan"), float("inf"), -1, 0])
+def test_invalid_numeric_evidence_is_rejected_before_persistence(tmp_path, monkeypatch, bad):
+    import hashlib
+    import json
+
+    import pandas as pd
+
+    candidate, identity = local_candidate(tmp_path, monkeypatch)
+    context, _ = locked_context(tmp_path, candidate)
+    roster = pd.DataFrame({"competitor_id": ["SYN001"], "competitor_name": ["Synthetic"]})
+
+    def run(_self, operation, payload=None):
+        if operation == "status":
+            return identity
+        return {
+            "protocol": LOCAL_V3_PROTOCOL,
+            "purpose": "numeric_preview_only",
+            "issued_mark": False,
+            "readiness": identity,
+            "request_digest": hashlib.sha256(
+                json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+            ).hexdigest(),
+            "rows": [
+                {
+                    "competitor_id": "SYN001",
+                    "predicted_time": bad,
+                    "std_dev": 1,
+                    "engine_version": "3.0.0rc2",
+                    "method_used": "synthetic",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(LocalV3Candidate, "_run", run)
+    with pytest.raises(V3ClientError, match="invalid numeric"):
+        candidate.forecast_seeding(
+            execution_context=context,
+            competitors_df=roster,
+            round_id="round:synthetic",
+            target_context={},
+            ordered_competitor_ids=["competitor:synthetic"],
+        )
+    assert not list(candidate.snapshot_root.rglob("previews/*.json"))

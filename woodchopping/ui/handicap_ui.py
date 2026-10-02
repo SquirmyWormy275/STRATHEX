@@ -306,7 +306,6 @@ def calculate_authoritative_seeding(
     if getattr(getattr(forecast_adapter, "__self__", None), "pre_field_requires_local_roster", False):
         request.update(
             competitors_df=field_request["competitors_df"],
-            field_id=field_identity["field_id"],
             prediction_as_of=field_request.get("prediction_as_of"),
         )
     projection = forecast_adapter(execution_context=context, **request)

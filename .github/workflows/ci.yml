@@ -108,7 +108,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: SquirmyWormy275/STRATHMARK
-          ref: afc0595852fb10963c5c3615a451a8b8321f1a6d
+          ref: c7787eaf7cd963e2a8d969dd844f1b7f148a699a
           path: .tmp/service-source
 
       - name: Set up Python 3.13
@@ -127,7 +127,7 @@ jobs:
         run: >-
           python scripts/smoke_v3_pair.py
           --service-checkout .tmp/service-source
-          --service-source afc0595852fb10963c5c3615a451a8b8321f1a6d
+          --service-source c7787eaf7cd963e2a8d969dd844f1b7f148a699a
           --consumer-wheel .tmp/consumer-dist/strathex-7.2.0-py3-none-any.whl
           --service-wheel .tmp/service-dist/strathmark-3.0.0rc2-py3-none-any.whl
           --output .tmp/installed-v3-pair.json

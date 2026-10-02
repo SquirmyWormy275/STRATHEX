@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -19,7 +21,11 @@ from woodchopping.engine_selection import PredictionExecutionContext
 from woodchopping.strathmark_v3_client import V3ClientError, V3RuntimeConfigurationError
 
 LOCAL_V3_PROTOCOL = "strathmark.v3-linux-numeric-candidate.v1"
-LOCAL_V3_CONTRACT_DIGEST = "9db1f82e2fa6d9aa4bea4b5751652909f5b114aa4b6b3ae93a640c3a6b3d6b67"
+LOCAL_V3_CONTRACT_DIGEST = "f90ffe4bcda8f213a06ecf65b6b3a9e4b88d378531d5941d7a84aef3a121a515"
+LOCAL_V3_PREVIEW_CONTRACTS = {
+    LOCAL_V3_CONTRACT_DIGEST,
+    "9db1f82e2fa6d9aa4bea4b5751652909f5b114aa4b6b3ae93a640c3a6b3d6b67",
+}
 
 
 class LocalV3Candidate:
@@ -48,6 +54,16 @@ class LocalV3Candidate:
 
     @staticmethod
     def _source_identity(identity):
+        if (
+            not isinstance(identity, dict)
+            or any(
+                not isinstance(identity.get(key), str) or re.fullmatch(r"[0-9a-f]{64}", identity[key]) is None
+                for key in ("source_digest", "formula_digest", "ml_bundle_digest")
+            )
+            or not isinstance(identity.get("package_version"), str)
+            or not identity["package_version"].strip()
+        ):
+            raise V3ClientError("local V3 returned incomplete or malformed source identity")
         return hashlib.sha256(
             json.dumps(
                 {
@@ -173,17 +189,22 @@ class LocalV3Candidate:
             "cutoff_at_utc": cutoff,
             "scope_id": context.scope_id,
             "round_id": request["round_id"],
-            "field_id": request["field_id"],
             "competitor_ids": local_ids,
             "target_context": dict(request["target_context"]),
-            "ceiling": int(request.get("ceiling", 180)),
         }
+        if not forecast_only:
+            payload.update(
+                field_id=request["field_id"],
+                upstream_field_revision=request["upstream_field_revision"],
+                stand_ids=list(request["stand_ids"]),
+                ceiling=request.get("ceiling", 180),
+            )
         result = self._run("forecast" if forecast_only else "preview", payload)
         if (
             result.get("protocol") != LOCAL_V3_PROTOCOL
             or result.get("purpose") != "numeric_preview_only"
             or result.get("issued_mark") is not False
-            or self._source_identity(result["readiness"]) != self.source_identity
+            or self._source_identity(result.get("readiness")) != self.source_identity
         ):
             raise V3ClientError("local V3 response differs from the selected candidate")
         request_digest = hashlib.sha256(
@@ -191,9 +212,39 @@ class LocalV3Candidate:
         ).hexdigest()
         if (
             result.get("request_digest") != request_digest
-            or [row["competitor_id"] for row in result["rows"]] != local_ids
+            or not isinstance(result.get("rows"), list)
+            or any(not isinstance(row, dict) for row in result["rows"])
+            or [row.get("competitor_id") for row in result["rows"]] != local_ids
         ):
             raise V3ClientError("local V3 response does not match this exact request and roster")
+        for row in result["rows"]:
+            time, spread = row.get("predicted_time"), row.get("std_dev")
+            if (
+                type(time) not in (int, float)
+                or not math.isfinite(time)
+                or time <= 0
+                or type(spread) not in (int, float)
+                or not math.isfinite(spread)
+                or spread < 0
+                or row.get("engine_version") != self._identity["package_version"]
+                or not isinstance(row.get("method_used"), str)
+                or not row["method_used"]
+            ):
+                raise V3ClientError("local V3 returned invalid numeric forecast evidence")
+            if not forecast_only and (
+                type(row.get("proposed_mark")) is not int or not 3 <= row["proposed_mark"] <= payload["ceiling"]
+            ):
+                raise V3ClientError("local V3 returned an illegal proposed mark")
+            if forecast_only and "proposed_mark" in row:
+                raise V3ClientError("pre-field forecast must not contain proposed marks")
+        if not forecast_only and min(row["proposed_mark"] for row in result["rows"]) != 3:
+            raise V3ClientError("local V3 proposed field lacks its Mark 3 reference")
+        if not forecast_only and any(
+            faster["predicted_time"] < slower["predicted_time"] and faster["proposed_mark"] < slower["proposed_mark"]
+            for faster in result["rows"]
+            for slower in result["rows"]
+        ):
+            raise V3ClientError("local V3 proposed marks reverse faster-later start order")
         response_root = snapshot.parent / "previews"
         response_root.mkdir(exist_ok=True)
         operation = "forecast" if forecast_only else "preview"

@@ -460,6 +460,8 @@ def main() -> None:
                             str(args.service_python.absolute()),
                             "--training-source",
                             args.service_source,
+                            "--training-repository",
+                            str(checkout),
                             "--output",
                             str(numeric_root),
                         ],

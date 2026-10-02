@@ -23,6 +23,7 @@ def main():
     parser.add_argument("--v3-python", type=Path, required=True)
     parser.add_argument("--ml-bundle", type=Path)
     parser.add_argument("--training-source", help="If no bundle is supplied, train on this synthetic workbook only")
+    parser.add_argument("--training-repository", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     root = args.output.resolve()
@@ -74,7 +75,7 @@ def main():
     from woodchopping.ui.state_persistence import load_tournament_state, save_tournament_state
 
     if args.ml_bundle is None:
-        if not args.training_source:
+        if not args.training_source or not args.training_repository:
             parser.error("supply --ml-bundle or --training-source for synthetic-only training")
         subprocess.run(
             [
@@ -88,6 +89,8 @@ def main():
                 str(root / "synthetic-model"),
                 "--source-commit",
                 args.training_source,
+                "--source-repository",
+                str(args.training_repository.resolve(strict=True)),
                 "--cutoff-at-utc",
                 "2026-10-02T00:00:00.000Z",
             ],
