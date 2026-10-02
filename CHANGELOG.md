@@ -1,5 +1,11 @@
 # Changelog
 
+## 7.1.1
+
+- Coordinate the V3 rehearsal consumer pin with the reviewed security-maintained STRATHMARK source, preserving V7 contract bytes and the production V2 dependency.
+- Require an installed two-environment loopback rehearsal on Linux and Windows, including signed mark-free seeding, exact fields, approval/issue separation, and exact settlement recovery across a consumer process restart.
+- Verify installed wheel bytes and the service release lock; keep synthetic development-key evidence separate from designated production qualification.
+
 ## 7.1.0
 
 - Added deliberate competition-scoped V2/V3 selection, tournament inheritance, authenticated V7 pre-field forecasts and exact-field marks, durable command recovery, issue/settlement acknowledgments, and the ASCII explanation Wizard previously merged after v7.0.0.

@@ -104,7 +104,7 @@ The launcher selects paths before opening data. The operator directory holds sav
 - [Architecture](docs/ARCHITECTURE.md)
 - [Handicap system](docs/HANDICAP_SYSTEM_EXPLAINED.md)
 - [STRATHMARK 2 migration decision](docs/STRATHMARK_2_COMPATIBILITY_EVALUATION.md)
-- [STRATHEX 7.1 release notes](docs/RELEASE_v7.1.0.md)
+- [STRATHEX 7.1.1 release notes](docs/RELEASE_v7.1.1.md)
 - [Changelog](CHANGELOG.md)
 - [Contributor onboarding](ONBOARDING.md)
 - [Documentation index](docs/INDEX.md)
