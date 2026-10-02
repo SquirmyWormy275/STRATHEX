@@ -38,9 +38,10 @@ dev = [
 api-test = [
     # Exact versions exercised by the direct/HTTP parity gate. STRATHMARK itself
     # remains pinned above; these packages activate its optional FastAPI surface.
-    "fastapi==0.135.1",
+    "fastapi==0.142.2",
+    "starlette==1.7.0",
     "httpx==0.28.1",
-    "httpx2==2.10.0",
+    "httpx2==2.13.1",
 ]
 
 [tool.hatch.metadata]
