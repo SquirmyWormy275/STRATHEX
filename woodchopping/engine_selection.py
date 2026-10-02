@@ -103,7 +103,7 @@ class PredictionExecutionContext:
             raise ExecutionContextError("authority_digest must be lowercase SHA-256")
         if self.selected_engine not in {"v2", "v3"}:
             raise ExecutionContextError(f"unsupported selected engine: {self.selected_engine}")
-        if self.mode not in {"production", "rehearsal"}:
+        if self.mode not in {"production", "rehearsal", "local"}:
             raise ExecutionContextError(f"unsupported prediction mode: {self.mode}")
         if self.selected_engine == "v2" and self.mode != "production":
             raise ExecutionContextError("V2 execution context must use production mode")

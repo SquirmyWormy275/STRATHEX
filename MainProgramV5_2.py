@@ -636,6 +636,7 @@ def single_event_menu():
                 authority_store=_prediction_authority_store,
                 engine_router=_prediction_engine_router,
                 field_local_id=f"single-event:heat-{heat_index}",
+                field_kind=tournament_state.get("event_type", "handicap"),
                 round_local_id="single-event",
                 round_ordinal=1,
                 stand_local_ids=[f"heat-{heat_index}-stand-{item + 1}" for item in range(len(ordered))],

@@ -1,6 +1,6 @@
 # Current Runtime Contract
 
-**Applies to:** STRATHEX 7.2.1
+**Applies to:** STRATHEX 7.3.0
 **Prediction authority:** the competition-root selection persisted by STRATHEX; V2 remains the production baseline and V3 remains opt-in under exact readiness evidence
 
 ## Competition authority
@@ -29,6 +29,8 @@ Same-day and future observations are excluded. Undated observations are not v2 e
 V2 and the full V7 field contract include predicted time, legal mark, method, confidence, explanation, forecast interval, performance standard deviation, engine/model/calibration versions, evidence cutoff, optimizer and metadata, warnings, degraded state, provenance, ignored factors, competitor ID, and optional ledger fields.
 
 ## Transport
+
+The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `cfc273d0395e7d913d7b52e572b3fbaf286e0ec779478be0ad21d6a19cd883c7`. It binds the code, Formula, ML, and persistent installation key into the source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
 
 The explicit Linux V3 numeric profile runs a separate Python 3.13 subprocess with
 verified trained ML, Formula, distribution pooling, and the V3 optimizer. Its

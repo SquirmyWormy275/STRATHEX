@@ -18,9 +18,14 @@ from woodchopping.ui.official_eligibility import require_official_eligibility
 
 def _contains_numeric_preview(value):
     if isinstance(value, dict):
-        return value.get("mark_origin") == "unissued_linux_numeric_preview" or any(
-            _contains_numeric_preview(child) for child in value.values()
-        )
+        return (
+            value.get("mark_origin") == "unissued_linux_numeric_preview"
+            or (
+                value.get("mark_origin") == "linux_competition_proposal"
+                and "mark" in value
+                and (not value.get("issue_batch_id") or value.get("issued_mark") != value.get("mark"))
+            )
+        ) or any(_contains_numeric_preview(child) for child in value.values())
     return isinstance(value, list) and any(_contains_numeric_preview(child) for child in value)
 
 

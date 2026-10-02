@@ -1,4 +1,4 @@
-# STRATHEX 7.2
+# STRATHEX 7.3
 
 STRATHEX is the judge-facing woodchopping tournament application. It manages rosters, wood setup, handicap and championship fields, brackets, multi-event days, result entry, autosave, and Excel exports. Numeric prediction and mark assignment are owned by [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK).
 
@@ -12,9 +12,9 @@ Every new competition begins with no prediction engine selected. The judge must 
 - the choice locks at the first numeric operation;
 - an outage or incompatible response blocks work rather than calling the other engine.
 
-V2 remains the established production baseline. V3 can use either the exact authenticated V7 service or the separately configured Linux numeric candidate. The candidate runs actual Formula + trained ML forecasts, pooling, and optimization, and displays `NUMERIC PREVIEW ONLY`. It cannot approve, issue, settle, or update next-round learning. This release records both V3 profiles as rehearsal-only. Selecting V3 never enables a global cutover.
+STRATHEX 7.3.0 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate.
 
-V3 uses a two-stage workflow. A pre-field forecast supplies raw-time estimates for seeding before heats exist and is forbidden from carrying a mark. After STRATHEX creates exact heats and stand assignments, V3 calculates the complete field-relative marks. The authenticated V7 service provides signed receipts and the issue lifecycle; local candidate outputs remain unissued previews. See [Choosing the Prediction Engine](wiki/Choosing-the-Prediction-Engine.md).
+V3 pre-field seeding forecasts are forbidden from carrying a mark. Generate actual heats/stands before complete-field marks, then review and explicitly issue. Unissued sheets and results are blocked. [Setup and full operation](docs/V3_LINUX_COMPETITION.md), [release notes](docs/RELEASE_v7.3.0.md).
 
 ## V2 production baseline
 

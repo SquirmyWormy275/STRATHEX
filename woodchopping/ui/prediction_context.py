@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Any, Mapping, MutableMapping
 from uuid import uuid4
 
 _ENGINES = frozenset({"v2", "v3"})
-_MODES = frozenset({"production", "rehearsal"})
+_MODES = frozenset({"production", "rehearsal", "local"})
 _OWNER_KINDS = frozenset({"single_event", "tournament"})
 _IDENTITY_KINDS = frozenset({"tournament", "round", "field", "stand", "competitor", "command"})
 _REFERENCE_KEYS = frozenset({"authority_store_id", "scope_id", "revision", "digest", "save_id"})
@@ -367,7 +368,13 @@ class PredictionAuthorityStore:
             raise AuthorityStateError("engine change requires a reason")
         if engine == "v2" and mode != "production":
             raise AuthorityStateError("V2 selection must use production mode")
-        if engine == "v3" and mode != "rehearsal":
+        if engine == "v3" and mode == "local":
+            from woodchopping.strathmark_v3_linux import LINUX_CONTRACT_DIGEST, validate_local_trust
+
+            if contract_identity != LINUX_CONTRACT_DIGEST or re.fullmatch(r"[0-9a-f]{64}", source_identity) is None:
+                raise AuthorityStateError("Linux competition selection requires its frozen contract and source")
+            validate_local_trust(pre_field_signer_trust)
+        elif engine == "v3" and mode != "rehearsal":
             raise AuthorityStateError("V3 selection is rehearsal-only until an explicit cutover release")
         return self._mutate(
             reference,

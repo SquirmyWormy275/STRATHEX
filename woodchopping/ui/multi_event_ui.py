@@ -44,6 +44,7 @@ _READINESS_LABELS = {
     "production_ready": "PRODUCTION READY",
     "rehearsal_ready": "REHEARSAL READY",
     "numeric_preview_ready": "NUMERIC PREVIEW ONLY",
+    "local_ready": "LINUX READY",
     "ineligible": "INELIGIBLE",
     "status_failed": "STATUS CHECK FAILED",
 }
@@ -87,6 +88,7 @@ def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
         ),
         "rehearsal_ready": "V3 is rehearsal-only; this does not claim production readiness.",
         "numeric_preview_ready": "Proposed times and marks are experimental previews. This profile cannot authorize issue or results.",
+        "local_ready": "Local Linux policy supports approval, issue, settlement and later rounds. Windows CNG qualification is separate.",
         "ineligible": "V3 cannot be selected for this scope.",
         "status_failed": "Readiness is unknown; retry the check or select V2.",
     }.get(status, "Readiness is unknown; retry the check or select V2.")
@@ -95,6 +97,19 @@ def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
 
 def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str, dict[str, str] | None]:
     status = str(readiness.get("status", "status_failed"))
+    if status == "local_ready":
+        from woodchopping.strathmark_v3_linux import LINUX_CONTRACT_DIGEST, LINUX_PROTOCOL, validate_local_trust
+
+        source = str(readiness.get("source_identity", ""))
+        if (
+            readiness.get("runtime_profile") != LINUX_PROTOCOL
+            or readiness.get("contract_identity") != LINUX_CONTRACT_DIGEST
+            or re.fullmatch(r"[0-9a-f]{64}", source) is None
+        ):
+            raise ValueError("Linux competition readiness identity differs")
+        trust = readiness.get("pre_field_signer_trust")
+        validate_local_trust(trust)
+        return "local", LINUX_CONTRACT_DIGEST, source, dict(trust)
     if status == "numeric_preview_ready":
         from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST, LOCAL_V3_PROTOCOL
 
@@ -563,6 +578,10 @@ def acknowledge_v3_issued_marks(
 
     context = build_prediction_execution_context(root_state, authority_store)
     identity_material = "\0".join((context.scope_id, *receipt_ids)).encode("utf-8")
+    if callable(getattr(v3_adapter, "validate_mark_rows", None)):
+        v3_adapter.validate_mark_rows(
+            context, [row for row in _v3_receipt_rows(root_state) if row["receipt_id"] in receipt_ids]
+        )
     proposed_payload = {
         "schema_version": "strathmark-v3-issue-acknowledgment-request-v1",
         "upstream_issue_id": f"issue:{hashlib.sha256(identity_material).hexdigest()}",
@@ -605,6 +624,11 @@ def _apply_v3_issue_acknowledgment(
         existing[receipt_id] = issue_batch_id
     for row in _v3_receipt_rows(root_state):
         if row.get("receipt_id") in returned_ids:
+            if "issued_field_marks" in response:
+                expected_mark = response["issued_field_marks"][row["receipt_id"]][row["competitor_id"]]
+                if row.get("mark") != expected_mark:
+                    raise RuntimeError("local mark sheet differs from the signed issued marks")
+                row["issued_mark"] = expected_mark
             row["issue_batch_id"] = issue_batch_id
     return issue_batch_id
 
@@ -669,6 +693,16 @@ def _settle_v3_recorded_round(
     results = []
     for row in rows:
         name = str(row["name"])
+        outcome = round_object.get("official_outcomes", {}).get(name)
+        if outcome is not None:
+            results.append(
+                {
+                    "competitor_id": str(row["competitor_id"]),
+                    **outcome,
+                    "source_revision": int(round_object.get("result_source_revision", 1)),
+                }
+            )
+            continue
         if name not in actual_results:
             raise RuntimeError("recorded V3 field lacks a complete observed-time result")
         results.append(
@@ -722,7 +756,6 @@ def record_and_settle_v3_round(
     input_fn: Callable[[str], str] | None = None,
 ) -> bool:
     """Write once, then retry only V3 settlement until it is durable."""
-    del event
     authority = resolve_prediction_engine(root_state, authority_store)
     if authority.engine != "v3":
         return bool(write_action())
@@ -733,6 +766,30 @@ def record_and_settle_v3_round(
             "\n[BLOCKED] V3 numeric previews cannot record official results. Use the full V7 issue/settlement runtime."
         )
         return False
+    if getattr(v3_adapter, "requires_explicit_issue", False):
+        rows = list(_v3_receipt_rows(round_object.get("handicap_results", [])))
+        if not rows or any(not root_state.get("v3_issue_batches", {}).get(row["receipt_id"]) for row in rows):
+            print("\n[BLOCKED] Review and issue this field before recording results.")
+            return False
+        from woodchopping.ui.handicap_ui import build_prediction_execution_context
+        from woodchopping.ui.linux_results import collect_results, export_results
+
+        v3_adapter.validate_mark_rows(build_prediction_execution_context(root_state, authority_store), rows)
+        if not collect_results(round_object, input_fn=input if input_fn is None else input_fn):
+            return False
+        if not _settle_v3_recorded_round(
+            root_state,
+            round_object,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            observed_at_utc=observed_at_utc,
+            input_fn=input_fn,
+        ):
+            return False
+        if not round_object.get("canonical_results_recorded"):
+            export_results(round_object, event, root_state)
+            round_object["canonical_results_recorded"] = True
+        return True
     if not round_object.get("canonical_results_recorded"):
         if not write_action():
             return False
@@ -1088,6 +1145,15 @@ def review_v3_approval_queue(
             offset=0,
             limit=100,
         )
+        if getattr(v3_adapter, "requires_explicit_issue", False):
+            total = page.get("total", len(page.get("rows", [])))
+            if type(total) is not int or not 0 <= total <= 10000:
+                raise RuntimeError("Linux approval queue exceeds its bounded capacity")
+            for offset in range(100, total, 100):
+                following = v3_adapter.approval_page(context, tournament_id=context.scope_id, offset=offset, limit=100)
+                if following.get("snapshot_id") != page.get("snapshot_id"):
+                    raise RuntimeError("approval snapshot changed during review; reload the queue")
+                page["rows"].extend(following["rows"])
         rows = [row for row in page.get("rows", []) if row.get("decision_state") == "undecided"]
         if not rows:
             print("\n[OK] No undecided V3 fields remain in the approval queue.")
@@ -1127,6 +1193,16 @@ def review_v3_approval_queue(
             print(f"Rules: {', '.join(row.get('causal_rule_codes', [])) or 'none'}")
             print(f"Affected competitors: {len(row.get('affected_competitors', []))}")
             print(f"Detail evidence loaded: {bool(detail.get('detail'))}")
+            numeric = detail.get("detail", {}).get("numeric", {})
+            if numeric:
+                print(f"Assessor weights: {numeric.get('weights')}")
+                print(f"Formula-only field marks: {numeric.get('counterfactual_marks', {}).get('formula')}")
+                print(f"ML-only field marks: {numeric.get('counterfactual_marks', {}).get('ml')}")
+                print(f"Proposed field marks: {numeric.get('marks')}")
+                for item in numeric.get("forecasts", []):
+                    print(
+                        f"  {item['local_competitor_id']}: pooled {item['predicted_time_ms'] / 1000:.3f}s; history rows={item['history_count']}"
+                    )
             choice = ask("A=accept, X=exclude, D=defer, C=cancel: ").strip().lower()
             if choice == "c":
                 return decisions
@@ -1226,6 +1302,16 @@ def _complete_pending_v3_approval(
         "override_submitted",
     }
     if action in accepted_actions and callable(getattr(v3_adapter, "acknowledge_issue", None)):
+        if getattr(v3_adapter, "requires_explicit_issue", False) and not pending.get("issue_authorized"):
+            ask = input if input_fn is None else input_fn
+            if ask("Issue these approved marks now? (y/n): ").strip().lower() != "y":
+                state["v3_issue_status"] = "approved_unissued"
+                checkpoint_callback(state)
+                print("Approved marks remain unissued. Resume this review to issue them.")
+                return None
+            pending["issue_authorized"] = True
+            if not checkpoint_callback(state):
+                raise RuntimeError("issue authorization could not be checkpointed")
         issue_batch_id = acknowledge_v3_issued_marks(
             state,
             selected,
@@ -3127,7 +3213,7 @@ def generate_complete_day_schedule(
             if authority_store is None or engine_router is None:
                 return heats
             authority = resolve_prediction_engine(tournament_state, authority_store)
-            if authority.engine != "v3" or event_type == "championship":
+            if authority.engine != "v3" or (event_type == "championship" and authority.mode != "local"):
                 return heats
             from woodchopping.data import load_results_df
             from woodchopping.ui.handicap_ui import calculate_authoritative_field
@@ -3145,6 +3231,7 @@ def generate_complete_day_schedule(
                     authority_store=authority_store,
                     engine_router=engine_router,
                     field_local_id=f"event:{event_id}:heat-{heat_index}",
+                    field_kind=event_type,
                     round_local_id=f"event-{event_id}",
                     stand_local_ids=[
                         f"event-{event_id}-heat-{heat_index}-stand-{ordinal + 1}" for ordinal in range(len(ordered))

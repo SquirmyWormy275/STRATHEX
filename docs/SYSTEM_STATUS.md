@@ -1,9 +1,11 @@
 # System Status
 
 **Current target:** competition-scoped STRATHMARK V2/V3 selection in STRATHEX
-**Status date:** 2026-10-01
+**Status date:** 2026-10-02
 
 ## Implemented
+
+- Complete separate Linux V3 competition lifecycle, explicit outcomes/corrections, persistent signed authority, verified backup, and installed synthetic end-to-end verification.
 
 - Direct-Python STRATHMARK v2 calculation as the offline default.
 - Explicit FastAPI `POST /calculate` demo transport.
