@@ -44,6 +44,7 @@ _READINESS_LABELS = {
     "production_ready": "PRODUCTION READY",
     "rehearsal_ready": "REHEARSAL READY",
     "numeric_preview_ready": "NUMERIC PREVIEW ONLY",
+    "local_ready": "LINUX READY",
     "ineligible": "INELIGIBLE",
     "status_failed": "STATUS CHECK FAILED",
 }
@@ -87,6 +88,7 @@ def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
         ),
         "rehearsal_ready": "V3 is rehearsal-only; this does not claim production readiness.",
         "numeric_preview_ready": "Proposed times and marks are experimental previews. This profile cannot authorize issue or results.",
+        "local_ready": "Local Linux policy supports approval, issue, settlement and later rounds. Windows CNG qualification is separate.",
         "ineligible": "V3 cannot be selected for this scope.",
         "status_failed": "Readiness is unknown; retry the check or select V2.",
     }.get(status, "Readiness is unknown; retry the check or select V2.")
@@ -95,6 +97,19 @@ def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
 
 def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str, dict[str, str] | None]:
     status = str(readiness.get("status", "status_failed"))
+    if status == "local_ready":
+        from woodchopping.strathmark_v3_linux import LINUX_CONTRACT_DIGEST, LINUX_PROTOCOL, validate_local_trust
+
+        source = str(readiness.get("source_identity", ""))
+        if (
+            readiness.get("runtime_profile") != LINUX_PROTOCOL
+            or readiness.get("contract_identity") != LINUX_CONTRACT_DIGEST
+            or re.fullmatch(r"[0-9a-f]{64}", source) is None
+        ):
+            raise ValueError("Linux competition readiness identity differs")
+        trust = readiness.get("pre_field_signer_trust")
+        validate_local_trust(trust)
+        return "local", LINUX_CONTRACT_DIGEST, source, dict(trust)
     if status == "numeric_preview_ready":
         from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST, LOCAL_V3_PROTOCOL
 
@@ -499,6 +514,8 @@ def execute_with_v3_recovery(
             counts["recovery_count"] = int(counts.get("recovery_count", 0)) + 1
             print("\n[RECOVERY REQUIRED] STRATHMARK V3 returned an ambiguous outcome.")
             print(f"Command: {error.command_key}")
+            if getattr(v3_adapter, "requires_explicit_issue", False) and error.__cause__ is not None:
+                print(f"Producer detail: {error.__cause__}")
             print("No marks were accepted and V2 fallback remains forbidden.")
             print("R. Retry this exact durable command")
             print("C. Cancel and leave the competition blocked")
@@ -515,6 +532,27 @@ def execute_with_v3_recovery(
             print(f"\n[BLOCKED] Selected V3 engine could not complete: {error}")
             print("No V2 fallback occurred and no partial mark sheet was accepted.")
             return None
+
+
+def generate_next_round_with_recovery(
+    tournament_state, *args, authority_store=None, authority_root_state=None, engine_router=None, **kwargs
+):
+    """Keep a failed selected-engine advancement in the judge menu for exact retry."""
+    root = tournament_state if authority_root_state is None else authority_root_state
+    adapter = None if engine_router is None else engine_router.v3_adapter
+    return execute_with_v3_recovery(
+        lambda: generate_next_round(
+            tournament_state,
+            *args,
+            authority_store=authority_store,
+            authority_root_state=authority_root_state,
+            engine_router=engine_router,
+            **kwargs,
+        ),
+        root_state=root,
+        authority_store=authority_store,
+        v3_adapter=adapter,
+    )
 
 
 def _v3_receipt_rows(value: Any):
@@ -563,6 +601,10 @@ def acknowledge_v3_issued_marks(
 
     context = build_prediction_execution_context(root_state, authority_store)
     identity_material = "\0".join((context.scope_id, *receipt_ids)).encode("utf-8")
+    if callable(getattr(v3_adapter, "validate_mark_rows", None)):
+        v3_adapter.validate_mark_rows(
+            context, [row for row in _v3_receipt_rows(root_state) if row["receipt_id"] in receipt_ids]
+        )
     proposed_payload = {
         "schema_version": "strathmark-v3-issue-acknowledgment-request-v1",
         "upstream_issue_id": f"issue:{hashlib.sha256(identity_material).hexdigest()}",
@@ -605,6 +647,11 @@ def _apply_v3_issue_acknowledgment(
         existing[receipt_id] = issue_batch_id
     for row in _v3_receipt_rows(root_state):
         if row.get("receipt_id") in returned_ids:
+            if "issued_field_marks" in response:
+                expected_mark = response["issued_field_marks"][row["receipt_id"]][row["competitor_id"]]
+                if row.get("mark") != expected_mark:
+                    raise RuntimeError("local mark sheet differs from the signed issued marks")
+                row["issued_mark"] = expected_mark
             row["issue_batch_id"] = issue_batch_id
     return issue_batch_id
 
@@ -647,6 +694,7 @@ def _settle_v3_recorded_round(
     *,
     authority_store: Any,
     v3_adapter: Any,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
     observed_at_utc: str | None = None,
     input_fn: Callable[[str], str] | None = None,
 ) -> bool:
@@ -669,6 +717,16 @@ def _settle_v3_recorded_round(
     results = []
     for row in rows:
         name = str(row["name"])
+        outcome = round_object.get("official_outcomes", {}).get(row.get("local_competitor_id", name))
+        if outcome is not None:
+            results.append(
+                {
+                    "competitor_id": str(row["competitor_id"]),
+                    **outcome,
+                    "source_revision": int(round_object.get("result_source_revision", 1)),
+                }
+            )
+            continue
         if name not in actual_results:
             raise RuntimeError("recorded V3 field lacks a complete observed-time result")
         results.append(
@@ -692,6 +750,10 @@ def _settle_v3_recorded_round(
     payload = round_object.setdefault("v3_pending_settlement_request", proposed_payload)
     if payload.get("receipt_id") != receipt_id or payload.get("issue_batch_id") != issue_batch_id:
         raise RuntimeError("pending V3 settlement conflicts with the recorded field")
+    if getattr(v3_adapter, "requires_explicit_issue", False) and (
+        checkpoint_callback is None or checkpoint_callback(root_state) is not True
+    ):
+        raise RuntimeError("confirmed outcomes and exact settlement request must be checkpointed before submission")
     response = execute_with_v3_recovery(
         lambda: v3_adapter.settle_result(context, payload),
         root_state=root_state,
@@ -718,11 +780,11 @@ def record_and_settle_v3_round(
     write_action: Callable[[], bool],
     authority_store: Any,
     v3_adapter: Any,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
     observed_at_utc: str | None = None,
     input_fn: Callable[[str], str] | None = None,
 ) -> bool:
     """Write once, then retry only V3 settlement until it is durable."""
-    del event
     authority = resolve_prediction_engine(root_state, authority_store)
     if authority.engine != "v3":
         return bool(write_action())
@@ -733,6 +795,50 @@ def record_and_settle_v3_round(
             "\n[BLOCKED] V3 numeric previews cannot record official results. Use the full V7 issue/settlement runtime."
         )
         return False
+    if getattr(v3_adapter, "requires_explicit_issue", False):
+        rows = list(_v3_receipt_rows(round_object.get("handicap_results", [])))
+        if not rows or any(not root_state.get("v3_issue_batches", {}).get(row["receipt_id"]) for row in rows):
+            print("\n[BLOCKED] Review and issue this field before recording results.")
+            return False
+        from woodchopping.ui.handicap_ui import build_prediction_execution_context
+        from woodchopping.ui.linux_results import collect_results, export_results
+
+        context = build_prediction_execution_context(root_state, authority_store)
+        v3_adapter.validate_mark_rows(context, rows)
+        retained = v3_adapter.recover_result_request(
+            context, rows[0]["receipt_id"], int(round_object.get("result_source_revision", 1))
+        )
+        if retained is not None:
+            by_id = {item["competitor_id"]: item for item in retained["results"]}
+            round_object["official_outcomes"] = {
+                row["local_competitor_id"]: {
+                    key: by_id[row["competitor_id"]][key]
+                    for key in ("status", "raw_time_ms", "penalty_ms", "official_placing")
+                }
+                for row in rows
+            }
+            round_object["v3_pending_settlement_request"] = retained
+            from woodchopping.ui.linux_results import refresh_result_projections
+
+            refresh_result_projections(round_object)
+        if not collect_results(round_object, input_fn=input if input_fn is None else input_fn):
+            return False
+        if not _settle_v3_recorded_round(
+            root_state,
+            round_object,
+            authority_store=authority_store,
+            v3_adapter=v3_adapter,
+            checkpoint_callback=checkpoint_callback,
+            observed_at_utc=observed_at_utc,
+            input_fn=input_fn,
+        ):
+            return False
+        if checkpoint_callback is None or checkpoint_callback(root_state) is not True:
+            raise RuntimeError("accepted settlement must be checkpointed before workbook export")
+        if not round_object.get("canonical_results_recorded"):
+            export_results(round_object, event, root_state)
+            round_object["canonical_results_recorded"] = True
+        return True
     if not round_object.get("canonical_results_recorded"):
         if not write_action():
             return False
@@ -742,6 +848,7 @@ def record_and_settle_v3_round(
         round_object,
         authority_store=authority_store,
         v3_adapter=v3_adapter,
+        checkpoint_callback=checkpoint_callback,
         observed_at_utc=observed_at_utc,
         input_fn=input_fn,
     )
@@ -754,6 +861,7 @@ def record_and_settle_v3_single_event(
     write_action: Callable[[], bool],
     authority_store: Any,
     v3_adapter: Any,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
     observed_at_utc: str | None = None,
     input_fn: Callable[[str], str] | None = None,
 ) -> bool:
@@ -765,6 +873,7 @@ def record_and_settle_v3_single_event(
         write_action=write_action,
         authority_store=authority_store,
         v3_adapter=v3_adapter,
+        checkpoint_callback=checkpoint_callback,
         observed_at_utc=observed_at_utc,
         input_fn=input_fn,
     )
@@ -1088,6 +1197,15 @@ def review_v3_approval_queue(
             offset=0,
             limit=100,
         )
+        if getattr(v3_adapter, "requires_explicit_issue", False):
+            total = page.get("total", len(page.get("rows", [])))
+            if type(total) is not int or not 0 <= total <= 10000:
+                raise RuntimeError("Linux approval queue exceeds its bounded capacity")
+            for offset in range(100, total, 100):
+                following = v3_adapter.approval_page(context, tournament_id=context.scope_id, offset=offset, limit=100)
+                if following.get("snapshot_id") != page.get("snapshot_id"):
+                    raise RuntimeError("approval snapshot changed during review; reload the queue")
+                page["rows"].extend(following["rows"])
         rows = [row for row in page.get("rows", []) if row.get("decision_state") == "undecided"]
         if not rows:
             print("\n[OK] No undecided V3 fields remain in the approval queue.")
@@ -1127,6 +1245,16 @@ def review_v3_approval_queue(
             print(f"Rules: {', '.join(row.get('causal_rule_codes', [])) or 'none'}")
             print(f"Affected competitors: {len(row.get('affected_competitors', []))}")
             print(f"Detail evidence loaded: {bool(detail.get('detail'))}")
+            numeric = detail.get("detail", {}).get("numeric", {})
+            if numeric:
+                print(f"Assessor weights: {numeric.get('weights')}")
+                print(f"Formula-only field marks: {numeric.get('counterfactual_marks', {}).get('formula')}")
+                print(f"ML-only field marks: {numeric.get('counterfactual_marks', {}).get('ml')}")
+                print(f"Proposed field marks: {numeric.get('marks')}")
+                for item in numeric.get("forecasts", []):
+                    print(
+                        f"  {item['local_competitor_id']}: pooled {item['predicted_time_ms'] / 1000:.3f}s; history rows={item['history_count']}"
+                    )
             choice = ask("A=accept, X=exclude, D=defer, C=cancel: ").strip().lower()
             if choice == "c":
                 return decisions
@@ -1226,6 +1354,16 @@ def _complete_pending_v3_approval(
         "override_submitted",
     }
     if action in accepted_actions and callable(getattr(v3_adapter, "acknowledge_issue", None)):
+        if getattr(v3_adapter, "requires_explicit_issue", False) and not pending.get("issue_authorized"):
+            ask = input if input_fn is None else input_fn
+            if ask("Issue these approved marks now? (y/n): ").strip().lower() != "y":
+                state["v3_issue_status"] = "approved_unissued"
+                checkpoint_callback(state)
+                print("Approved marks remain unissued. Resume this review to issue them.")
+                return None
+            pending["issue_authorized"] = True
+            if not checkpoint_callback(state):
+                raise RuntimeError("issue authorization could not be checkpointed")
         issue_batch_id = acknowledge_v3_issued_marks(
             state,
             selected,
@@ -3127,7 +3265,7 @@ def generate_complete_day_schedule(
             if authority_store is None or engine_router is None:
                 return heats
             authority = resolve_prediction_engine(tournament_state, authority_store)
-            if authority.engine != "v3" or event_type == "championship":
+            if authority.engine != "v3" or (event_type == "championship" and authority.mode != "local"):
                 return heats
             from woodchopping.data import load_results_df
             from woodchopping.ui.handicap_ui import calculate_authoritative_field
@@ -3145,6 +3283,7 @@ def generate_complete_day_schedule(
                     authority_store=authority_store,
                     engine_router=engine_router,
                     field_local_id=f"event:{event_id}:heat-{heat_index}",
+                    field_kind=event_type,
                     round_local_id=f"event-{event_id}",
                     stand_local_ids=[
                         f"event-{event_id}-heat-{heat_index}-stand-{ordinal + 1}" for ordinal in range(len(ordered))
@@ -3579,7 +3718,9 @@ def sequential_results_workflow(
             v3_adapter = None
             if authority_store is not None and engine_router is not None:
                 authority = resolve_prediction_engine(tournament_state, authority_store)
-                use_v3_settlement = authority.engine == "v3" and event_obj.get("event_type") != "championship"
+                use_v3_settlement = authority.engine == "v3" and (
+                    event_obj.get("event_type") != "championship" or authority.mode == "local"
+                )
                 if use_v3_settlement:
                     v3_adapter = getattr(engine_router, "v3_adapter", None)
                     if v3_adapter is None:
@@ -3592,6 +3733,7 @@ def sequential_results_workflow(
                     write_action=write_results,
                     authority_store=authority_store,
                     v3_adapter=v3_adapter,
+                    checkpoint_callback=lambda value: auto_save_multi_event(value, authority_store=authority_store),
                 )
             else:
                 entry_succeeded = write_results()
@@ -3664,7 +3806,7 @@ def sequential_results_workflow(
                         # Generate next round using existing function
                         # Pass full event_obj - it has all required fields:
                         # rounds, all_competitors_df, wood_species, wood_diameter, wood_quality, event_code
-                        next_rounds = generate_next_round(
+                        next_rounds = generate_next_round_with_recovery(
                             event_obj,
                             all_advancers,
                             next_type,
@@ -3676,6 +3818,10 @@ def sequential_results_workflow(
                             forecast_adapter=forecast_adapter,
                             authority_checkpoint_callback=authority_checkpoint_callback,
                         )
+
+                        if next_rounds is None:
+                            auto_save_multi_event(tournament_state, authority_store=authority_store)
+                            continue
 
                         # Add to event rounds
                         event_obj["rounds"].extend(next_rounds)

@@ -725,7 +725,17 @@ def generate_next_round(
     tournament_results = extract_tournament_results(tournament_state)
 
     # Skip recalculation for Championship events (everyone stays at Mark 3)
-    if is_championship:
+    local_championship = False
+    if is_championship and authority_store is not None:
+        from woodchopping.ui.prediction_context import resolve_authority_for_state
+
+        selected = resolve_authority_for_state(
+            tournament_state if authority_root_state is None else authority_root_state,
+            authority_store,
+            child=authority_child,
+        )
+        local_championship = selected.engine == "v3" and selected.mode == "local"
+    if is_championship and not local_championship:
         print(f"\n{'=' * 70}")
         print("  CHAMPIONSHIP EVENT - PRESERVING MARK 3")
         print(f"{'=' * 70}")
@@ -837,6 +847,13 @@ def generate_next_round(
         or "single-event"
     )
     generation = 1 + sum(1 for item in tournament_state.get("rounds", []) if item.get("round_type") == next_round_type)
+    stage_ordinal = 1 + max(
+        (
+            int(item.get("v3_round_ordinal", 2 if item.get("round_type") == "semi" else 1))
+            for item in tournament_state.get("rounds", [])
+        ),
+        default=0,
+    )
     stage_local_id = f"event:{event_local_id}:stage:{next_round_type}:generation:{generation}"
 
     # Seed the whole advancing population before fields exist.  V3 returns
@@ -858,7 +875,7 @@ def generate_next_round(
         event_code=event_code,
         results_df=results_df,
         prediction_as_of=prediction_as_of,
-        round_ordinal=generation,
+        round_ordinal=stage_ordinal,
     )
     if not seed_results:
         raise RuntimeError("selected STRATHMARK engine did not return advancing-stage seeding evidence")
@@ -904,6 +921,7 @@ def generate_next_round(
             engine_router=engine_router,
             checkpoint_callback=authority_checkpoint_callback,
             field_local_id=field_local_id,
+            field_kind="championship" if is_championship else "handicap",
             round_local_id=round_local_id,
             stand_local_ids=[f"{field_local_id}:stand:{ordinal}" for ordinal in range(1, len(ordered) + 1)],
             competitors_df=ordered,
@@ -913,7 +931,7 @@ def generate_next_round(
             event_code=event_code,
             results_df=results_df,
             prediction_as_of=prediction_as_of,
-            round_ordinal=generation,
+            round_ordinal=stage_ordinal,
         )
         returned_names = [str(item.get("name", "")) for item in exact_marks]
         if (
@@ -926,6 +944,7 @@ def generate_next_round(
         round_obj["handicap_results"] = exact_marks
         if authority.engine == "v3":
             round_obj["v3_round_id"] = derive_scope_identity(authority.reference.scope_id, "round", round_local_id)
+            round_obj["v3_round_ordinal"] = stage_ordinal
 
     # Update round type and names
     for i, round_obj in enumerate(next_rounds):

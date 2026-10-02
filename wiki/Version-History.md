@@ -1,5 +1,9 @@
 # Version History
 
+## 7.3.0 (2026-10-02)
+
+Complete separate Linux V3 competition lifecycle, explicit engine selection, real Formula/ML, local signed approval/issue/results/corrections, restart, verified recovery, championship receipts and later-round learning. Windows CNG qualification remains separate.
+
 ## 7.1.0
 
 Competition-scoped V2/V3 selection and the ASCII Wizard; durable V3 rehearsal recovery and acknowledgments; finance/bracket/roster repairs; valid history dates and payout resume; portable Linux/Windows launch paths; maintained documentation and enforced CI. V2 remains production authority and V3 remains rehearsal-only.

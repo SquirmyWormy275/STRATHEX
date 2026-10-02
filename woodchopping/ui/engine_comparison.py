@@ -53,7 +53,7 @@ def build_engine_comparison_record(
     _require_id(competition_id, {"competition", "tournament"}, "competition")
     if requested_engine not in {"v2", "v3"}:
         raise ValueError("requested engine is invalid")
-    if requested_mode not in {"production", "rehearsal"}:
+    if requested_mode not in {"production", "rehearsal", "local"}:
         raise ValueError("requested mode is invalid")
     if returned_engine is not None and returned_engine not in {"v2", "v3"}:
         raise ValueError("returned engine is invalid")

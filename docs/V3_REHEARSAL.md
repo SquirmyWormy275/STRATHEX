@@ -1,5 +1,7 @@
 # STRATHEX V3 rehearsal setup
 
+For complete Linux local competitions in 7.3.0, use [Linux competition workflow](V3_LINUX_COMPETITION.md). This page retains the older preview and V7 rehearsal profiles.
+
 ## Runnable Linux numeric option
 
 Install STRATHEX 7.2.1 with its pinned V2 library and STRATHMARK 3.0.0rc3 in

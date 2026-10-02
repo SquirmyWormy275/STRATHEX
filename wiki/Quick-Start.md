@@ -2,7 +2,7 @@
 
 ## Available runtime profiles
 
-STRATHEX 7.2.1 preserves V2 production operation and offers two explicitly configured V3 rehearsal profiles. The [Linux numeric candidate](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_REHEARSAL.md) runs real Formula, trained ML, pooling, and exact-field optimization through a separate Python 3.13 subprocess. Its mark-free seeding forecasts and proposed marks are unissued previews. Saved selection binds the implementation, Formula manifest, model bundle, and frozen workbook; field previews also bind revision and stand order. It cannot approve, issue, record official results, export official schedules, settle, or learn at the next round.
+STRATHEX 7.3.0 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate.
 
 The authenticated V7 profile uses signed lifecycle receipts and requires full backend composition and installation qualification. Its lifecycle behavior described below applies only when that full runtime is configured and ready. The checked-in transport rehearsal uses fixtures and does not prove a real numeric lifecycle. A judge deliberately selects V2 or an available V3 profile once per competition root; failures stop the selected workflow.
 
@@ -46,10 +46,6 @@ python MainProgramV5_2.py
 
 A version mismatch or API failure stops the calculation visibly. Neither transport nor engine silently falls back.
 
-## Linux numeric previews
+## Linux local competitions
 
-Follow the linked V3 runbook to install the separate V3 interpreter and a verified private candidate bundle, then pass `--local-v3-python` and `--local-v3-ml-bundle` with the workbook/data paths. Select V3 during event creation. Review numeric previews and save/reload; official result, approval, issue, and schedule workflows are blocked for this profile.
-
-## Linux
-
-Install in a Python 3.13 virtual environment, then run `strathex --workbook /absolute/path/to/workbook.xlsx --data-dir /absolute/path/to/operator-data`. Use `source .venv/bin/activate` to activate the Linux environment. See the [Linux setup and rehearsal runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/ONBOARDING.md).
+Follow the [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) for the separate interpreter, verified trained bundle, persistent authority, independent recovery directory, and complete approval/issue/results workflow. Retained preview profiles remain unissued.

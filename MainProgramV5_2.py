@@ -81,6 +81,7 @@ from woodchopping.ui.multi_event_ui import (
     execute_with_v3_recovery,
     finalize_completed_competition,
     generate_complete_day_schedule,
+    generate_next_round_with_recovery,
     generate_tournament_summary,
     load_multi_event_tournament,
     prompt_loaded_prediction_authority,
@@ -118,7 +119,6 @@ from woodchopping.ui.tournament_ui import (
     current_stage_rounds,
     distribute_competitors_into_heats,
     fill_advancers_with_random_draw,
-    generate_next_round,
     load_tournament_state,
     save_tournament_state,
     select_heat_advancers,
@@ -636,6 +636,7 @@ def single_event_menu():
                 authority_store=_prediction_authority_store,
                 engine_router=_prediction_engine_router,
                 field_local_id=f"single-event:heat-{heat_index}",
+                field_kind=tournament_state.get("event_type", "handicap"),
                 round_local_id="single-event",
                 round_ordinal=1,
                 stand_local_ids=[f"heat-{heat_index}-stand-{item + 1}" for item in range(len(ordered))],
@@ -1556,6 +1557,7 @@ def single_event_menu():
                         write_action=write_results,
                         authority_store=_prediction_authority_store,
                         v3_adapter=_v3_engine_adapter,
+                        checkpoint_callback=_checkpoint_single_prediction_state,
                     )
                 else:
                     entry_succeeded = write_results()
@@ -1675,7 +1677,7 @@ def single_event_menu():
             )
 
             print(f"\nGenerating {next_type} round...")
-            next_rounds = generate_next_round(
+            next_rounds = generate_next_round_with_recovery(
                 tournament_state,
                 all_advancers,
                 next_type,
@@ -1686,6 +1688,10 @@ def single_event_menu():
                 forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
                 authority_checkpoint_callback=_checkpoint_single_prediction_state,
             )
+            if next_rounds is None:
+                _checkpoint_single_prediction_state(tournament_state)
+                continue
+
             tournament_state["rounds"].extend(next_rounds)
 
             print(f"\n[OK] {len(next_rounds)} {next_type} heat(s) generated")

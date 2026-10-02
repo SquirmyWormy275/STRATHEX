@@ -1162,11 +1162,20 @@ def build_v3_runtime(*, environ: Mapping[str, str] | None = None):
     runtime = os.environ if environ is None else environ
     local_configured = any(
         runtime.get(name)
-        for name in ("STRATHEX_V3_LOCAL_PYTHON", "STRATHEX_V3_LOCAL_ML_BUNDLE", "STRATHEX_V3_LOCAL_SNAPSHOTS")
+        for name in (
+            "STRATHEX_V3_LOCAL_PYTHON",
+            "STRATHEX_V3_LOCAL_ML_BUNDLE",
+            "STRATHEX_V3_LOCAL_SNAPSHOTS",
+            "STRATHEX_V3_LOCAL_RUNTIME_ROOT",
+        )
     )
     if local_configured:
         if runtime.get("STRATHMARK_V3_BASE_URL"):
             raise V3RuntimeConfigurationError("configure one V3 profile: authenticated V7 or local numeric preview")
+        if runtime.get("STRATHEX_V3_LOCAL_RUNTIME_ROOT"):
+            from woodchopping.strathmark_v3_linux import build_linux_v3_competition
+
+            return build_linux_v3_competition(runtime)
         from woodchopping.strathmark_v3_local import build_local_v3_candidate
 
         return build_local_v3_candidate(runtime)

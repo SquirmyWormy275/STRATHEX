@@ -595,3 +595,90 @@ def test_single_event_v2_recording_remains_direct(tmp_path):
         v3_adapter=Adapter(),
     )
     assert writes == ["excel"]
+
+
+def test_linux_settlement_requires_checkpoint_and_recovers_confirmed_input_after_restart(tmp_path, monkeypatch):
+    from copy import deepcopy
+
+    import pytest
+
+    from woodchopping.ui import linux_results
+
+    state, store = _v3_state(tmp_path)
+    rows = _field_rows()
+    for index, row in enumerate(rows, 1):
+        row["local_competitor_id"] = f"SYN{index}"
+    field = {
+        "handicap_results": rows,
+        "official_outcomes": {
+            "SYN1": {"status": "completion", "raw_time_ms": 20125, "penalty_ms": None, "official_placing": 1},
+            "SYN2": {"status": "dns", "raw_time_ms": None, "penalty_ms": None, "official_placing": None},
+        },
+    }
+    event = {"rounds": [field]}
+    state["events"].append(event)
+    state["v3_issue_batches"] = {"receipt:heat-one": "issue_batch:one"}
+    exported = []
+    monkeypatch.setattr(linux_results, "export_results", lambda *args: exported.append("export") or True)
+    snapshots = []
+
+    class Adapter:
+        requires_explicit_issue = True
+        retained = None
+        calls = 0
+
+        def validate_mark_rows(self, *_args):
+            pass
+
+        def recover_result_request(self, *_args):
+            return self.retained
+
+        def settle_result(self, _context, payload):
+            self.calls += 1
+            assert snapshots[-1]["events"][0]["rounds"][0]["v3_pending_settlement_request"] == payload
+            self.retained = deepcopy(payload)
+            return {"receipt_id": payload["receipt_id"], "settlement_id": "settlement:synthetic"}
+
+    adapter = Adapter()
+    with pytest.raises(RuntimeError, match="checkpointed before submission"):
+        record_and_settle_v3_round(
+            state,
+            event,
+            field,
+            write_action=lambda: False,
+            authority_store=store,
+            v3_adapter=adapter,
+            checkpoint_callback=lambda _: False,
+        )
+    assert adapter.calls == 0 and exported == []
+
+    def checkpoint(value):
+        snapshots.append(deepcopy(value))
+        return True
+
+    assert record_and_settle_v3_round(
+        state,
+        event,
+        field,
+        write_action=lambda: False,
+        authority_store=store,
+        v3_adapter=adapter,
+        checkpoint_callback=checkpoint,
+    )
+    exact = deepcopy(adapter.retained)
+    # Simulate an older frontend save surviving a crash after the durable ACK.
+    old_field = {"handicap_results": deepcopy(rows)}
+    event["rounds"] = [old_field]
+    assert record_and_settle_v3_round(
+        state,
+        event,
+        old_field,
+        write_action=lambda: False,
+        authority_store=store,
+        v3_adapter=adapter,
+        checkpoint_callback=checkpoint,
+        input_fn=lambda _: pytest.fail("confirmed results must not be collected again"),
+    )
+    assert adapter.retained == exact
+    assert old_field["actual_results"] == {"Alice": 20.125}
+    assert old_field["finish_order"] == {"Alice": 1}

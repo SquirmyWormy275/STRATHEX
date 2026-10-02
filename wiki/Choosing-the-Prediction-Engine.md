@@ -28,7 +28,7 @@ V3 has two deliberately different outputs:
 1. A pre-field forecast estimates raw completion time for seeding. It contains no mark and cannot be approved or issued as a mark sheet.
 2. After exact heat membership and stand positions exist, V3 prepares every competitor card and assembles the complete field-relative marks.
 
-With the full V7 service, ordinary green/amber fields can be mass approved. Degraded fields require a separate deliberate batch. Flagged fields are opened individually for accept, exclude, or defer. Linux candidate previews have no approval or issue authority.
+With the full V7 service, ordinary green/amber fields can be mass approved. Degraded fields require a separate deliberate batch. Flagged fields are opened individually for accept, exclude, or defer. Retained numeric previews have no approval/issue authority. The Linux competition profile supports both, with a separate issue confirmation.
 
 ## Failure and recovery
 

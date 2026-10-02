@@ -1,5 +1,7 @@
 # Documentation Index
 
+Current: [Complete Linux V3 competitions](V3_LINUX_COMPETITION.md) and [7.3.0 release notes](RELEASE_v7.3.0.md).
+
 ## Current authority
 
 1. [README](../README.md) — install, transports, persistence, and operator entry point.
