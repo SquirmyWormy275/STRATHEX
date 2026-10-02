@@ -45,7 +45,7 @@ artifact, but no private history is read by this smoke.
 
 ## Full authenticated V7 service
 
-STRATHEX V3 operation is rehearsal-only. Its reviewed service source is `c7787eaf7cd963e2a8d969dd844f1b7f148a699a`, consumer contract `strathmark.v3-consumer-contract.v7`, and OpenAPI SHA-256 `20174ab13d32c74419e90bfdc73e6b5d5e3e888e1a6cf098f20e585c3bf2ec24`. Installing current STRATHMARK main is not a substitute for that exact service identity. V2 continues to use its separate pinned library.
+STRATHEX V3 operation is rehearsal-only. Its reviewed service source is `f7e04c8dd575c0130fe6eb73b4249ea5f9f3f0d1`, consumer contract `strathmark.v3-consumer-contract.v7`, and OpenAPI SHA-256 `20174ab13d32c74419e90bfdc73e6b5d5e3e888e1a6cf098f20e585c3bf2ec24`. Installing current STRATHMARK main is not a substitute for that exact service identity. V2 continues to use its separate pinned library.
 
 Create separate Python 3.13 environments for the STRATHEX consumer and STRATHMARK service. Install the service's exact authorized wheel and `requirements/v3-release.lock`. Configure its event database, artifact roots, authenticated service principal, source-bound identity, pre-field signer, and injected forecast/lifecycle services according to [STRATHMARK deployment](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/DEPLOYMENT.md). There is intentionally no zero-configuration V3 global ASGI app. `uvicorn strathmark.api:app` starts V2, not V3.
 
@@ -56,7 +56,7 @@ export STRATHMARK_V3_BASE_URL=http://127.0.0.1:8787
 export STRATHMARK_V3_BUNDLE_ID=reviewed-installed-bundle-id
 export STRATHMARK_V3_CREDENTIAL_ENV=STRATHMARK_V3_SERVICE_CREDENTIAL
 export STRATHMARK_V3_CONTRACT_DIGEST=20174ab13d32c74419e90bfdc73e6b5d5e3e888e1a6cf098f20e585c3bf2ec24
-export STRATHMARK_V3_SOURCE_COMMIT=c7787eaf7cd963e2a8d969dd844f1b7f148a699a
+export STRATHMARK_V3_SOURCE_COMMIT=f7e04c8dd575c0130fe6eb73b4249ea5f9f3f0d1
 export STRATHEX_V3_COMMAND_DB=/absolute/path/to/rehearsal/v3_commands.db
 export STRATHEX_PREDICTION_AUTHORITY_DB=/absolute/path/to/rehearsal/prediction_authority.db
 export STRATHMARK_DB_PATH=/absolute/path/to/rehearsal/v2_results.db
@@ -72,12 +72,12 @@ Linux can run the consumer and V2 library/API. Portable V3 tests and replay run 
 
 ## Installed synthetic pair check
 
-Build STRATHEX 7.2.0 and STRATHMARK 3.0.0rc2 wheels from their clean reviewed sources. The service checkout must be exactly `c7787eaf7cd963e2a8d969dd844f1b7f148a699a`. With Python 3.13, run:
+Build STRATHEX 7.2.0 and STRATHMARK 3.0.0rc2 wheels from their clean reviewed sources. The service checkout must be exactly `f7e04c8dd575c0130fe6eb73b4249ea5f9f3f0d1`. With Python 3.13, run:
 
 ```bash
 python scripts/smoke_v3_pair.py \
   --service-checkout /absolute/path/to/STRATHMARK \
-  --service-source c7787eaf7cd963e2a8d969dd844f1b7f148a699a \
+  --service-source f7e04c8dd575c0130fe6eb73b4249ea5f9f3f0d1 \
   --consumer-wheel dist/strathex-7.2.0-py3-none-any.whl \
   --service-wheel /absolute/path/to/STRATHMARK/dist/strathmark-3.0.0rc2-py3-none-any.whl \
   --output /absolute/path/to/installed-v3-pair.json
