@@ -6,6 +6,7 @@
 - Preserved V2 production authority and V3 rehearsal-only behavior, with no engine fallback.
 - Repaired the fresh-tournament finance menu, unset bracket competitors, roster identity reuse, nonpositive menu selections, payout restoration after save/resume, invalid manual-history dates, out-of-range wood quality, championship personal-best column names, and tournament menu numbering.
 - New competitor IDs are opaque UUID-backed identities. Existing IDs are preserved; duplicate existing IDs block roster additions.
+- Updated the reviewed API test set to FastAPI 0.142.2, Starlette 1.7.0 and HTTPX2 2.13.1, with parity and contract verification.
 - Added a portable `strathex` launcher with explicit workbook and operator-data paths and an installed-app smoke on Linux and Windows.
 - Reconciled current documentation and wiki source, added contributor guidance, pinned lint/actions, added dependency-update proposals and enforced merge checks.
 
