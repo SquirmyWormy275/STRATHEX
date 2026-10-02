@@ -17,6 +17,8 @@ from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired,
 from woodchopping.v3_authority_store import V3CommandStore
 
 LINUX_PROTOCOL = "strathmark.v3-linux-competition.v1"
+FROZEN_LINUX_SOURCE_COMMIT = "28766c793eb1283d91518e71753744d09e45ea91"
+FROZEN_LINUX_IMPLEMENTATION_DIGEST = "e997bee6fe3c7de44b336db7b71e0cc8b7da279a7308eb764b1542c80747a38d"
 # Frozen separately from the Windows V7 service and the earlier preview profile.
 LINUX_CONTRACT_DIGEST = "cfc273d0395e7d913d7b52e572b3fbaf286e0ec779478be0ad21d6a19cd883c7"
 
@@ -67,7 +69,8 @@ class LinuxV3Competition:
     @staticmethod
     def _validate_identity(identity):
         if (
-            identity.get("protocol") != LINUX_PROTOCOL
+            identity.get("source_digest") != FROZEN_LINUX_IMPLEMENTATION_DIGEST
+            or identity.get("protocol") != LINUX_PROTOCOL
             or identity.get("contract_digest") != LINUX_CONTRACT_DIGEST
             or identity.get("purpose") != "competition_lifecycle"
             or identity.get("mode") != "local"

@@ -147,7 +147,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: SquirmyWormy275/STRATHMARK
-          ref: 8e22bbf9382af1eb6a8f3020254bc7980585f90a
+          ref: 28766c793eb1283d91518e71753744d09e45ea91
           path: .tmp/linux-service-source
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -168,7 +168,7 @@ jobs:
             producer=.tmp/linux-producer/bin/python
           fi
           "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.3.0-py3-none-any.whl
-          "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc4-py3-none-any.whl[v3-release]"
+          "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc4-py3-none-any.whl[v3-candidate]"
           "$producer" -I -m strathmark.v3.factory.synthetic_fixture --output .tmp/linux-synthetic-model
           "$consumer" scripts/smoke_linux_competition.py --v3-python "$producer" --ml-bundle .tmp/linux-synthetic-model/ml-bundle --output .tmp/linux-competition-smoke
 

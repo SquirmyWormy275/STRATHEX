@@ -514,6 +514,8 @@ def execute_with_v3_recovery(
             counts["recovery_count"] = int(counts.get("recovery_count", 0)) + 1
             print("\n[RECOVERY REQUIRED] STRATHMARK V3 returned an ambiguous outcome.")
             print(f"Command: {error.command_key}")
+            if getattr(v3_adapter, "requires_explicit_issue", False) and error.__cause__ is not None:
+                print(f"Producer detail: {error.__cause__}")
             print("No marks were accepted and V2 fallback remains forbidden.")
             print("R. Retry this exact durable command")
             print("C. Cancel and leave the competition blocked")
@@ -530,6 +532,27 @@ def execute_with_v3_recovery(
             print(f"\n[BLOCKED] Selected V3 engine could not complete: {error}")
             print("No V2 fallback occurred and no partial mark sheet was accepted.")
             return None
+
+
+def generate_next_round_with_recovery(
+    tournament_state, *args, authority_store=None, authority_root_state=None, engine_router=None, **kwargs
+):
+    """Keep a failed selected-engine advancement in the judge menu for exact retry."""
+    root = tournament_state if authority_root_state is None else authority_root_state
+    adapter = None if engine_router is None else engine_router.v3_adapter
+    return execute_with_v3_recovery(
+        lambda: generate_next_round(
+            tournament_state,
+            *args,
+            authority_store=authority_store,
+            authority_root_state=authority_root_state,
+            engine_router=engine_router,
+            **kwargs,
+        ),
+        root_state=root,
+        authority_store=authority_store,
+        v3_adapter=adapter,
+    )
 
 
 def _v3_receipt_rows(value: Any):
@@ -3751,7 +3774,7 @@ def sequential_results_workflow(
                         # Generate next round using existing function
                         # Pass full event_obj - it has all required fields:
                         # rounds, all_competitors_df, wood_species, wood_diameter, wood_quality, event_code
-                        next_rounds = generate_next_round(
+                        next_rounds = generate_next_round_with_recovery(
                             event_obj,
                             all_advancers,
                             next_type,
@@ -3763,6 +3786,10 @@ def sequential_results_workflow(
                             forecast_adapter=forecast_adapter,
                             authority_checkpoint_callback=authority_checkpoint_callback,
                         )
+
+                        if next_rounds is None:
+                            auto_save_multi_event(tournament_state, authority_store=authority_store)
+                            continue
 
                         # Add to event rounds
                         event_obj["rounds"].extend(next_rounds)
