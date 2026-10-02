@@ -219,14 +219,18 @@ class LocalV3Candidate:
             raise V3ClientError("local V3 response does not match this exact request and roster")
         for row in result["rows"]:
             time, spread = row.get("predicted_time"), row.get("std_dev")
+            # STRATHMARK canonical JSON represents non-integral decimals as
+            # strings. Validate their grammar before converting for the UI.
+            numbers = []
+            for value in (time, spread):
+                if isinstance(value, str) and re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", value):
+                    value = float(value)
+                if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+                    raise V3ClientError("local V3 returned invalid numeric forecast evidence")
+                numbers.append(value)
+            time, spread = numbers
             if (
-                type(time) not in (int, float)
-                or not math.isfinite(time)
-                or time <= 0
-                or type(spread) not in (int, float)
-                or not math.isfinite(spread)
-                or spread <= 0
-                or row.get("engine_version") != self._identity["package_version"]
+                row.get("engine_version") != self._identity["package_version"]
                 or not isinstance(row.get("method_used"), str)
                 or not row["method_used"]
             ):
