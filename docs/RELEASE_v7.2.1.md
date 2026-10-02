@@ -16,5 +16,7 @@ qualification.
 
 New candidates must bind to the updated installed source. Preserve prior code
 and model artifacts for existing saved previews; a changed identity blocks reuse.
+New V3 selections require STRATHMARK 3.0.0rc3 or newer. Existing saved previews
+can replay only with their exact original code, model, and workbook snapshot.
 Private copied history, new models, and training evidence are not published.
 See [the setup runbook](V3_REHEARSAL.md) for the updated installed pair.
