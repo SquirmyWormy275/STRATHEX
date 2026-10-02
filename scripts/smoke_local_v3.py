@@ -161,10 +161,17 @@ def main():
     assert all(row["engine_version"].startswith("3.") and row["std_dev"] > 0 for row in v3)
     assert v3[0]["predicted_time"] < v3[1]["predicted_time"]
     assert v3[0]["mark"] > v3[1]["mark"] == 3
+    states["v3"].update(
+        handicap_results_all=v3,
+        all_competitors_df=roster,
+        all_competitors=roster["competitor_name"].tolist(),
+        prediction_as_of="2026-10-02",
+    )
     assert save_tournament_state(states["v3"], str(root / "v3-event.json"), authority_store=store)
     reopened = PredictionAuthorityStore(root / "authority.db")
     resumed = load_tournament_state(str(root / "v3-event.json"), authority_store=reopened)
     assert resumed is not None and resolve_authority_for_state(resumed, reopened).engine == "v3"
+    assert resumed["handicap_results_all"] == v3
     restarted = LocalV3Candidate(
         python=args.v3_python, ml_bundle=args.ml_bundle, workbook=workbook_path, snapshot_root=root / "snapshots"
     )

@@ -1331,7 +1331,14 @@ def single_event_menu():
                     mark = next((c["mark"] for c in heats[0]["handicap_results"] if c["name"] == name), "?")
                     print(f"  {i}) {name:35s} (Mark {mark})")
                 print(f"{'=' * 70}")
-                print("\n[OK] Results can be recorded and saved to build historical data")
+                if resolve_prediction_engine(tournament_state, _prediction_authority_store).engine == "v3" and getattr(
+                    _v3_engine_adapter, "pre_field_requires_local_roster", False
+                ):
+                    print(
+                        "\n[V3 PREVIEW] Proposed marks are shown; official result entry is unavailable in this profile."
+                    )
+                else:
+                    print("\n[OK] Results can be recorded and saved to build historical data")
             else:
                 # Multi-round tournament mode
                 # Use optimal stands_per_heat from capacity calculation (may be less than total num_stands)

@@ -1013,6 +1013,27 @@ def review_v3_approval_queue(
         raise TypeError("V3 approval workflow requires mutable competition state")
     if checkpoint_callback is None:
         raise ValueError("V3 approval workflow requires a durable checkpoint callback")
+    from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST
+
+    authority = resolve_prediction_engine(state, authority_store)
+    if authority.contract_identity == LOCAL_V3_CONTRACT_DIGEST:
+        print("\nV3 NUMERIC PREVIEW ONLY — proposed output has no approval or issue authority.")
+
+        def preview_rows(value):
+            if isinstance(value, dict):
+                if value.get("mark_origin") == "unissued_linux_numeric_preview":
+                    yield value
+                else:
+                    for child in value.values():
+                        yield from preview_rows(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from preview_rows(child)
+
+        for row in preview_rows(state):
+            mark = f"proposed Mark {row['mark']}" if "mark" in row else "seeding only; no mark"
+            print(f"  {row['name']}: predicted {row['predicted_time']:.3f}s | {mark}")
+        return []
     decisions: list[dict[str, Any]] = []
     pending_approval = state.get("v3_pending_approval_decision")
     if pending_approval is not None:

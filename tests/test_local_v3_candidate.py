@@ -142,3 +142,27 @@ def test_local_preview_cannot_export_official_schedule(monkeypatch, capsys):
     assert "cannot be exported" in capsys.readouterr().out
     with pytest.raises(ValueError, match="cannot be exported"):
         generate_printable_schedule({"handicap_results": [{"mark_origin": "unissued_linux_numeric_preview"}]})
+
+
+def test_review_menu_displays_local_previews_without_requesting_approval(tmp_path, monkeypatch, capsys):
+    from woodchopping.ui.multi_event_ui import review_v3_approval_queue
+
+    candidate, _ = local_candidate(tmp_path, monkeypatch)
+    _, state = locked_context(tmp_path, candidate)
+    state["handicap_results_all"] = [
+        {"name": "Synthetic One", "mark_origin": "unissued_linux_numeric_preview", "predicted_time": 28.5, "mark": 8},
+        {"name": "Synthetic Two", "mark_origin": "unissued_linux_numeric_preview", "predicted_time": 34.0},
+    ]
+    assert (
+        review_v3_approval_queue(
+            state,
+            authority_store=PredictionAuthorityStore(tmp_path / "authority.db"),
+            v3_adapter=candidate,
+            checkpoint_callback=lambda _: True,
+        )
+        == []
+    )
+    output = capsys.readouterr().out
+    assert "predicted 28.500s | proposed Mark 8" in output
+    assert "predicted 34.000s | seeding only; no mark" in output
+    assert "no approval or issue authority" in output
