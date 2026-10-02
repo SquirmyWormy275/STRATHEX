@@ -43,6 +43,7 @@ _READINESS_LABELS = {
     "checking": "CHECKING",
     "production_ready": "PRODUCTION READY",
     "rehearsal_ready": "REHEARSAL READY",
+    "numeric_preview_ready": "NUMERIC PREVIEW ONLY",
     "ineligible": "INELIGIBLE",
     "status_failed": "STATUS CHECK FAILED",
 }
@@ -85,14 +86,26 @@ def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
             "still selects V3 in rehearsal mode only."
         ),
         "rehearsal_ready": "V3 is rehearsal-only; this does not claim production readiness.",
+        "numeric_preview_ready": "Proposed times and marks are experimental previews. This profile cannot authorize issue or results.",
         "ineligible": "V3 cannot be selected for this scope.",
         "status_failed": "Readiness is unknown; retry the check or select V2.",
     }.get(status, "Readiness is unknown; retry the check or select V2.")
     return f"V3: {label} - {detail} {qualification}"
 
 
-def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str, dict[str, str]]:
+def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str, dict[str, str] | None]:
     status = str(readiness.get("status", "status_failed"))
+    if status == "numeric_preview_ready":
+        from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST, LOCAL_V3_PROTOCOL
+
+        source = str(readiness.get("source_identity", ""))
+        if (
+            readiness.get("runtime_profile") != LOCAL_V3_PROTOCOL
+            or readiness.get("contract_identity") != LOCAL_V3_CONTRACT_DIGEST
+            or re.fullmatch(r"[0-9a-f]{64}", source) is None
+        ):
+            raise ValueError("local V3 numeric preview identity is invalid")
+        return "rehearsal", LOCAL_V3_CONTRACT_DIGEST, source, None
     if status not in {"production_ready", "rehearsal_ready"}:
         raise ValueError("V3 is not eligible for selection in its current readiness state")
     contract_identity = str(readiness.get("contract_identity") or "").strip()
@@ -713,6 +726,13 @@ def record_and_settle_v3_round(
     authority = resolve_prediction_engine(root_state, authority_store)
     if authority.engine != "v3":
         return bool(write_action())
+    from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST
+
+    if authority.contract_identity == LOCAL_V3_CONTRACT_DIGEST:
+        print(
+            "\n[BLOCKED] V3 numeric previews cannot record official results. Use the full V7 issue/settlement runtime."
+        )
+        return False
     if not round_object.get("canonical_results_recorded"):
         if not write_action():
             return False

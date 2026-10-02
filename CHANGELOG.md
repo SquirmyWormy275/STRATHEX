@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.2.0] - 2026-10-02
+
+- Add an explicit Linux V3 numeric candidate to the persistent V2/V3 selector, using a separate interpreter and verified trained model.
+- Execute real Formula + ML forecasts, pooling, and joint marks; preserve mark-free seeding, fixed history snapshots, source binding, restart identity, and no fallback.
+- Correct UH/SB mapping to V3 event codes and preserve V2's exact dependency pin.
+- Label local output as unissued numeric preview; official issue, settlement, and next-round learning still require the full V7 runtime.
+
 ## 7.1.1
 
 - Coordinate the V3 rehearsal consumer pin with the reviewed security-maintained STRATHMARK source, preserving V7 contract bytes and the production V2 dependency.

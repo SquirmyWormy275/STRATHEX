@@ -1,4 +1,4 @@
-# STRATHEX 7.1
+# STRATHEX 7.2
 
 STRATHEX is the judge-facing woodchopping tournament application. It manages rosters, wood setup, handicap and championship fields, brackets, multi-event days, result entry, autosave, and Excel exports. Numeric prediction and mark assignment are owned by [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK).
 
@@ -12,9 +12,9 @@ Every new competition begins with no prediction engine selected. The judge must 
 - the choice locks at the first numeric operation;
 - an outage or incompatible response blocks work rather than calling the other engine.
 
-V2 remains the established production baseline. V3 is selectable only when its authenticated loopback service proves an exact reviewed contract and source identity. This STRATHEX release always records V3 as rehearsal-only, even when the service reports production-ready evidence; changing that policy requires a separate explicit cutover release. Selecting V3 for one competition never enables a global V3 cutover.
+V2 remains the established production baseline. V3 can use either the exact authenticated V7 service or the separately configured Linux numeric candidate. The candidate runs actual Formula + trained ML forecasts, pooling, and optimization, and displays `NUMERIC PREVIEW ONLY`. It cannot approve, issue, settle, or update next-round learning. This release records both V3 profiles as rehearsal-only. Selecting V3 never enables a global cutover.
 
-V3 uses a two-stage workflow. A signed pre-field forecast supplies raw-time estimates for seeding before heats exist and is forbidden from carrying a mark. After STRATHEX creates exact heats and stand assignments, V3 assembles the complete field-relative mark sheet. See [Choosing the Prediction Engine](wiki/Choosing-the-Prediction-Engine.md).
+V3 uses a two-stage workflow. A pre-field forecast supplies raw-time estimates for seeding before heats exist and is forbidden from carrying a mark. After STRATHEX creates exact heats and stand assignments, V3 calculates the complete field-relative marks. The authenticated V7 service provides signed receipts and the issue lifecycle; local candidate outputs remain unissued previews. See [Choosing the Prediction Engine](wiki/Choosing-the-Prediction-Engine.md).
 
 ## V2 production baseline
 
@@ -104,7 +104,7 @@ The launcher selects paths before opening data. The operator directory holds sav
 - [Architecture](docs/ARCHITECTURE.md)
 - [Handicap system](docs/HANDICAP_SYSTEM_EXPLAINED.md)
 - [STRATHMARK 2 migration decision](docs/STRATHMARK_2_COMPATIBILITY_EVALUATION.md)
-- [STRATHEX 7.1.1 release notes](docs/RELEASE_v7.1.1.md)
+- [STRATHEX 7.2.0 release notes](docs/RELEASE_v7.2.0.md)
 - [Changelog](CHANGELOG.md)
 - [Contributor onboarding](ONBOARDING.md)
 - [Documentation index](docs/INDEX.md)

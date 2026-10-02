@@ -1,6 +1,6 @@
 # Current Runtime Contract
 
-**Applies to:** STRATHEX 7.1.1
+**Applies to:** STRATHEX 7.2.0
 **Prediction authority:** the competition-root selection persisted by STRATHEX; V2 remains the production baseline and V3 remains opt-in under exact readiness evidence
 
 ## Competition authority
@@ -29,6 +29,16 @@ Same-day and future observations are excluded. Undated observations are not v2 e
 The returned contract includes predicted time, legal mark, method, confidence, explanation, forecast interval, performance standard deviation, engine/model/calibration versions, evidence cutoff, optimizer and metadata, warnings, degraded state, provenance, ignored factors, competitor ID, and optional ledger fields.
 
 ## Transport
+
+The explicit Linux V3 numeric profile runs a separate Python 3.13 subprocess with
+verified trained ML, Formula, distribution pooling, and the V3 optimizer. Its
+`strathmark.v3-linux-numeric-candidate.v1` contract is separate from V7. Selection
+binds the installed implementation and model digests. Per-root workbook snapshots
+and preview evidence persist across restart, with an exclusive historical cutoff.
+Both numeric assessors must execute. Pre-field forecasts have no marks; exact-field
+proposed marks remain unissued. This profile cannot authorize approval, issue,
+result settlement, or next-round learning. LLM council availability, bootstrap
+weights, and bootstrap dependence are disclosed; no accuracy qualification is claimed.
 
 - `python` is the default: direct in-process `HandicapCalculator.calculate()`, offline-capable.
 - `http` is explicit: one stateless `POST /calculate` per common-wood field after validating the audited `/openapi.json` 2.0.0 request/response shape.

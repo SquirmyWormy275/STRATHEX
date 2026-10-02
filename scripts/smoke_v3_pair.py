@@ -337,6 +337,11 @@ def main() -> None:
     parser.add_argument("--service-wheel", type=Path, required=True)
     parser.add_argument("--consumer-wheel", type=Path, required=True)
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--with-local-numerics",
+        action="store_true",
+        help="Also train and execute the actual Linux-style numeric profile on synthetic inputs",
+    )
     parser.add_argument("--role", choices=("service", "consumer", "recover"))
     parser.add_argument("--fixtures", type=Path)
     parser.add_argument("--state", type=Path)
@@ -394,7 +399,9 @@ def main() -> None:
                 else:
                     install.extend(
                         [
-                            str(args.service_wheel.resolve()),
+                            f"{args.service_wheel.resolve()}[v3-candidate]"
+                            if args.with_local_numerics
+                            else str(args.service_wheel.resolve()),
                             "-r",
                             str(checkout / "requirements/v3-release.lock"),
                             "pytest",
@@ -441,6 +448,27 @@ def main() -> None:
                 service.wait(timeout=20)
                 if service.returncode:
                     raise RuntimeError((state / "service.log").read_text("utf-8"))
+                numeric_report = None
+                if args.with_local_numerics:
+                    numeric_root = root / "local-numerics"
+                    subprocess.run(
+                        [
+                            str(args.consumer_python.absolute()),
+                            "-I",
+                            str(Path(__file__).with_name("smoke_local_v3.py").resolve()),
+                            "--v3-python",
+                            str(args.service_python.absolute()),
+                            "--training-source",
+                            args.service_source,
+                            "--output",
+                            str(numeric_root),
+                        ],
+                        cwd=root,
+                        env=env,
+                        check=True,
+                        timeout=180,
+                    )
+                    numeric_report = json.loads((numeric_root / "report.json").read_text("utf-8"))
                 result = {
                     "schema_version": "strath-installed-v3-pair-rehearsal-v1",
                     "passed": True,
@@ -455,6 +483,8 @@ def main() -> None:
                 }
                 for filename in ("consumer-result.json", "consumer-recovered.json", "service-result.json"):
                     result.update(json.loads((state / filename).read_text("utf-8")))
+                if numeric_report is not None:
+                    result["local_numeric_candidate"] = numeric_report
                 args.output.parent.mkdir(parents=True, exist_ok=True)
                 write_json(args.output, result)
                 print(json.dumps(result, indent=2))

@@ -14,6 +14,14 @@ from datetime import datetime
 from typing import Dict, List
 
 
+def _contains_numeric_preview(value):
+    if isinstance(value, dict):
+        return value.get("mark_origin") == "unissued_linux_numeric_preview" or any(
+            _contains_numeric_preview(child) for child in value.values()
+        )
+    return isinstance(value, list) and any(_contains_numeric_preview(child) for child in value)
+
+
 def generate_printable_schedule(tournament_state: Dict) -> str:
     """
     Generate a formatted, printable tournament schedule.
@@ -27,6 +35,8 @@ def generate_printable_schedule(tournament_state: Dict) -> str:
     Returns:
         Formatted schedule string + saves to TXT file
     """
+    if _contains_numeric_preview(tournament_state):
+        raise ValueError("V3 numeric previews cannot be exported as an official start schedule")
     # Detect tournament type
     is_multi_event = tournament_state.get("tournament_mode") == "multi_event"
 
@@ -232,6 +242,9 @@ def display_and_export_schedule(tournament_state: Dict):
     Args:
         tournament_state: Tournament state dict (single or multi-event)
     """
+    if _contains_numeric_preview(tournament_state):
+        print("\n[BLOCKED] V3 numeric previews cannot be exported as an official start schedule.")
+        return False
     print("\n" + "=" * 70)
     print("GENERATING TOURNAMENT SCHEDULE".center(70))
     print("=" * 70)

@@ -223,7 +223,7 @@ Every child event, heat, semifinal, and final inherits that tournament
 choice; there is no per-event tournament override.
 
 Nothing is selected by default. The screen shows V3 as checking,
-production-ready, rehearsal-ready, ineligible, or status-check-failed. A failed
+production-ready, rehearsal-ready, numeric-preview-only, ineligible, or status-check-failed. A failed
 or incomplete readiness check never implies that V3 is safe to use. Rehearsal
 mode is explicitly non-production and remains labeled wherever the engine is
 shown.
@@ -236,8 +236,12 @@ marks and results remain immutable and auditable.
 
 V2 is the established deterministic production baseline. V3 is the adaptive
 ensemble and may be used only in the mode proven by its readiness response.
-Both use the same woodchopping handicap purpose and judge approval workflow.
-V3 first produces a signed pre-field raw-time forecast for seeding. That
+The Linux V3 candidate runs Formula + trained ML and proposes field-relative
+marks. It cannot approve, issue, settle, or learn from the next round. Its
+screen explicitly says NUMERIC PREVIEW ONLY. Changing the model or code blocks
+a saved competition until the original artifacts are restored.
+The full V7 service uses the judge approval workflow and signed receipts.
+V3 first produces a pre-field raw-time forecast for seeding. That
 forecast cannot contain a mark. Only after exact heat membership and stand
 positions exist may V3 assemble a complete field-relative mark sheet.
 Ordinary green/amber fields can be batch approved; flagged fields are reviewed
