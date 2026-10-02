@@ -91,7 +91,7 @@ jobs:
         run: python -m build
 
       - name: Start and exit installed app outside checkout
-        run: python scripts/smoke_installed_app.py --wheel dist/strathex-7.2.0-py3-none-any.whl
+        run: python scripts/smoke_installed_app.py --wheel dist/strathex-7.2.1-py3-none-any.whl
 
   v3_pair:
     name: Installed V3 pair (${{ matrix.os }} / Python 3.13)
@@ -108,7 +108,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: SquirmyWormy275/STRATHMARK
-          ref: f7e04c8dd575c0130fe6eb73b4249ea5f9f3f0d1
+          ref: 8a1d40aa5645715f9ab876d0517b64c36602a77e
           path: .tmp/service-source
 
       - name: Set up Python 3.13
@@ -127,9 +127,9 @@ jobs:
         run: >-
           python scripts/smoke_v3_pair.py
           --service-checkout .tmp/service-source
-          --service-source f7e04c8dd575c0130fe6eb73b4249ea5f9f3f0d1
-          --consumer-wheel .tmp/consumer-dist/strathex-7.2.0-py3-none-any.whl
-          --service-wheel .tmp/service-dist/strathmark-3.0.0rc2-py3-none-any.whl
+          --service-source 8a1d40aa5645715f9ab876d0517b64c36602a77e
+          --consumer-wheel .tmp/consumer-dist/strathex-7.2.1-py3-none-any.whl
+          --service-wheel .tmp/service-dist/strathmark-3.0.0rc3-py3-none-any.whl
           --output .tmp/installed-v3-pair.json
           --with-local-numerics
 

@@ -1,10 +1,10 @@
-# STRATHEX 7.2.0
+# STRATHEX 7.2.1
 
 STRATHEX is the terminal application judges use to run woodchopping events. It handles rosters, wood setup, handicap and championship fields, brackets, multi-event days, schedules, results, autosave, and exports.
 
 Numeric prediction and handicap marks come from the STRATHMARK engine deliberately selected for that competition. V2 remains the production baseline. V3 can use the authenticated V7 service or the explicit Linux numeric candidate. The candidate runs actual Formula + trained ML and optimization, displays NUMERIC PREVIEW ONLY, and cannot approve, issue, settle, or learn from later rounds.
 
-STRATHEX 7.2.0 pins its V3 rehearsal service to security-maintained source `f7e04c8dd575c0130fe6eb73b4249ea5f9f3f0d1`. Linux and Windows CI exercise installed consumer/service wheels over loopback, including approval/issue separation and exact settlement recovery after a consumer restart. This synthetic development-key check does not qualify the designated production installation. See [the rehearsal runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_REHEARSAL.md).
+STRATHEX 7.2.1 pins its V3 rehearsal service to security-maintained source `8a1d40aa5645715f9ab876d0517b64c36602a77e`. Linux and Windows CI exercise installed consumer/service wheels over loopback, including approval/issue separation and exact settlement recovery after a consumer restart. This synthetic development-key check does not qualify the designated production installation. See [the rehearsal runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_REHEARSAL.md).
 
 Read [Choosing the Prediction Engine](Choosing-the-Prediction-Engine) before operating V3.
 

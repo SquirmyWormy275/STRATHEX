@@ -10,4 +10,4 @@ The legacy `python MainProgramV5_2.py` entry remains supported. It opens the con
 
 For tests, use a fresh temporary directory, export `STRATHMARK_TEST_DB=1`, and assign unique `STRATHMARK_DB_PATH`, `STRATHMARK_V3_DB_PATH`, `STRATHEX_PREDICTION_AUTHORITY_DB`, and `STRATHEX_V3_COMMAND_DB` paths. Run pytest with an explicit `--basetemp` and `-p no:cacheprovider`. Existing tests use synthetic data; historical benchmark scripts are excluded from release collection.
 
-Run `ruff check .`, `ruff format --check .`, `python scripts/check_docs.py`, `python -m build`, then `python scripts/smoke_installed_app.py --wheel dist/strathex-7.2.0-py3-none-any.whl`. The installed smoke starts and exits the actual terminal app with a generated workbook outside the checkout. It opens no live competition data.
+Run `ruff check .`, `ruff format --check .`, `python scripts/check_docs.py`, `python -m build`, then `python scripts/smoke_installed_app.py --wheel dist/strathex-7.2.1-py3-none-any.whl`. The installed smoke starts and exits the actual terminal app with a generated workbook outside the checkout. It opens no live competition data.

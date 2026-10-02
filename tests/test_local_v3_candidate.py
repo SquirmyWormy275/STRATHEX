@@ -23,7 +23,7 @@ def local_candidate(tmp_path, monkeypatch):
         "source_digest": "a" * 64,
         "formula_digest": "b" * 64,
         "ml_bundle_digest": "c" * 64,
-        "package_version": "3.0.0rc2",
+        "package_version": "3.0.0rc3",
     }
     monkeypatch.setattr(LocalV3Candidate, "_run", lambda self, *args: identity)
     workbook = tmp_path / "synthetic.xlsx"
@@ -238,7 +238,7 @@ def test_invalid_numeric_evidence_is_rejected_before_persistence(tmp_path, monke
                     "competitor_id": "SYN001",
                     "predicted_time": bad,
                     "std_dev": 1,
-                    "engine_version": "3.0.0rc2",
+                    "engine_version": "3.0.0rc3",
                     "method_used": "synthetic",
                 }
             ],

@@ -1,5 +1,10 @@
 # Changelog
 
+## [7.2.1] - 2026-10-02
+
+- Raise cryptography to the maintained 50.0.2 floor and coordinate the exact STRATHMARK 3.0.0rc3 source and secure release lock.
+- Preserve numeric algorithms, V7 bytes, V2 source pin, deliberate selection, and preview-only V3 authority. See [security release notes](docs/RELEASE_v7.2.1.md).
+
 ## [7.2.0] - 2026-10-02
 
 - Add an explicit Linux V3 numeric candidate to the persistent V2/V3 selector, using a separate interpreter and verified trained model.
