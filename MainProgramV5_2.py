@@ -92,7 +92,6 @@ from woodchopping.ui.multi_event_ui import (
     select_prediction_engine_for_scope,
     sequential_results_workflow,
     setup_tournament_roster,  # NEW V5.1
-    unavailable_v3_readiness,
     view_analyze_all_handicaps,
     view_tournament_schedule,
     view_wood_count,
@@ -234,17 +233,20 @@ configure_prediction_authority_store(_prediction_authority_store)
 try:
     from woodchopping.strathmark_v3_client import (
         V3RuntimeConfigurationError,
-        build_v3_client,
+        build_v3_runtime,
     )
 except ImportError:
     # Selection readiness explains the exact configuration problem. Keeping the
     # adapter absent makes a selected V3 scope fail closed, never fall back.
     _v3_engine_adapter = None
+    _v3_configuration_error = "The V3 adapter could not be imported."
 else:
     try:
-        _v3_engine_adapter = build_v3_client()
-    except V3RuntimeConfigurationError:
+        _v3_engine_adapter = build_v3_runtime()
+        _v3_configuration_error = None
+    except V3RuntimeConfigurationError as error:
         _v3_engine_adapter = None
+        _v3_configuration_error = str(error)
 
 _prediction_engine_router = build_engine_router(v3_adapter=_v3_engine_adapter)
 
@@ -252,7 +254,7 @@ _prediction_engine_router = build_engine_router(v3_adapter=_v3_engine_adapter)
 def _v3_readiness_provider():
     """Use the authenticated V3 client when installed; otherwise fail closed."""
     if _v3_engine_adapter is None:
-        return unavailable_v3_readiness()
+        return {"status": "ineligible", "message": _v3_configuration_error or "V3 is unavailable."}
     return _v3_engine_adapter.selector_readiness()
 
 
@@ -1329,7 +1331,14 @@ def single_event_menu():
                     mark = next((c["mark"] for c in heats[0]["handicap_results"] if c["name"] == name), "?")
                     print(f"  {i}) {name:35s} (Mark {mark})")
                 print(f"{'=' * 70}")
-                print("\n[OK] Results can be recorded and saved to build historical data")
+                if resolve_prediction_engine(tournament_state, _prediction_authority_store).engine == "v3" and getattr(
+                    _v3_engine_adapter, "pre_field_requires_local_roster", False
+                ):
+                    print(
+                        "\n[V3 PREVIEW] Proposed marks are shown; official result entry is unavailable in this profile."
+                    )
+                else:
+                    print("\n[OK] Results can be recorded and saved to build historical data")
             else:
                 # Multi-round tournament mode
                 # Use optimal stands_per_heat from capacity calculation (may be less than total num_stands)
@@ -2235,6 +2244,7 @@ while True:
     print("\nMODE SELECTION:")
     print("  1. Design an Event (Single Event)")
     print("  2. Design a Tournament (Multiple Events)")
+    print("  Choose STRATHMARK V2 or V3 when creating the event or tournament.")
     print("\nANALYTICS:")
     print("  3. Championship Race Simulator (Fun Predictions)")
     print("  4. View Competitor Dashboard (Performance Analytics)")

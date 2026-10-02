@@ -708,6 +708,9 @@ def record_match_result(
     Returns:
         Updated bracket_state
     """
+    from woodchopping.ui.official_eligibility import require_official_eligibility
+
+    require_official_eligibility(bracket_state)
     # Find match
     match = find_match_by_id(bracket_state, match_id)
 
@@ -870,6 +873,9 @@ def record_double_elim_match_result(
     Returns:
         Updated bracket_state
     """
+    from woodchopping.ui.official_eligibility import require_official_eligibility
+
+    require_official_eligibility(bracket_state)
     # Find match in appropriate bracket
     match = find_match_in_double_elim(bracket_state, match_id)
 
@@ -1066,6 +1072,13 @@ def enter_match_results_interactive(bracket_state: Dict) -> Dict:
     Returns:
         Updated bracket_state
     """
+    from woodchopping.ui.official_eligibility import require_official_eligibility
+
+    try:
+        require_official_eligibility(bracket_state)
+    except ValueError as error:
+        print(f"\n[BLOCKED] {error}")
+        return bracket_state
     current_match = get_current_match(bracket_state)
 
     if not current_match:
@@ -1195,6 +1208,13 @@ def sequential_match_entry_workflow(
             Without one, the caller remains responsible for saving from its
             tournament menu.
     """
+    from woodchopping.ui.official_eligibility import require_official_eligibility
+
+    try:
+        require_official_eligibility(bracket_state)
+    except ValueError as error:
+        print(f"\n[BLOCKED] {error}")
+        return bracket_state
     progress_saved = False
 
     while True:

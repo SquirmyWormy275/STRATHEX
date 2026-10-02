@@ -13,8 +13,18 @@ import os
 from datetime import datetime
 from typing import Dict, List
 
+from woodchopping.ui.official_eligibility import require_official_eligibility
 
-def generate_printable_schedule(tournament_state: Dict) -> str:
+
+def _contains_numeric_preview(value):
+    if isinstance(value, dict):
+        return value.get("mark_origin") == "unissued_linux_numeric_preview" or any(
+            _contains_numeric_preview(child) for child in value.values()
+        )
+    return isinstance(value, list) and any(_contains_numeric_preview(child) for child in value)
+
+
+def generate_printable_schedule(tournament_state: Dict, *, authority_store=None) -> str:
     """
     Generate a formatted, printable tournament schedule.
 
@@ -27,6 +37,9 @@ def generate_printable_schedule(tournament_state: Dict) -> str:
     Returns:
         Formatted schedule string + saves to TXT file
     """
+    require_official_eligibility(tournament_state, authority_store=authority_store)
+    if _contains_numeric_preview(tournament_state):
+        raise ValueError("V3 numeric previews cannot be exported as an official start schedule")
     # Detect tournament type
     is_multi_event = tournament_state.get("tournament_mode") == "multi_event"
 
@@ -223,7 +236,7 @@ def _add_round_to_schedule(lines: List[str], round_obj: Dict, indent: int = 0):
         lines.append("║" + f"  {indent_str}-> Advanced: {', '.join(advancers)}".ljust(68) + "║")
 
 
-def display_and_export_schedule(tournament_state: Dict):
+def display_and_export_schedule(tournament_state: Dict, *, authority_store=None):
     """
     Wrapper function to display schedule on screen and export to file.
 
@@ -232,13 +245,21 @@ def display_and_export_schedule(tournament_state: Dict):
     Args:
         tournament_state: Tournament state dict (single or multi-event)
     """
+    try:
+        require_official_eligibility(tournament_state, authority_store=authority_store)
+    except ValueError as error:
+        print(f"\n[BLOCKED] {error}")
+        return False
+    if _contains_numeric_preview(tournament_state):
+        print("\n[BLOCKED] V3 numeric previews cannot be exported as an official start schedule.")
+        return False
     print("\n" + "=" * 70)
     print("GENERATING TOURNAMENT SCHEDULE".center(70))
     print("=" * 70)
 
     # Generate schedule
     try:
-        schedule_text = generate_printable_schedule(tournament_state)
+        schedule_text = generate_printable_schedule(tournament_state, authority_store=authority_store)
     except ValueError as exc:
         print(f"\n[WARN] {exc}")
         input("\nPress Enter to continue...")

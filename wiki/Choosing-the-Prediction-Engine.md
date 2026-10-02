@@ -14,14 +14,21 @@ V2 is the established deterministic production baseline. It keeps the existing p
 
 ## V3
 
-V3 can be selected only when its authenticated local service returns the exact reviewed contract and source identity. `REHEARSAL` means non-production and remains visible throughout the competition.
+V3 can use the authenticated local V7 service with exact reviewed identities, or
+the explicitly configured Linux numeric candidate. `REHEARSAL` means non-production.
+The Linux profile displays `NUMERIC PREVIEW ONLY` and executes actual Formula,
+trained ML, distribution pooling, and optimization in a separate Python environment.
+It supplies mark-free seeding and field-relative proposed marks. It cannot approve,
+issue, settle results, or learn from the next round. A saved competition binds its
+exact code and model; changing either blocks it until the original artifacts return.
+Follow [V3 setup](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_REHEARSAL.md).
 
 V3 has two deliberately different outputs:
 
 1. A pre-field forecast estimates raw completion time for seeding. It contains no mark and cannot be approved or issued as a mark sheet.
 2. After exact heat membership and stand positions exist, V3 prepares every competitor card and assembles the complete field-relative marks.
 
-Ordinary green/amber fields can be mass approved. Degraded fields require a separate deliberate batch. Flagged fields are opened individually for accept, exclude, or defer.
+With the full V7 service, ordinary green/amber fields can be mass approved. Degraded fields require a separate deliberate batch. Flagged fields are opened individually for accept, exclude, or defer. Linux candidate previews have no approval or issue authority.
 
 ## Failure and recovery
 

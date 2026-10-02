@@ -43,6 +43,7 @@ _READINESS_LABELS = {
     "checking": "CHECKING",
     "production_ready": "PRODUCTION READY",
     "rehearsal_ready": "REHEARSAL READY",
+    "numeric_preview_ready": "NUMERIC PREVIEW ONLY",
     "ineligible": "INELIGIBLE",
     "status_failed": "STATUS CHECK FAILED",
 }
@@ -85,14 +86,26 @@ def format_v3_readiness(readiness: Mapping[str, Any]) -> str:
             "still selects V3 in rehearsal mode only."
         ),
         "rehearsal_ready": "V3 is rehearsal-only; this does not claim production readiness.",
+        "numeric_preview_ready": "Proposed times and marks are experimental previews. This profile cannot authorize issue or results.",
         "ineligible": "V3 cannot be selected for this scope.",
         "status_failed": "Readiness is unknown; retry the check or select V2.",
     }.get(status, "Readiness is unknown; retry the check or select V2.")
     return f"V3: {label} - {detail} {qualification}"
 
 
-def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str, dict[str, str]]:
+def _validated_v3_readiness(readiness: Mapping[str, Any]) -> tuple[str, str, str, dict[str, str] | None]:
     status = str(readiness.get("status", "status_failed"))
+    if status == "numeric_preview_ready":
+        from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST, LOCAL_V3_PROTOCOL
+
+        source = str(readiness.get("source_identity", ""))
+        if (
+            readiness.get("runtime_profile") != LOCAL_V3_PROTOCOL
+            or readiness.get("contract_identity") != LOCAL_V3_CONTRACT_DIGEST
+            or re.fullmatch(r"[0-9a-f]{64}", source) is None
+        ):
+            raise ValueError("local V3 numeric preview identity is invalid")
+        return "rehearsal", LOCAL_V3_CONTRACT_DIGEST, source, None
     if status not in {"production_ready", "rehearsal_ready"}:
         raise ValueError("V3 is not eligible for selection in its current readiness state")
     contract_identity = str(readiness.get("contract_identity") or "").strip()
@@ -713,6 +726,13 @@ def record_and_settle_v3_round(
     authority = resolve_prediction_engine(root_state, authority_store)
     if authority.engine != "v3":
         return bool(write_action())
+    from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST
+
+    if authority.contract_identity == LOCAL_V3_CONTRACT_DIGEST:
+        print(
+            "\n[BLOCKED] V3 numeric previews cannot record official results. Use the full V7 issue/settlement runtime."
+        )
+        return False
     if not round_object.get("canonical_results_recorded"):
         if not write_action():
             return False
@@ -993,6 +1013,27 @@ def review_v3_approval_queue(
         raise TypeError("V3 approval workflow requires mutable competition state")
     if checkpoint_callback is None:
         raise ValueError("V3 approval workflow requires a durable checkpoint callback")
+    from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST
+
+    authority = resolve_prediction_engine(state, authority_store)
+    if authority.contract_identity == LOCAL_V3_CONTRACT_DIGEST:
+        print("\nV3 NUMERIC PREVIEW ONLY — proposed output has no approval or issue authority.")
+
+        def preview_rows(value):
+            if isinstance(value, dict):
+                if value.get("mark_origin") == "unissued_linux_numeric_preview":
+                    yield value
+                else:
+                    for child in value.values():
+                        yield from preview_rows(child)
+            elif isinstance(value, list):
+                for child in value:
+                    yield from preview_rows(child)
+
+        for row in preview_rows(state):
+            mark = f"proposed Mark {row['mark']}" if "mark" in row else "seeding only; no mark"
+            print(f"  {row['name']}: predicted {row['predicted_time']:.3f}s | {mark}")
+        return []
     decisions: list[dict[str, Any]] = []
     pending_approval = state.get("v3_pending_approval_decision")
     if pending_approval is not None:
@@ -3449,6 +3490,13 @@ def sequential_results_workflow(
     Returns:
         dict: Updated tournament_state with recorded results
     """
+    from woodchopping.ui.official_eligibility import require_official_eligibility
+
+    try:
+        require_official_eligibility(tournament_state, authority_store=_configured_authority_store(authority_store))
+    except ValueError as error:
+        print(f"\n[BLOCKED] {error}")
+        return tournament_state
     if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
 

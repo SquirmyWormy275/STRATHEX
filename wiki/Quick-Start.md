@@ -1,5 +1,11 @@
 # Quick Start
 
+## Available runtime profiles
+
+STRATHEX 7.2.0 preserves V2 production operation and offers two explicitly configured V3 rehearsal profiles. The [Linux numeric candidate](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_REHEARSAL.md) runs real Formula, trained ML, pooling, and exact-field optimization through a separate Python 3.13 subprocess. Its mark-free seeding forecasts and proposed marks are unissued previews. Saved selection binds the implementation, Formula manifest, model bundle, and frozen workbook; field previews also bind revision and stand order. It cannot approve, issue, record official results, export official schedules, settle, or learn at the next round.
+
+The authenticated V7 profile uses signed lifecycle receipts and requires full backend composition and installation qualification. Its lifecycle behavior described below applies only when that full runtime is configured and ready. The checked-in transport rehearsal uses fixtures and does not prove a real numeric lifecycle. A judge deliberately selects V2 or an available V3 profile once per competition root; failures stop the selected workflow.
+
 ## Install
 
 Use Python 3.13 or newer.
@@ -13,7 +19,7 @@ python MainProgramV5_2.py
 
 STRATHEX pins the exact STRATHMARK `v2.0.0` release commit from GitHub; no STRATHMARK PyPI distribution is required. Ollama is not required for numeric prediction.
 
-## Run an event
+## Run an event with V2 or the full authenticated V7 runtime
 
 1. Start a single event and deliberately select V2 or an eligible V3 mode. For a multi-event tournament, make this choice once during tournament creation; child events do not choose again.
 2. Select the event and configure species, diameter, and quality.
@@ -39,6 +45,10 @@ python MainProgramV5_2.py
 ```
 
 A version mismatch or API failure stops the calculation visibly. Neither transport nor engine silently falls back.
+
+## Linux numeric previews
+
+Follow the linked V3 runbook to install the separate V3 interpreter and a verified private candidate bundle, then pass `--local-v3-python` and `--local-v3-ml-bundle` with the workbook/data paths. Select V3 during event creation. Review numeric previews and save/reload; official result, approval, issue, and schedule workflows are blocked for this profile.
 
 ## Linux
 

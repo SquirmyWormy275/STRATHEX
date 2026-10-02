@@ -24,7 +24,7 @@ from woodchopping.v3_authority_store import V3CommandStore
 
 FROZEN_V3_CONTRACT_DIGEST = "20174ab13d32c74419e90bfdc73e6b5d5e3e888e1a6cf098f20e585c3bf2ec24"
 FROZEN_V3_CONTRACT_VERSION = "strathmark.v3-consumer-contract.v7"
-FROZEN_V3_SOURCE_COMMIT = "ba056ed84cad845af408da11556d5b171e737f68"
+FROZEN_V3_SOURCE_COMMIT = "f7e04c8dd575c0130fe6eb73b4249ea5f9f3f0d1"
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _FIELD_RECEIPT_CONTENT_KEYS = (
     "schema_version",
@@ -1155,6 +1155,22 @@ def _selector_readiness_mapping(readiness: V3Readiness) -> dict[str, Any]:
     if readiness.pre_field_signer_trust_json is not None:
         result["pre_field_signer_trust"] = json.loads(readiness.pre_field_signer_trust_json)
     return result
+
+
+def build_v3_runtime(*, environ: Mapping[str, str] | None = None):
+    """Choose one explicitly configured V3 profile; never infer a fallback."""
+    runtime = os.environ if environ is None else environ
+    local_configured = any(
+        runtime.get(name)
+        for name in ("STRATHEX_V3_LOCAL_PYTHON", "STRATHEX_V3_LOCAL_ML_BUNDLE", "STRATHEX_V3_LOCAL_SNAPSHOTS")
+    )
+    if local_configured:
+        if runtime.get("STRATHMARK_V3_BASE_URL"):
+            raise V3RuntimeConfigurationError("configure one V3 profile: authenticated V7 or local numeric preview")
+        from woodchopping.strathmark_v3_local import build_local_v3_candidate
+
+        return build_local_v3_candidate(runtime)
+    return build_v3_client(environ=runtime)
 
 
 def get_v3_readiness(

@@ -177,7 +177,11 @@ def _build_engine_request(
         "target_context",
         {
             "schema_version": "strathmark-v3-target-context-v1",
-            "event_code": str(event_code).strip().lower(),
+            "event_code": {
+                "uh": "underhand",
+                "sb": "standing_block",
+                "single_buck": "single_buck",
+            }.get(str(event_code).strip().lower(), str(event_code).strip().lower()),
             "size_mm": int(wood_diameter),
             "material_code": str(wood_species).strip().lower(),
             "taxonomy_version": "strathex:v1",
@@ -299,6 +303,11 @@ def calculate_authoritative_seeding(
         "historical_cutoff_key": field_identity["historical_cutoff_key"],
         "round_ordinal": field_identity["round_ordinal"],
     }
+    if getattr(getattr(forecast_adapter, "__self__", None), "pre_field_requires_local_roster", False):
+        request.update(
+            competitors_df=field_request["competitors_df"],
+            prediction_as_of=field_request.get("prediction_as_of"),
+        )
     projection = forecast_adapter(execution_context=context, **request)
     if not isinstance(projection, list) or any(
         not isinstance(row, Mapping) or not str(row.get("engine_version", "")).startswith("3.") for row in projection
