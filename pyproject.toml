@@ -33,7 +33,7 @@ llm = [
 dev = [
     "pytest",
     "pytest-cov",
-    "ruff==0.16.5",
+    "ruff==0.16.9",
 ]
 api-test = [
     # Exact versions exercised by the direct/HTTP parity gate. STRATHMARK itself
