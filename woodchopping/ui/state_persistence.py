@@ -392,6 +392,18 @@ def _serialize_single_state(tournament_state: Dict[str, Any]) -> Dict[str, Any]:
     return state_copy
 
 
+def _restore_payout_positions(state: Dict[str, Any]) -> None:
+    config = state.get("payout_config")
+    if isinstance(config, dict) and isinstance(config.get("payouts"), dict):
+        restored: dict[Any, Any] = {}
+        for key, amount in config["payouts"].items():
+            position = int(key) if isinstance(key, str) and key.isdecimal() else key
+            if position in restored:
+                raise ValueError("Payout configuration contains duplicate positions")
+            restored[position] = amount
+        config["payouts"] = restored
+
+
 def _deserialize_single_state(payload: Dict[str, Any]) -> Dict[str, Any]:
     state = copy.deepcopy(payload)
     state["all_competitors_df"] = pd.DataFrame(state.get("all_competitors_df") or [])
@@ -400,6 +412,7 @@ def _deserialize_single_state(payload: Dict[str, Any]) -> Dict[str, Any]:
         round_object["competitors_df"] = pd.DataFrame(round_object.get("competitors_df") or [])
 
     state.setdefault("payout_config", None)
+    _restore_payout_positions(state)
     return state
 
 
@@ -444,6 +457,7 @@ def _deserialize_multi_state(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         event.setdefault("event_type", "handicap")
         event.setdefault("payout_config", None)
+        _restore_payout_positions(event)
         event.setdefault(
             "competitor_status",
             {name: "active" for name in event.get("all_competitors", [])},

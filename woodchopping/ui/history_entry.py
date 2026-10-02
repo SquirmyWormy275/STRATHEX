@@ -1,7 +1,7 @@
 """Helpers for checking competitor history and capturing manual results entry."""
 
 from datetime import datetime
-from typing import Dict, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import pandas as pd
 
@@ -72,7 +72,7 @@ def filter_competitors_with_history(
     return eligible_df, blocked
 
 
-def prompt_add_competitor_times(competitor_name: str, event_code: str, wood_info: Dict[str, any]) -> bool:
+def prompt_add_competitor_times(competitor_name: str, event_code: str, wood_info: Dict[str, Any]) -> bool:
     """
     Prompt judge to add historical times for a competitor and append to Results sheet.
 
@@ -101,11 +101,16 @@ def prompt_add_competitor_times(competitor_name: str, event_code: str, wood_info
             print("  Invalid time. Try again.")
             continue
 
-        date_input = input("  Date (YYYY-MM-DD) or blank for today: ").strip()
-        if date_input:
-            timestamp = date_input
-        else:
-            timestamp = datetime.now().isoformat(timespec="seconds")
+        while True:
+            date_input = input("  Date (YYYY-MM-DD) or blank for today: ").strip()
+            if not date_input:
+                timestamp = datetime.now().isoformat(timespec="seconds")
+                break
+            try:
+                timestamp = datetime.strptime(date_input, "%Y-%m-%d").date().isoformat()
+                break
+            except ValueError:
+                print("  Invalid date (expected YYYY-MM-DD). Try again.")
 
         heat_id = f"MANUAL-{event_code}"
         save_time_to_results(

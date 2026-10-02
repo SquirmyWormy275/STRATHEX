@@ -57,7 +57,7 @@ This was not a refactor for its own sake. It was a business-driven architectural
 - **Without the split**: a developer building a tournament manager would have to vendor all of STRATHEX's CLI, UI, and Excel code just to get handicap math. That's a non-starter for any serious integration.
 - **Without the adapter discipline**: every STRATHEX file that touched calculation would break when STRATHMARK rev'd its API. The adapter absorbs the impact.
 - **Without documenting the rationale**: agents will re-add calculation logic inside STRATHEX when they need a tweak, because calling through the adapter feels like indirection. Over time this creates drift — STRATHEX's copy will diverge from STRATHMARK's authoritative version, and judges will see different marks from different entry points.
-- The `v5.2-legacy` branch preserves the pre-split monolithic version for anyone who genuinely cannot install STRATHMARK. It is explicitly not maintained going forward.
+- The archived `archive/2026-10-01/v5.2-legacy` tag preserves the pre-split monolithic version for anyone who genuinely cannot install STRATHMARK. It is explicitly not maintained going forward.
 
 ## When to Apply
 - Any change that touches `woodchopping/handicaps/`, `woodchopping/simulation/`, or the prediction cascade — check whether the change belongs upstream in STRATHMARK first
@@ -99,4 +99,4 @@ marks = strathmark.HandicapCalculator().calculate(...)
 - STRATHMARK repo: `https://github.com/SquirmyWormy275/STRATHMARK`
 - Commit `371406a` — V6.0 extraction
 - Commit `d26e958` — refactor cleanup immediately after extraction
-- `v5.2-legacy` branch — preserved pre-split snapshot (unmaintained)
+- `archive/2026-10-01/v5.2-legacy` tag — preserved pre-split snapshot (unmaintained)

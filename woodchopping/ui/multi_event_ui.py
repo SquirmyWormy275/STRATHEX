@@ -2966,7 +2966,7 @@ def assign_competitors_to_events(tournament_state: Dict) -> Dict:
                 fee_paid = input(f"{event_name} - Fee paid? (y/n, currently {status_str}): ").strip().lower()
                 comp["entry_fees_paid"][event["event_id"]] = fee_paid == "y"
 
-        print(f"\n[OK] {comp_name} assigned to {len(selected_events)} event(s)")
+        print(f"\n[OK] {comp_name} assigned to {len(final_events)} event(s)")
 
     # Populate event.all_competitors from assignments
     print(f"\n{'=' * 70}")

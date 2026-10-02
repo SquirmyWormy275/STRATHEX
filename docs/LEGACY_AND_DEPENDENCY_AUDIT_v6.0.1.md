@@ -51,5 +51,5 @@ The v6.0.1 release requires:
 4. imports of public STRATHEX packages from outside the repository checkout.
 
 The repository cannot prove that an undocumented external program never
-imported one of the removed private modules. The `v5.2-legacy` branch and this
+imported one of the removed private modules. The archived `archive/2026-10-01/v5.2-legacy` tag and this
 release audit provide the compatibility record.

@@ -184,7 +184,7 @@ Today we completed a comprehensive LLM prompt optimization project for the STRAT
 
 ## Phase 3: Prompt Engineering Guidelines ✅
 
-**Document Created**: [PROMPT_ENGINEERING_GUIDELINES.md](PROMPT_ENGINEERING_GUIDELINES.md)
+**Document Created**: [PROMPT_ENGINEERING_GUIDELINES.md](../PROMPT_ENGINEERING_GUIDELINES.md)
 
 ### Contents (100+ pages)
 
@@ -253,7 +253,7 @@ Today we completed a comprehensive LLM prompt optimization project for the STRAT
 
 ## Phase 4: Versioning & Change Management ✅
 
-**Document Created**: [PROMPT_CHANGELOG.md](PROMPT_CHANGELOG.md)
+**Document Created**: [PROMPT_CHANGELOG.md](../PROMPT_CHANGELOG.md)
 
 ### Version History Established
 
@@ -284,7 +284,7 @@ Each entry includes:
 
 ## Phase 5: System Documentation Updates ✅
 
-**File Modified**: [CLAUDE.md](CLAUDE.md)
+**File Modified**: `CLAUDE.md` (historical machine-local instructions; no public copy)
 
 ### New Standing Order Added
 
@@ -573,6 +573,6 @@ After production validation, update this section with:
 
 For detailed information, see:
 - [LLM_PROMPT_AUDIT_2026.md](LLM_PROMPT_AUDIT_2026.md)
-- [PROMPT_ENGINEERING_GUIDELINES.md](PROMPT_ENGINEERING_GUIDELINES.md)
-- [PROMPT_CHANGELOG.md](PROMPT_CHANGELOG.md)
-- [CLAUDE.md](CLAUDE.md) (updated)
+- [PROMPT_ENGINEERING_GUIDELINES.md](../PROMPT_ENGINEERING_GUIDELINES.md)
+- [PROMPT_CHANGELOG.md](../PROMPT_CHANGELOG.md)
+- `CLAUDE.md` (historical machine-local instructions; no public copy) (updated)

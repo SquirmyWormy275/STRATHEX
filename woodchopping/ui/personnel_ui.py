@@ -7,6 +7,7 @@ This module handles roster management operations including:
 """
 
 from datetime import datetime
+from uuid import uuid4
 
 import pandas as pd
 from openpyxl import load_workbook
@@ -73,8 +74,9 @@ def personnel_management_menu(comp_df: pd.DataFrame) -> pd.DataFrame:
 
         elif choice == "3":
             # Remove competitor from roster
-            print("\nRemove Competitor - Feature Coming Soon")
-            print("(Currently, please remove directly from Excel file)")
+            print("\nRoster removal is performed in Excel after closing all active competitions.")
+            print("Back up the workbook first. Remove only the roster row; retain Results and existing IDs.")
+            print("Reload the roster from the main menu after saving Excel.")
 
         elif choice == "4" or choice == "":
             break
@@ -109,38 +111,8 @@ def add_competitor_with_times() -> pd.DataFrame:
         state = input("Enter state/province (optional): ").strip()
         gender = input("Enter gender (M/F, optional): ").strip().upper()
 
-        # Add to competitors sheet. Guarantee the workbook exists with its FULL
-        # schema first — never mint a partial (Competitor-only) workbook here.
-        ensure_workbook(COMPETITOR_FILE)
-        wb = load_workbook(COMPETITOR_FILE)
+        new_id = _add_competitor_to_workbook(name, country, state, gender)
 
-        if COMPETITOR_SHEET not in wb.sheetnames:
-            ws = wb.create_sheet(COMPETITOR_SHEET)
-            ws.append(["CompetitorID", "Name", "Country", "State/Province", "Gender"])
-        else:
-            ws = wb[COMPETITOR_SHEET]
-            if ws.max_row < 1:
-                ws.append(["CompetitorID", "Name", "Country", "State/Province", "Gender"])
-
-        # Check for duplicate
-        existing_names = set()
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            if row and len(row) > 1 and row[1]:  # Name is in column 2 (index 1)
-                existing_names.add(str(row[1]).strip().lower())
-
-        if name.lower() in existing_names:
-            print("Competitor already exists in roster.")
-            wb.close()
-            return load_competitors_df()
-
-        # Generate new CompetitorID
-        new_id = f"C{str(ws.max_row).zfill(3)}"
-
-        # Add competitor to sheet
-        ws.append([new_id, name, country, state, gender])
-
-        wb.save(COMPETITOR_FILE)
-        wb.close()
         print(f"\n[OK] {name} added to roster successfully with ID {new_id}")
 
         # Now prompt for historical times
@@ -155,6 +127,42 @@ def add_competitor_with_times() -> pd.DataFrame:
     except Exception as e:
         print(f"Error adding competitor: {e}")
         return load_competitors_df()
+
+
+def _add_competitor_to_workbook(name: str, country: str, state: str, gender: str) -> str:
+    """Keep existing identities and avoid reusing IDs of removed competitors."""
+    ensure_workbook(COMPETITOR_FILE)
+    workbook = load_workbook(COMPETITOR_FILE)
+    try:
+        if COMPETITOR_SHEET not in workbook.sheetnames:
+            sheet = workbook.create_sheet(COMPETITOR_SHEET)
+            sheet.append(["CompetitorID", "Name", "Country", "State/Province", "Gender"])
+        else:
+            sheet = workbook[COMPETITOR_SHEET]
+        identities: set[str] = set()
+        names: set[str] = set()
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            identity = str(row[0]).strip() if row and row[0] is not None else ""
+            if identity:
+                if identity in identities:
+                    raise ValueError(
+                        f"Roster contains duplicate CompetitorID {identity}. Repair it before adding competitors."
+                    )
+                identities.add(identity)
+            if len(row) > 1 and row[1]:
+                names.add(str(row[1]).strip().casefold())
+        if name.casefold() in names:
+            raise ValueError("Competitor already exists in roster.")
+        # IDs are opaque. A random identity cannot recycle a historical ID when
+        # its roster row was removed, including the former highest serial ID.
+        identity = "C" + uuid4().hex
+        while identity in identities:
+            identity = "C" + uuid4().hex
+        sheet.append([identity, name, country, state, gender])
+        workbook.save(COMPETITOR_FILE)
+        return identity
+    finally:
+        workbook.close()
 
 
 def add_historical_times_for_competitor(competitor_name: str) -> None:

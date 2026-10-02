@@ -36,7 +36,7 @@
 - STRATHMARK remains pinned at `47bb143`. The evaluated 2.0 release is
   import-compatible but behaviorally incompatible with current STRATHEX.
 - Removed prediction modules were private, unreachable, and absent from the
-  package's declared public exports. The `v5.2-legacy` branch is the historical
+  package's declared public exports. The archived `archive/2026-10-01/v5.2-legacy` tag is the historical
   compatibility record.
 
 ## Release evidence

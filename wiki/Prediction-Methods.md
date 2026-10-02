@@ -17,11 +17,15 @@ V3's signed pre-field forecast contains raw-time estimates for prediction-based 
 
 No V3 failure invokes V2. No V2 failure invokes V3.
 
-## Evidence
+## V2 evidence
 
 Each field sends stable competitor IDs and dated history under one exclusive cutoff. Valid observations before the cutoff can contribute. Undated, same-day, future, and invalid observations are excluded.
 
 Wood quality and same-tournament fields remain accepted compatibility context but are numeric no-ops in v2. The response identifies ignored factors.
+
+## V3 evidence
+
+V3 seals one evidence epoch for every field in the same round. Valid settled results become eligible at the next round boundary. Reconstruct and rebase the complete advancing field; never copy a local mark from a previous heat.
 
 ## Output
 

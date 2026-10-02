@@ -12,3 +12,5 @@ A repository merge does not update GitHub's separate wiki repository. Publicatio
 6. fetch the public wiki again and verify its HEAD and page contents.
 
 Do not publish pre-release semantics as current. Dated release pages in `docs/` remain the evidence for older versions.
+
+Use `python scripts/publish_wiki.py --mode preview` to review changes, then `--mode publish` from the exact clean merged main commit. Publication fetches and verifies the remote pages; `--mode check` verifies synchronization without writing.

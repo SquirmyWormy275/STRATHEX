@@ -6,9 +6,9 @@ numeric field operation to exactly that engine.  Transport policy remains
 inside each engine adapter; an adapter error is never interpreted as permission
 to call the other engine.
 
-The V3 transport is deliberately not implemented here.  Until its public
-consumer contract is frozen and wired, a V3-selected call fails closed with a
-typed :class:`EngineAdapterUnavailableError`.
+The V3 adapter implements the authenticated V7 lifecycle in
+``strathmark_v3_client``. An unconfigured adapter fails closed with a typed
+:class:`EngineAdapterUnavailableError`. STRATHEX permits V3 rehearsal only.
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ class V2FieldAdapter(Protocol):
 
 
 class V3FieldAdapter(Protocol):
-    """Future V3 boundary, which must receive the immutable scope context."""
+    """V3 boundary, which receives the immutable scope context."""
 
     def __call__(
         self,

@@ -5,6 +5,7 @@ This module centralizes all configuration values, magic numbers, and system para
 to improve maintainability and make it easier to adjust system behavior.
 """
 
+import os as _os
 from dataclasses import dataclass
 from pathlib import Path as _Path
 from typing import Final
@@ -396,7 +397,9 @@ class Paths:
     """File paths and Excel sheet names"""
 
     # Excel file - resolved relative to config.py so it works from any working directory
-    EXCEL_FILE: str = str(_BASE_DIR / "woodchopping.xlsx")
+    EXCEL_FILE: str = str(
+        _Path(_os.environ.get("STRATHEX_WORKBOOK", str(_BASE_DIR / "woodchopping.xlsx"))).expanduser().resolve()
+    )
     """Main Excel workbook filename"""
 
     # Sheet names

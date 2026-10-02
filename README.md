@@ -1,4 +1,4 @@
-# STRATHEX 7
+# STRATHEX 7.1
 
 STRATHEX is the judge-facing woodchopping tournament application. It manages rosters, wood setup, handicap and championship fields, brackets, multi-event days, result entry, autosave, and Excel exports. Numeric prediction and mark assignment are owned by [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK).
 
@@ -18,7 +18,7 @@ V3 uses a two-stage workflow. A signed pre-field forecast supplies raw-time esti
 
 ## V2 production baseline
 
-STRATHEX 7 is integrated with the [STRATHMARK 2.0.0 release](https://github.com/SquirmyWormy275/STRATHMARK/releases/tag/v2.0.0) at exact commit `a231ad65fe82317516cc82a282761d73adb0c0e3`. STRATHMARK 2.0.0 is distributed through GitHub rather than PyPI, so the Git dependency remains commit-pinned for reproducibility.
+STRATHEX 7 is integrated with the [STRATHMARK 2.0.0 release](https://github.com/SquirmyWormy275/STRATHMARK/releases/tag/v2.0.0) at exact commit `a231ad65fe82317516cc82a282761d73adb0c0e3`. STRATHMARK 2.0.0 and the documentation patch 2.0.1 are published on PyPI. STRATHEX deliberately retains its exact reviewed 2.0.0 Git commit pin for reproducibility and parity.
 
 The live calculation contract is:
 
@@ -66,7 +66,7 @@ ResultStore history, STRATHMARK PredictionLedger receipts, and the public statel
 
 ## Install and test
 
-Requirements: Python 3.13+, Windows or another terminal with Unicode support, and the supplied workbook schema.
+Requirements: Python 3.13 on Linux or Windows, a UTF-8 terminal, and an existing workbook with the supplied schema.
 
 ```powershell
 python -m venv .venv
@@ -86,6 +86,17 @@ python -m ruff format --check --no-cache .
 
 The cache flags are needed only in restricted nested worktrees. Never point tests at the production ResultStore or workbook.
 
+### Linux launch
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev,api-test]"
+strathex --workbook /absolute/path/to/workbook.xlsx --data-dir /absolute/path/to/operator-data
+```
+
+The launcher selects paths before opening data. The operator directory holds saves and durable authority/command databases; explicit environment settings take precedence. Existing `python MainProgramV5_2.py` operation is also supported. See [V3 rehearsal setup](docs/V3_REHEARSAL.md) for the separately installed, exact-source service.
+
 ## Documentation
 
 - [Current runtime contract](docs/CURRENT_RUNTIME_CONTRACT.md)
@@ -93,7 +104,9 @@ The cache flags are needed only in restricted nested worktrees. Never point test
 - [Architecture](docs/ARCHITECTURE.md)
 - [Handicap system](docs/HANDICAP_SYSTEM_EXPLAINED.md)
 - [STRATHMARK 2 migration decision](docs/STRATHMARK_2_COMPATIBILITY_EVALUATION.md)
-- [STRATHEX 7 release notes](docs/RELEASE_v7.0.0.md)
+- [STRATHEX 7.1 release notes](docs/RELEASE_v7.1.0.md)
+- [Changelog](CHANGELOG.md)
+- [Contributor onboarding](ONBOARDING.md)
 - [Documentation index](docs/INDEX.md)
 - [Versioned wiki source](wiki/README.md)
 

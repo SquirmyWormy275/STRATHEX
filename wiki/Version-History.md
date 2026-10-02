@@ -1,5 +1,9 @@
 # Version History
 
+## 7.1.0
+
+Competition-scoped V2/V3 selection and the ASCII Wizard; durable V3 rehearsal recovery and acknowledgments; finance/bracket/roster repairs; valid history dates and payout resume; portable Linux/Windows launch paths; maintained documentation and enforced CI. V2 remains production authority and V3 remains rehearsal-only.
+
 ## 7.0.0
 
 Breaking STRATHMARK 2 migration:
