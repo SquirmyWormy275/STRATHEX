@@ -252,7 +252,8 @@ class LocalV3Candidate:
         if not forecast_only and min(row["proposed_mark"] for row in result["rows"]) != 3:
             raise V3ClientError("local V3 proposed field lacks its Mark 3 reference")
         if not forecast_only and any(
-            faster["predicted_time"] < slower["predicted_time"] and faster["proposed_mark"] < slower["proposed_mark"]
+            float(faster["predicted_time"]) < float(slower["predicted_time"])
+            and faster["proposed_mark"] < slower["proposed_mark"]
             for faster in result["rows"]
             for slower in result["rows"]
         ):
