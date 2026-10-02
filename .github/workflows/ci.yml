@@ -147,7 +147,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: SquirmyWormy275/STRATHMARK
-          ref: 28766c793eb1283d91518e71753744d09e45ea91
+          ref: ef73fa411be4b26262225c0de3f5a6948ecd2823
           path: .tmp/linux-service-source
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:

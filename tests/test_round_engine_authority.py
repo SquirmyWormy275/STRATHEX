@@ -273,3 +273,31 @@ def test_bracket_scratch_regeneration_fails_before_mutation_without_authority(mo
 
     assert state["events"][0]["competitor_status"] == before["events"][0]["competitor_status"]
     assert state["events"][0]["all_competitors"] == before["events"][0]["all_competitors"]
+
+
+def test_direct_heat_to_final_uses_next_actual_ordinal_and_event_epoch_group(tmp_path, monkeypatch):
+    root, event, store, names = _selected_tournament(tmp_path, engine="v3")
+    monkeypatch.setattr("woodchopping.data.load_results_df", lambda: pd.DataFrame())
+    calls = []
+
+    def exact(*, execution_context, **request):
+        calls.append(request)
+        return _projection(request, engine_version="3.0.0", include_mark=True)
+
+    rounds = generate_next_round(
+        event,
+        names[:3],
+        "final",
+        authority_store=store,
+        engine_router=EngineRouter(v2_adapter=lambda **_: pytest.fail("V2 fallback"), v3_adapter=exact),
+        forecast_adapter=lambda execution_context, **request: _projection(
+            request, engine_version="3.0.0", include_mark=False
+        ),
+        authority_checkpoint_callback=lambda _: True,
+        authority_child=event,
+        authority_root_state=root,
+    )
+    assert [request["round_ordinal"] for request in calls] == [2]
+    assert rounds[0]["v3_round_ordinal"] == 2
+    scope = store.resolve(root["prediction_authority_ref"]).reference.scope_id
+    assert calls[0]["epoch_group_id"] == derive_scope_identity(scope, "round", "epoch-group:event:event_7")

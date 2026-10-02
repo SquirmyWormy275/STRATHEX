@@ -1557,6 +1557,7 @@ def single_event_menu():
                         write_action=write_results,
                         authority_store=_prediction_authority_store,
                         v3_adapter=_v3_engine_adapter,
+                        checkpoint_callback=_checkpoint_single_prediction_state,
                     )
                 else:
                     entry_succeeded = write_results()

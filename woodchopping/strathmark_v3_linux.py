@@ -17,10 +17,10 @@ from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired,
 from woodchopping.v3_authority_store import V3CommandStore
 
 LINUX_PROTOCOL = "strathmark.v3-linux-competition.v1"
-FROZEN_LINUX_SOURCE_COMMIT = "28766c793eb1283d91518e71753744d09e45ea91"
-FROZEN_LINUX_IMPLEMENTATION_DIGEST = "e997bee6fe3c7de44b336db7b71e0cc8b7da279a7308eb764b1542c80747a38d"
+FROZEN_LINUX_SOURCE_COMMIT = "ef73fa411be4b26262225c0de3f5a6948ecd2823"
+FROZEN_LINUX_IMPLEMENTATION_DIGEST = "1b7897215903da0e7225459e37df0a4567399543778a841de5d48e049e0352c4"
 # Frozen separately from the Windows V7 service and the earlier preview profile.
-LINUX_CONTRACT_DIGEST = "cfc273d0395e7d913d7b52e572b3fbaf286e0ec779478be0ad21d6a19cd883c7"
+LINUX_CONTRACT_DIGEST = "162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e"
 
 
 def encoded(value):
@@ -58,11 +58,20 @@ class LinuxV3Competition:
         self.runtime_root = Path(runtime_root).expanduser().absolute()
         self.command_store = command_store
         self.backup_dir = None if backup_dir is None else Path(backup_dir).resolve(strict=True)
+        if os.environ.get("STRATHEX_TEST_DB") != "1" and (
+            self.backup_dir is None
+            or not self.backup_dir.is_dir()
+            or self.backup_dir.stat().st_dev == self.workbook.stat().st_dev
+        ):
+            raise V3RuntimeConfigurationError(
+                "Linux operator competitions require recovery on an independent filesystem"
+            )
         if not self.python.is_file():
             raise V3RuntimeConfigurationError("separate Linux V3 Python is missing")
         self.identity = self._run("status" if self.runtime_root.exists() else "init")
         self._validate_identity(self.identity)
         self.source_identity = self.identity["source_identity"]
+        self.competition_sources = self.identity.get("competition_sources", {})
         self.trust = self.identity["installation_identity"]
         self.public_key = validate_local_trust(self.trust)
 
@@ -159,6 +168,8 @@ class LinuxV3Competition:
             or context.contract_identity != LINUX_CONTRACT_DIGEST
         ):
             raise V3ClientError("request differs from the selected Linux competition engine")
+        if context.source_identity != self.competition_sources.get(context.scope_id, self.source_identity):
+            raise V3ClientError("competition source identity differs from the retained installation")
         trust = json.loads(context.pre_field_signer_trust_json or "null")
         if trust != self.trust:
             raise V3ClientError("competition signer changed after selection")
@@ -268,13 +279,15 @@ class LinuxV3Competition:
         if ordinal > 1:
             from datetime import datetime, timezone
 
-            semantic = f"advance:{ordinal}"
+            group = request["epoch_group_id"]
+            semantic = f"advance:{group}:{ordinal}"
             key = "strathex-linux-" + digest({"scope": context.scope_id, "operation": "advance", "semantic": semantic})
             try:
                 advance_payload = self.command_store.get(key).request["payload"]
             except KeyError:
                 advance_payload = {
                     "round_ordinal": ordinal,
+                    "epoch_group_id": group,
                     "closed_at_utc": datetime.now(timezone.utc)
                     .isoformat(timespec="milliseconds")
                     .replace("+00:00", "Z"),
@@ -291,6 +304,7 @@ class LinuxV3Competition:
             "cutoff_at_utc": f"{as_of}T00:00:00.000Z",
             "round_id": request["round_id"],
             "round_ordinal": ordinal,
+            "epoch_group_id": request["epoch_group_id"],
             "predecessor_round_ids": [],
             "competitor_ids": roster["competitor_id"].astype(str).tolist(),
             "upstream_competitor_ids": list(request["ordered_competitor_ids"]),
@@ -360,6 +374,7 @@ class LinuxV3Competition:
             row = {
                 "name": str(roster.iloc[index]["competitor_name"]),
                 "competitor_id": payload["upstream_competitor_ids"][index],
+                "local_competitor_id": payload["competitor_ids"][index],
                 "predicted_time": time,
                 "std_dev": spread,
                 "engine_version": self.identity["package_version"],
@@ -409,6 +424,17 @@ class LinuxV3Competition:
             semantic=payload["receipt_id"] + ":" + str(max(item["source_revision"] for item in payload["results"])),
         )
 
+    def recover_result_request(self, context, receipt_id, revision=1):
+        semantic = receipt_id + ":" + str(revision)
+        key = "strathex-linux-" + digest({"scope": context.scope_id, "operation": "settle", "semantic": semantic})
+        try:
+            record = self.command_store.get(key)
+        except KeyError:
+            return None
+        if record.request["context"] != self._context(context):
+            raise V3ClientError("saved settlement differs from the retained competition")
+        return record.request["payload"]
+
     def correct_result(self, context, payload):
         return self._command(
             context,
@@ -424,8 +450,10 @@ class LinuxV3Competition:
         for receipt_id, field_rows in grouped.items():
             receipt = self._command(context, "lookup", {"receipt_id": receipt_id})
             marks = dict(zip(receipt["competitor_ids"], receipt["numeric"]["marks"], strict=True))
+            local_ids = dict(zip(receipt["competitor_ids"], receipt["local_competitor_ids"], strict=True))
             if set(row["competitor_id"] for row in field_rows) != set(marks) or any(
                 row.get("mark") != marks.get(row["competitor_id"])
+                or row.get("local_competitor_id") != local_ids.get(row["competitor_id"])
                 or row.get("receipt_digest") != receipt["receipt_digest"]
                 for row in field_rows
             ):
@@ -452,6 +480,8 @@ def build_linux_v3_competition(runtime):
         raise V3RuntimeConfigurationError(
             "Linux lifecycle requires separate Python, model, workbook, runtime authority, and command database"
         )
+    if not runtime.get("STRATHEX_V3_LOCAL_BACKUP_DIR") and os.environ.get("STRATHEX_TEST_DB") != "1":
+        raise V3RuntimeConfigurationError("Linux operator competitions require an independent recovery directory")
     return LinuxV3Competition(
         python=runtime[names[0]],
         ml_bundle=runtime[names[1]],

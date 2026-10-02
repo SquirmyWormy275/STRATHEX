@@ -95,6 +95,13 @@ def ensure_workbook(excel_path: Optional[str] = None) -> str:
     return path
 
 
+def _display_names(names, identifiers):
+    """Keep name-based legacy menus distinct without changing workbook identities."""
+    values = names.astype(str).str.strip()
+    duplicates = values.str.casefold().duplicated(keep=False)
+    return values.where(~duplicates, values + " [" + identifiers.astype(str) + "]")
+
+
 def get_competitor_id_name_mapping() -> Tuple[Dict[str, str], Dict[str, str]]:
     """
     Load competitor data and return bidirectional ID/name mapping dictionaries.
@@ -109,6 +116,7 @@ def get_competitor_id_name_mapping() -> Tuple[Dict[str, str], Dict[str, str]]:
         if df.empty:
             return {}, {}
 
+        df["Name"] = _display_names(df["Name"], df["CompetitorID"])
         id_to_name = {}
         name_to_id = {}
 
@@ -147,6 +155,8 @@ def load_competitors_df() -> pd.DataFrame:
             "Gender": "gender",
         }
         df = df.rename(columns=column_mapping)
+        if not df.empty and "competitor_id" in df:
+            df["competitor_name"] = _display_names(df["competitor_name"], df["competitor_id"])
 
         if df.empty:
             print("No competitors found in Excel. Please add competitors first.")
@@ -284,6 +294,8 @@ def load_results_df() -> pd.DataFrame:
             "FinishPosition": "finish_position",  # NEW: Nullable field for stacking ensemble
         }
         df = df.rename(columns=column_mapping)
+        if not df.empty and "competitor_id" in df:
+            df["competitor_name"] = _display_names(df["competitor_name"], df["competitor_id"])
 
         # Flexible normalization for variant headers (case-insensitive)
         if "size_mm" not in df.columns:

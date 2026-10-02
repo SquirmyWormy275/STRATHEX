@@ -107,6 +107,10 @@ def calculate_authoritative_field(
         child=child,
         checkpoint_callback=checkpoint_callback,
     )
+    numeric_options = dict(numeric_options)
+    numeric_options.setdefault(
+        "epoch_group_local_id", "event:" + str(child.get("event_id")) if child is not None else "single-event"
+    )
     request = _build_engine_request(
         context=context,
         field_local_id=field_local_id,
@@ -206,6 +210,9 @@ def _build_engine_request(
         "field_id": derive_scope_identity(context.scope_id, "field", field_local_id),
         "tournament_id": context.scope_id,
         "round_id": derive_scope_identity(context.scope_id, "round", round_local_id),
+        "epoch_group_id": derive_scope_identity(
+            context.scope_id, "round", "epoch-group:" + str(numeric_options.get("epoch_group_local_id", "single-event"))
+        ),
         "upstream_field_revision": upstream_field_revision,
         "ordered_competitor_ids": competitor_ids,
         "competitor_names": dict(zip(competitor_ids, names)),
@@ -274,6 +281,12 @@ def calculate_authoritative_seeding(
         "results_df",
         "upstream_field_revision",
     }
+    field_request.setdefault(
+        "epoch_group_local_id",
+        "event:" + str(field_request["child"].get("event_id"))
+        if field_request.get("child") is not None
+        else "single-event",
+    )
     field_identity = _build_engine_request(
         context=context,
         field_local_id=field_request["field_local_id"],
@@ -306,6 +319,7 @@ def calculate_authoritative_seeding(
     if getattr(getattr(forecast_adapter, "__self__", None), "pre_field_requires_local_roster", False):
         request.update(
             competitors_df=field_request["competitors_df"],
+            epoch_group_id=field_identity["epoch_group_id"],
             prediction_as_of=field_request.get("prediction_as_of"),
         )
     projection = forecast_adapter(execution_context=context, **request)

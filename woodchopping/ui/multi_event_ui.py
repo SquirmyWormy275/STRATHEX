@@ -694,6 +694,7 @@ def _settle_v3_recorded_round(
     *,
     authority_store: Any,
     v3_adapter: Any,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
     observed_at_utc: str | None = None,
     input_fn: Callable[[str], str] | None = None,
 ) -> bool:
@@ -716,7 +717,7 @@ def _settle_v3_recorded_round(
     results = []
     for row in rows:
         name = str(row["name"])
-        outcome = round_object.get("official_outcomes", {}).get(name)
+        outcome = round_object.get("official_outcomes", {}).get(row.get("local_competitor_id", name))
         if outcome is not None:
             results.append(
                 {
@@ -749,6 +750,10 @@ def _settle_v3_recorded_round(
     payload = round_object.setdefault("v3_pending_settlement_request", proposed_payload)
     if payload.get("receipt_id") != receipt_id or payload.get("issue_batch_id") != issue_batch_id:
         raise RuntimeError("pending V3 settlement conflicts with the recorded field")
+    if getattr(v3_adapter, "requires_explicit_issue", False) and (
+        checkpoint_callback is None or checkpoint_callback(root_state) is not True
+    ):
+        raise RuntimeError("confirmed outcomes and exact settlement request must be checkpointed before submission")
     response = execute_with_v3_recovery(
         lambda: v3_adapter.settle_result(context, payload),
         root_state=root_state,
@@ -775,6 +780,7 @@ def record_and_settle_v3_round(
     write_action: Callable[[], bool],
     authority_store: Any,
     v3_adapter: Any,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
     observed_at_utc: str | None = None,
     input_fn: Callable[[str], str] | None = None,
 ) -> bool:
@@ -797,7 +803,24 @@ def record_and_settle_v3_round(
         from woodchopping.ui.handicap_ui import build_prediction_execution_context
         from woodchopping.ui.linux_results import collect_results, export_results
 
-        v3_adapter.validate_mark_rows(build_prediction_execution_context(root_state, authority_store), rows)
+        context = build_prediction_execution_context(root_state, authority_store)
+        v3_adapter.validate_mark_rows(context, rows)
+        retained = v3_adapter.recover_result_request(
+            context, rows[0]["receipt_id"], int(round_object.get("result_source_revision", 1))
+        )
+        if retained is not None:
+            by_id = {item["competitor_id"]: item for item in retained["results"]}
+            round_object["official_outcomes"] = {
+                row["local_competitor_id"]: {
+                    key: by_id[row["competitor_id"]][key]
+                    for key in ("status", "raw_time_ms", "penalty_ms", "official_placing")
+                }
+                for row in rows
+            }
+            round_object["v3_pending_settlement_request"] = retained
+            from woodchopping.ui.linux_results import refresh_result_projections
+
+            refresh_result_projections(round_object)
         if not collect_results(round_object, input_fn=input if input_fn is None else input_fn):
             return False
         if not _settle_v3_recorded_round(
@@ -805,10 +828,13 @@ def record_and_settle_v3_round(
             round_object,
             authority_store=authority_store,
             v3_adapter=v3_adapter,
+            checkpoint_callback=checkpoint_callback,
             observed_at_utc=observed_at_utc,
             input_fn=input_fn,
         ):
             return False
+        if checkpoint_callback is None or checkpoint_callback(root_state) is not True:
+            raise RuntimeError("accepted settlement must be checkpointed before workbook export")
         if not round_object.get("canonical_results_recorded"):
             export_results(round_object, event, root_state)
             round_object["canonical_results_recorded"] = True
@@ -822,6 +848,7 @@ def record_and_settle_v3_round(
         round_object,
         authority_store=authority_store,
         v3_adapter=v3_adapter,
+        checkpoint_callback=checkpoint_callback,
         observed_at_utc=observed_at_utc,
         input_fn=input_fn,
     )
@@ -834,6 +861,7 @@ def record_and_settle_v3_single_event(
     write_action: Callable[[], bool],
     authority_store: Any,
     v3_adapter: Any,
+    checkpoint_callback: Callable[[Dict[str, Any]], bool] | None = None,
     observed_at_utc: str | None = None,
     input_fn: Callable[[str], str] | None = None,
 ) -> bool:
@@ -845,6 +873,7 @@ def record_and_settle_v3_single_event(
         write_action=write_action,
         authority_store=authority_store,
         v3_adapter=v3_adapter,
+        checkpoint_callback=checkpoint_callback,
         observed_at_utc=observed_at_utc,
         input_fn=input_fn,
     )
@@ -3689,7 +3718,9 @@ def sequential_results_workflow(
             v3_adapter = None
             if authority_store is not None and engine_router is not None:
                 authority = resolve_prediction_engine(tournament_state, authority_store)
-                use_v3_settlement = authority.engine == "v3" and event_obj.get("event_type") != "championship"
+                use_v3_settlement = authority.engine == "v3" and (
+                    event_obj.get("event_type") != "championship" or authority.mode == "local"
+                )
                 if use_v3_settlement:
                     v3_adapter = getattr(engine_router, "v3_adapter", None)
                     if v3_adapter is None:
@@ -3702,6 +3733,7 @@ def sequential_results_workflow(
                     write_action=write_results,
                     authority_store=authority_store,
                     v3_adapter=v3_adapter,
+                    checkpoint_callback=lambda value: auto_save_multi_event(value, authority_store=authority_store),
                 )
             else:
                 entry_succeeded = write_results()

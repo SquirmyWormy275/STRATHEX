@@ -41,6 +41,7 @@ def main():
     os.environ.update(
         STRATHEX_WORKBOOK=str(workbook_path),
         STRATHMARK_TEST_DB="1",
+        STRATHEX_TEST_DB="1",
         STRATHMARK_DB_PATH=str(root / "v2-results.db"),
         STRATHEX_PREDICTION_AUTHORITY_DB=str(root / "authority.db"),
         STRATHEX_V3_COMMAND_DB=str(root / "commands.db"),
@@ -130,7 +131,7 @@ def main():
             authority_store=authority,
             engine_router=router,
             field_local_id=name,
-            round_local_id=f"stage-{ordinal}",
+            round_local_id=f"stage-{ordinal}:{name}",
             round_ordinal=ordinal,
             competitors_df=roster,
             wood_species="S01",
@@ -190,8 +191,8 @@ def main():
             state,
             authority_store=authority,
             v3_adapter=adapter,
-            input_fn=lambda prompt: answer_issue if "Issue these" in prompt else "y" if "batch" in prompt else "a",
             checkpoint_callback=checkpoint,
+            input_fn=lambda prompt: answer_issue if "Issue these" in prompt else "y" if "batch" in prompt else "a",
         )
         assert decisions
 
@@ -201,7 +202,7 @@ def main():
     assert heat["handicap_results"][0]["issue_batch_id"]
 
     def settle(item, outcomes):
-        answers = iter([*outcomes, "y"])
+        answers = iter([*outcomes, "y", "y"])
         assert record_and_settle_v3_round(
             state,
             state,
@@ -209,6 +210,7 @@ def main():
             write_action=lambda: (_ for _ in ()).throw(AssertionError("legacy V3 write")),
             authority_store=authority,
             v3_adapter=adapter,
+            checkpoint_callback=checkpoint,
             input_fn=lambda _: next(answers),
         )
         item["status"] = "completed"
@@ -231,6 +233,10 @@ def main():
     assert [(row["predicted_time"], row["mark"], row["receipt_id"]) for row in recovered] == [
         (row["predicted_time"], row["mark"], row["receipt_id"]) for row in first
     ]
+    final_seeds = calculate_authoritative_seeding(
+        forecast_adapter=adapter.forecast_seeding, **request(state, "final-seeding", 2)
+    )
+    assert all("mark" not in row for row in final_seeds)
     final = calculate_authoritative_field(field_kind="championship", **request(state, "final", 2))
     assert {row["mark"] for row in final} == {3}
     assert (
@@ -251,12 +257,14 @@ def main():
     )
     from woodchopping.ui.linux_results import correct_saved_results
 
-    answers = iter(["3", "official synthetic correction", "25", "DNS", "y"])
+    answers = iter(["3", "official synthetic correction", "25", "DNS", "y", "y"])
     correct_saved_results(root / "competition.json", input_fn=lambda _: next(answers))
     corrected = load_tournament_state(str(root / "competition.json"), authority_store=authority)
     assert corrected["v3_result_corrections"][0]["response"]["source_revision"] == 2
     assert corrected["rounds"][-1]["handicap_results"] == state["rounds"][-1]["handicap_results"]
     assert corrected["final_results"] == state["final_results"]
+    assert corrected["rounds"][-1]["actual_results"] == {"Synthetic One": 25}
+    assert corrected["rounds"][-1]["finish_order"] == {"Synthetic One": 1}
     workbook = __import__("openpyxl").load_workbook(workbook_path, read_only=True)
     headers = [cell.value for cell in workbook["Results"][1]]
     assert "superseded_completion" in [

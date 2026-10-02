@@ -38,6 +38,8 @@ def authority(tmp_path):
     client = object.__new__(LinuxV3Competition)
     client.trust, client.public_key = trust, validate_local_trust(trust)
     client.command_store = V3CommandStore(tmp_path / "commands.db")
+    client.source_identity = "b" * 64
+    client.competition_sources = {}
     context = PredictionExecutionContext(
         authority_store_id="synthetic",
         scope_id="tournament:synthetic",
@@ -130,3 +132,41 @@ def test_lost_response_retries_exact_command_and_caches_ack(authority, monkeypat
     assert len(sent) == 2
     with pytest.raises(ValueError, match="different input"):
         client._command(context, "settle", {**payload, "results": ["changed"]}, semantic="synthetic-result")
+
+
+def test_retained_competition_source_is_checked_before_cached_ack(authority, monkeypatch):
+    client, context, sealed = authority
+    monkeypatch.setattr(client, "_run", lambda operation, envelope: sealed(operation, envelope, {"settled": True}))
+    payload = {"receipt_id": "receipt:synthetic", "results": [{"source_revision": 1}]}
+    assert client.settle_result(context, payload) == {"settled": True}
+    assert client.recover_result_request(context, payload["receipt_id"]) == payload
+    client.source_identity = "c" * 64  # A newly installed model is a different new-scope authority.
+    client.competition_sources = {context.scope_id: context.source_identity}
+    assert client.settle_result(context, payload) == {"settled": True}
+    with pytest.raises(V3ClientError, match="source identity"):
+        client.settle_result(replace(context, source_identity=client.source_identity), payload)
+
+
+def test_duplicate_names_keep_id_bound_outcomes_and_corrected_projections():
+    import pandas as pd
+
+    from woodchopping.data.excel_io import _display_names
+    from woodchopping.ui.linux_results import collect_results, refresh_result_projections
+
+    identifiers = pd.Series(["SYN001", "SYN002"])
+    names = _display_names(pd.Series(["Same Name", "Same Name"]), identifiers)
+    assert list(names) == ["Same Name [SYN001]", "Same Name [SYN002]"]
+    field = {
+        "handicap_results": [
+            {"name": name, "local_competitor_id": identifier, "mark": 3}
+            for name, identifier in zip(names, identifiers, strict=True)
+        ]
+    }
+    answers = iter(["20", "DNS", "y", "y"])
+    assert collect_results(field, input_fn=lambda _: next(answers))
+    assert set(field["official_outcomes"]) == {"SYN001", "SYN002"}
+    assert field["actual_results"] == {"Same Name [SYN001]": 20}
+    field["official_outcomes"]["SYN001"]["raw_time_ms"] = 25000
+    refresh_result_projections(field)
+    assert field["actual_results"] == {"Same Name [SYN001]": 25}
+    assert field["finish_order"] == {"Same Name [SYN001]": 1}

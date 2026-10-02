@@ -38,7 +38,7 @@ def collect_results(round_object, *, input_fn=input):
                     if number is not None
                 ):
                     raise ValueError("time must be finite and positive")
-                outcomes[row["name"]] = {
+                outcomes[row["local_competitor_id"]] = {
                     "status": status,
                     "raw_time_ms": None if raw is None else round(raw * 1000),
                     "penalty_ms": None if penalty is None else round(penalty * 1000),
@@ -48,29 +48,62 @@ def collect_results(round_object, *, input_fn=input):
                 print(
                     "Use positive raw seconds or an explicit outcome; penalty requires raw seconds and penalty seconds."
                 )
-    if input_fn("Confirm these official outcomes? (y/n): ").strip().lower() != "y":
+    finishes = {
+        row["local_competitor_id"]: outcomes[row["local_competitor_id"]]["raw_time_ms"]
+        + row["mark"] * 1000
+        + (outcomes[row["local_competitor_id"]]["penalty_ms"] or 0)
+        for row in rows
+        if outcomes[row["local_competitor_id"]]["status"] in {"completion", "penalty"}
+    }
+    proposed = {name: 1 + sum(other < clock for other in finishes.values()) for name, clock in finishes.items()}
+    print("Suggested finish-clock placings (ties remain tied):", proposed)
+    use_proposed = input_fn("Authorize these as the official judge placings? (y/n): ").strip().lower() == "y"
+    placings = {}
+    names = {row["local_competitor_id"]: row["name"] for row in rows}
+    for name in finishes:
+        if use_proposed:
+            placings[name] = proposed[name]
+        else:
+            while True:
+                try:
+                    value = int(
+                        input_fn(f"Official placing for {names[name]} [{name}] (equal positions preserve a tie): ")
+                    )
+                    if value < 1:
+                        raise ValueError("positive official placing required")
+                    placings[name] = value
+                    break
+                except ValueError:
+                    print("Enter the judge's positive finish position.")
+    for name, outcome in outcomes.items():
+        outcome["official_placing"] = placings.get(name)
+    if input_fn("Confirm these official outcomes and judge placings? (y/n): ").strip().lower() != "y":
         return False
     round_object["official_outcomes"] = outcomes
+    refresh_result_projections(round_object)
+
+    return True
+
+
+def refresh_result_projections(round_object):
+    rows = round_object["handicap_results"]
+    outcomes = round_object["official_outcomes"]
     round_object["actual_results"] = {
-        name: item["raw_time_ms"] / 1000 for name, item in outcomes.items() if item["status"] == "completion"
-    }
-    finishes = {
-        row["name"]: outcomes[row["name"]]["raw_time_ms"]
-        + row["mark"] * 1000
-        + (outcomes[row["name"]]["penalty_ms"] or 0)
+        row["name"]: outcomes[row["local_competitor_id"]]["raw_time_ms"] / 1000
         for row in rows
-        if outcomes[row["name"]]["status"] in {"completion", "penalty"}
+        if outcomes[row["local_competitor_id"]]["status"] == "completion"
     }
     round_object["finish_order"] = {
-        name: 1 + sum(other < clock for other in finishes.values()) for name, clock in finishes.items()
+        row["name"]: outcomes[row["local_competitor_id"]]["official_placing"]
+        for row in rows
+        if outcomes[row["local_competitor_id"]].get("official_placing") is not None
     }
-    return True
 
 
 def export_results(round_object, event, root_state, *, supersedes_settlement_id=None):
     """Append the signed settlement once, atomically, preserving the prior workbook."""
     from config import paths
-    from woodchopping.data.excel_io import detect_results_sheet, get_competitor_id_name_mapping
+    from woodchopping.data.excel_io import detect_results_sheet
 
     path = Path(paths.EXCEL_FILE)
     receipt_id = round_object["handicap_results"][0]["receipt_id"]
@@ -80,12 +113,15 @@ def export_results(round_object, event, root_state, *, supersedes_settlement_id=
         if os.environ.get("STRATHEX_WORKBOOK_BACKUP_DIR")
         else path.parent / "workbook-recovery"
     )
+    if os.environ.get("STRATHEX_TEST_DB") != "1" and (
+        not os.environ.get("STRATHEX_WORKBOOK_BACKUP_DIR") or backup_folder.stat().st_dev == path.stat().st_dev
+    ):
+        raise RuntimeError("official workbook export requires recovery on an independent filesystem")
     backup_folder.mkdir(mode=0o700, exist_ok=True)
     backup = backup_folder / f"{path.stem}-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}.xlsx"
     shutil.copy2(path, backup)
     if sha256(backup.read_bytes()).hexdigest() != sha256(path.read_bytes()).hexdigest():
         raise RuntimeError("workbook recovery copy did not verify; export stopped")
-    _, name_to_id = get_competitor_id_name_mapping()
     workbook = load_workbook(path)
     try:
         sheet = detect_results_sheet(workbook)
@@ -105,7 +141,10 @@ def export_results(round_object, event, root_state, *, supersedes_settlement_id=
             "V3 Settlement",
             "Result Revision",
             "Original Raw Time (seconds)",
+            "Official Placing",
         ]
+        date_header = "Date (optional)" if "Date (optional)" in headers and "Date" not in headers else "Date"
+        required[required.index("Date")] = date_header
         for header in required:
             if header not in headers:
                 headers.append(header)
@@ -126,23 +165,23 @@ def export_results(round_object, event, root_state, *, supersedes_settlement_id=
                     sheet.cell(index, time_column, "SUPERSEDED")
                     sheet.cell(index, status_column, "superseded_" + str(sheet.cell(index, status_column).value))
         for row in round_object["handicap_results"]:
-            name = row["name"]
-            result = round_object["official_outcomes"][name]
+            result = round_object["official_outcomes"][row["local_competitor_id"]]
             status = result["status"]
             values = {
-                "CompetitorID": name_to_id.get(name.strip().lower(), name),
+                "CompetitorID": row["local_competitor_id"],
                 "Event": str(event.get("event_code", root_state.get("event_code", "UH"))).upper(),
                 "Time (seconds)": result["raw_time_ms"] / 1000 if status == "completion" else status.upper(),
                 "Size (mm)": event.get("wood_diameter", root_state.get("wood_diameter")),
                 "Species Code": event.get("wood_species", root_state.get("wood_species")),
                 "Quality": event.get("wood_quality", root_state.get("wood_quality")),
                 "HeatID": round_object.get("round_name", receipt_id),
-                "Date": datetime.now(timezone.utc).replace(tzinfo=None),
+                date_header: datetime.now(timezone.utc).replace(tzinfo=None),
                 "Result Status": status,
                 "Penalty (seconds)": result["penalty_ms"] / 1000 if result["penalty_ms"] is not None else None,
                 "V3 Receipt": receipt_id,
                 "V3 Settlement": settlement_id,
                 "Result Revision": int(round_object.get("result_source_revision", 1)),
+                "Official Placing": result.get("official_placing"),
                 "Original Raw Time (seconds)": result["raw_time_ms"] / 1000
                 if result["raw_time_ms"] is not None
                 else None,
@@ -150,7 +189,7 @@ def export_results(round_object, event, root_state, *, supersedes_settlement_id=
             sheet.append([values.get(header) for header in headers])
         temporary = path.with_name(path.name + ".v3-next.xlsx")
         workbook.save(temporary)
-        with temporary.open("rb") as stream:
+        with temporary.open("rb+") as stream:
             os.fsync(stream.fileno())
         os.replace(temporary, path)
     finally:
@@ -212,7 +251,7 @@ def correct_saved_results(save_path, *, input_fn=input):
         "results": [
             {
                 "competitor_id": row["competitor_id"],
-                **revised["official_outcomes"][row["name"]],
+                **revised["official_outcomes"][row["local_competitor_id"]],
                 "source_revision": revision,
             }
             for row in item["handicap_results"]
@@ -238,9 +277,14 @@ def correct_saved_results(save_path, *, input_fn=input):
     item["result_source_revision"] = response["source_revision"]
     item["v3_settlement_id"] = response["settlement_id"]
     item["official_outcomes"] = {
-        row["name"]: {key: outcome[key] for key in ("status", "raw_time_ms", "penalty_ms")}
+        row["local_competitor_id"]: {
+            key: outcome[key] for key in ("status", "raw_time_ms", "penalty_ms", "official_placing")
+        }
         for row, outcome in zip(item["handicap_results"], pending["results"], strict=True)
     }
+    refresh_result_projections(item)
+    if "prediction_comparison" in item:
+        item.setdefault("superseded_prediction_comparisons", []).append(item.pop("prediction_comparison"))
     event = next(
         (
             event

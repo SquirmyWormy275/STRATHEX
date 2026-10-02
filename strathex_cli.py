@@ -38,6 +38,18 @@ def main() -> None:
         help="Saved competition JSON to append an official result correction instead of starting the menu",
     )
     args = parser.parse_args()
+    if args.correct_v3_results is not None:
+        args.correct_v3_results = args.correct_v3_results.expanduser().resolve()
+    if args.local_v3_runtime_root is not None and os.environ.get("STRATHEX_TEST_DB") != "1":
+        if args.local_v3_backup_dir is None:
+            parser.error("Linux operator competitions require --local-v3-backup-dir on an independent disk")
+        if (
+            args.workbook is not None
+            and args.local_v3_backup_dir.exists()
+            and args.workbook.exists()
+            and args.local_v3_backup_dir.stat().st_dev == args.workbook.stat().st_dev
+        ):
+            parser.error("Linux recovery directory must be on a different filesystem from the live workbook")
     if args.local_v3_backup_dir is not None:
         if args.local_v3_runtime_root is None or not args.local_v3_backup_dir.is_dir():
             parser.error("--local-v3-backup-dir requires a Linux runtime and an existing recovery directory")

@@ -847,7 +847,13 @@ def generate_next_round(
         or "single-event"
     )
     generation = 1 + sum(1 for item in tournament_state.get("rounds", []) if item.get("round_type") == next_round_type)
-    stage_ordinal = {"heat": 1, "semi": 2, "final": 3}.get(next_round_type, generation)
+    stage_ordinal = 1 + max(
+        (
+            int(item.get("v3_round_ordinal", 2 if item.get("round_type") == "semi" else 1))
+            for item in tournament_state.get("rounds", [])
+        ),
+        default=0,
+    )
     stage_local_id = f"event:{event_local_id}:stage:{next_round_type}:generation:{generation}"
 
     # Seed the whole advancing population before fields exist.  V3 returns
@@ -938,6 +944,7 @@ def generate_next_round(
         round_obj["handicap_results"] = exact_marks
         if authority.engine == "v3":
             round_obj["v3_round_id"] = derive_scope_identity(authority.reference.scope_id, "round", round_local_id)
+            round_obj["v3_round_ordinal"] = stage_ordinal
 
     # Update round type and names
     for i, round_obj in enumerate(next_rounds):
