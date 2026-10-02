@@ -55,7 +55,7 @@ STRATHMARK imports nothing from STRATHEX. STRATHEX translates DataFrames and ope
 ## V3 two-stage evidence flow
 
 1. STRATHEX records one root engine selection and locks it at the first numeric boundary.
-2. Before a field exists, V3 synchronizes the tournament and round, opens the scope, freezes the evidence epoch, and returns signed mark-free forecasts for seeding.
+2. With the full V7 profile, before a field exists V3 synchronizes the tournament and round, opens the scope, freezes the evidence epoch, and returns signed mark-free forecasts for seeding.
 3. STRATHEX creates exact heats and stand assignments locally.
 4. Each field snapshot crosses the minimized API boundary with pseudonymous competitor IDs only.
 5. V3 prepares the five component jobs per competitor and assembles one complete field-relative receipt; partial fields are rejected.

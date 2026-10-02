@@ -17,7 +17,7 @@ Each STRATHEX competition has exactly one live numeric authority: the STRATHMARK
 
 The former numeric Ollama LLM, local XGBoost model, independent baseline comparison, and expected-error selector are retired from live calculation.
 
-## V3 evidence stages
+## Full authenticated V7 evidence stages
 
 V3's signed pre-field forecast contains raw-time estimates for prediction-based seeding and cannot contain a mark. Once STRATHEX has exact heat membership and stand assignments, V3 prepares the component evidence and jointly assembles a complete field-relative mark receipt. The judge reviews ordinary fields in a compact batch and flagged fields individually.
 
@@ -29,7 +29,7 @@ Each field sends stable competitor IDs and dated history under one exclusive cut
 
 Wood quality and same-tournament fields remain accepted compatibility context but are numeric no-ops in v2. The response identifies ignored factors.
 
-## V3 evidence
+## Full authenticated V7 evidence
 
 V3 seals one evidence epoch for every field in the same round. Valid settled results become eligible at the next round boundary. Reconstruct and rebase the complete advancing field; never copy a local mark from a previous heat.
 
