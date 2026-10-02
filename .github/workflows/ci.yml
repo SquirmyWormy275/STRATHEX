@@ -42,12 +42,6 @@ jobs:
     name: Test (${{ matrix.os }} / Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    env:
-      STRATHMARK_TEST_DB: "1"
-      STRATHMARK_DB_PATH: ${{ runner.temp }}/strathex-v2.sqlite3
-      STRATHMARK_V3_DB_PATH: ${{ runner.temp }}/strathex-v3.sqlite3
-      STRATHEX_PREDICTION_AUTHORITY_DB: ${{ runner.temp }}/strathex-authority.sqlite3
-      STRATHEX_V3_COMMAND_DB: ${{ runner.temp }}/strathex-commands.sqlite3
     strategy:
       fail-fast: false
       matrix:
@@ -65,6 +59,12 @@ jobs:
         run: pip install -e ".[dev,api-test]"
 
       - name: Run pytest (skip Ollama-dependent tests)
+        env:
+          STRATHMARK_TEST_DB: "1"
+          STRATHMARK_DB_PATH: ${{ runner.temp }}/strathex-v2.sqlite3
+          STRATHMARK_V3_DB_PATH: ${{ runner.temp }}/strathex-v3.sqlite3
+          STRATHEX_PREDICTION_AUTHORITY_DB: ${{ runner.temp }}/strathex-authority.sqlite3
+          STRATHEX_V3_COMMAND_DB: ${{ runner.temp }}/strathex-commands.sqlite3
         run: pytest tests/ -v --tb=short -m "not ollama" --cov=woodchopping --cov-report=term-missing --basetemp=${{ runner.temp }}/strathex-pytest -p no:cacheprovider
 
   build:
