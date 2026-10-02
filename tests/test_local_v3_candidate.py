@@ -1,5 +1,6 @@
 """Local V3 transport invariants; actual numerics are checked by the installed smoke."""
 
+import subprocess
 from dataclasses import replace
 from pathlib import Path
 
@@ -166,3 +167,15 @@ def test_review_menu_displays_local_previews_without_requesting_approval(tmp_pat
     assert "predicted 28.500s | proposed Mark 8" in output
     assert "predicted 34.000s | seeding only; no mark" in output
     assert "no approval or issue authority" in output
+
+
+def test_worker_timeout_is_a_typed_failure(tmp_path, monkeypatch):
+    candidate = LocalV3Candidate.__new__(LocalV3Candidate)
+    candidate.python, candidate.ml_bundle = tmp_path / "synthetic-python", tmp_path
+
+    def timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(["synthetic-worker"], 120)
+
+    monkeypatch.setattr(subprocess, "run", timeout)
+    with pytest.raises(V3ClientError, match="could not complete"):
+        candidate._run("status")

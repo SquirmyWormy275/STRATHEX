@@ -65,24 +65,27 @@ class LocalV3Candidate:
             for key, value in os.environ.items()
             if not key.startswith(("STRATHMARK_", "STRATHEX_", "PYTHONPATH", "PYTHONHOME"))
         }
-        completed = subprocess.run(
-            [
-                str(self.python),
-                "-I",
-                "-m",
-                "strathmark.v3.linux_candidate",
-                operation,
-                "--ml-bundle",
-                str(self.ml_bundle),
-            ],
-            input=None if payload is None else json.dumps(payload),
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=120,
-            cwd=str(self.ml_bundle),
-            env=child_environment,
-        )
+        try:
+            completed = subprocess.run(
+                [
+                    str(self.python),
+                    "-I",
+                    "-m",
+                    "strathmark.v3.linux_candidate",
+                    operation,
+                    "--ml-bundle",
+                    str(self.ml_bundle),
+                ],
+                input=None if payload is None else json.dumps(payload),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=120,
+                cwd=str(self.ml_bundle),
+                env=child_environment,
+            )
+        except (OSError, subprocess.SubprocessError) as error:
+            raise V3ClientError(f"local V3 candidate could not complete: {error}") from error
         if completed.returncode:
             raise V3ClientError(completed.stderr.strip() or "local V3 candidate failed")
         if len(completed.stdout.encode("utf-8")) > 20_000_000:
