@@ -225,7 +225,7 @@ class LocalV3Candidate:
                 or time <= 0
                 or type(spread) not in (int, float)
                 or not math.isfinite(spread)
-                or spread < 0
+                or spread <= 0
                 or row.get("engine_version") != self._identity["package_version"]
                 or not isinstance(row.get("method_used"), str)
                 or not row["method_used"]
@@ -237,6 +237,14 @@ class LocalV3Candidate:
                 raise V3ClientError("local V3 returned an illegal proposed mark")
             if forecast_only and "proposed_mark" in row:
                 raise V3ClientError("pre-field forecast must not contain proposed marks")
+        if (
+            result.get("production_ready") is not False
+            or not isinstance(result.get("source_digest"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", result["source_digest"]) is None
+            or not isinstance(result.get("warnings"), list)
+            or any(not isinstance(warning, str) for warning in result["warnings"])
+        ):
+            raise V3ClientError("local V3 returned malformed preview provenance")
         if not forecast_only and min(row["proposed_mark"] for row in result["rows"]) != 3:
             raise V3ClientError("local V3 proposed field lacks its Mark 3 reference")
         if not forecast_only and any(

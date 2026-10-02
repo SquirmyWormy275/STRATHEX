@@ -164,6 +164,13 @@ def main():
     assert all(row["engine_version"].startswith("3.") and row["std_dev"] > 0 for row in v3)
     assert v3[0]["predicted_time"] < v3[1]["predicted_time"]
     assert v3[0]["mark"] > v3[1]["mark"] == 3
+    revised = request(states["v3"])
+    revised.update(upstream_field_revision=2, stand_local_ids=["position-2", "position-1"])
+    revised_rows = calculate_authoritative_field(**revised)
+    assert [row["receipt_digest"] for row in revised_rows] != [row["receipt_digest"] for row in v3]
+    assert [(row["predicted_time"], row["mark"]) for row in revised_rows] == [
+        (row["predicted_time"], row["mark"]) for row in v3
+    ]
     states["v3"].update(
         handicap_results_all=v3,
         all_competitors_df=roster,
@@ -195,6 +202,7 @@ def main():
                 "v3": v3,
                 "pre_field_has_marks": False,
                 "restart_same_output": True,
+                "field_revision_and_stands_bound": True,
                 "issue_blocked": True,
                 "readiness": candidate.selector_readiness(),
             },
