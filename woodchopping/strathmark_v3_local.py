@@ -114,10 +114,24 @@ class LocalV3Candidate:
             raise V3ClientError("local V3 candidate returned a malformed object")
         return result
 
-    def selector_readiness(self) -> dict:
+    def _verified_identity(self) -> dict:
         identity = self._run("status")
         if self._source_identity(identity) != self.source_identity:
             raise V3ClientError("local V3 source or ML bundle changed after configuration")
+        return identity
+
+    def selector_readiness(self) -> dict:
+        identity = self._verified_identity()
+        version = re.fullmatch(r"([0-9]+)\.([0-9]+)\.([0-9]+)(?:rc([0-9]+))?", identity["package_version"])
+        release = tuple(int(value) for value in version.groups()[:3]) if version else ()
+        eligible = bool(version) and (
+            release > (3, 0, 0) or (release == (3, 0, 0) and (version[4] is None or int(version[4]) >= 3))
+        )
+        if not eligible:
+            return {
+                "status": "ineligible",
+                "message": "Upgrade the separate V3 environment to STRATHMARK 3.0.0rc3 or newer before selecting it for a new competition.",
+            }
         return {
             "status": "numeric_preview_ready",
             "runtime_profile": LOCAL_V3_PROTOCOL,
@@ -176,7 +190,10 @@ class LocalV3Candidate:
             or context.source_identity != self.source_identity
         ):
             raise V3ClientError("local V3 request differs from the selected numeric preview authority")
-        self.selector_readiness()
+        # A saved preview retains its original source/model identity. Security
+        # eligibility applies to new selections; replay still verifies the
+        # exact artifacts already bound into this existing competition.
+        self._verified_identity()
         roster = request["competitors_df"]
         if "competitor_id" not in roster:
             raise V3ClientError("local V3 requires stable competitor IDs")

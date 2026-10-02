@@ -23,7 +23,7 @@ def local_candidate(tmp_path, monkeypatch):
         "source_digest": "a" * 64,
         "formula_digest": "b" * 64,
         "ml_bundle_digest": "c" * 64,
-        "package_version": "3.0.0rc2",
+        "package_version": "3.0.0rc3",
     }
     monkeypatch.setattr(LocalV3Candidate, "_run", lambda self, *args: identity)
     workbook = tmp_path / "synthetic.xlsx"
@@ -66,6 +66,98 @@ def test_local_choice_persists_and_children_cannot_override(tmp_path, monkeypatc
         resolve_authority_for_state(
             state, reopened, child={"prediction_authority_ref": state["prediction_authority_ref"]}
         )
+
+
+@pytest.mark.parametrize("version", ["3.0.0rc1", "3.0.0rc2", "2.0.1", "unknown"])
+def test_older_runtime_cannot_be_selected_for_a_new_root(tmp_path, monkeypatch, version):
+    candidate, identity = local_candidate(tmp_path, monkeypatch)
+    identity["package_version"] = version
+    candidate.source_identity = candidate._source_identity(identity)
+    assert candidate.selector_readiness()["status"] == "ineligible"
+    answers = iter(["2", "1", "synthetic_verification", ""])
+    selected = select_prediction_engine_for_scope(
+        {},
+        authority_store=PredictionAuthorityStore(tmp_path / "new-authority.db"),
+        owner_kind="single_event",
+        readiness_provider=candidate.selector_readiness,
+        input_fn=lambda _: next(answers),
+    )
+    assert selected.engine == "v2"
+
+
+@pytest.mark.parametrize("version", ["3.0.0rc3", "3.0.0rc4", "3.0.0", "3.1.0"])
+def test_current_runtime_is_available_for_deliberate_selection(tmp_path, monkeypatch, version):
+    candidate, identity = local_candidate(tmp_path, monkeypatch)
+    identity["package_version"] = version
+    candidate.source_identity = candidate._source_identity(identity)
+    assert candidate.selector_readiness()["status"] == "numeric_preview_ready"
+
+
+def test_saved_older_preview_replays_with_exact_original_artifacts(tmp_path, monkeypatch):
+    import hashlib
+    import json
+
+    import pandas as pd
+
+    candidate, identity = local_candidate(tmp_path, monkeypatch)
+    identity["package_version"] = "3.0.0rc2"
+    candidate.source_identity = candidate._source_identity(identity)
+    store = PredictionAuthorityStore(tmp_path / "historical-authority.db")
+    created = store.create_scope(owner_kind="single_event")
+    # Reconstruct an existing persisted selection, made by the earlier release.
+    selected = store.select_engine(
+        created.reference,
+        engine="v3",
+        mode="rehearsal",
+        actor="local-judge",
+        selected_at="2026-10-02T00:00:00.000Z",
+        reason_code="synthetic_verification",
+        contract_identity=LOCAL_V3_CONTRACT_DIGEST,
+        source_identity=candidate.source_identity,
+    )
+    locked = store.lock(
+        selected.reference, boundary="first_authoritative_numeric_action", locked_at="2026-10-02T00:00:00.000Z"
+    )
+    context = PredictionExecutionContext.from_receipt(locked)
+    assert candidate.selector_readiness()["status"] == "ineligible"
+
+    def run(_self, operation, payload=None):
+        if operation == "status":
+            return identity
+        return {
+            "protocol": LOCAL_V3_PROTOCOL,
+            "purpose": "numeric_preview_only",
+            "issued_mark": False,
+            "production_ready": False,
+            "readiness": identity,
+            "request_digest": hashlib.sha256(
+                json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+            ).hexdigest(),
+            "source_digest": "d" * 64,
+            "warnings": [],
+            "rows": [
+                {
+                    "competitor_id": "SYN001",
+                    "predicted_time": "28.5",
+                    "std_dev": "1.5",
+                    "engine_version": "3.0.0rc2",
+                    "method_used": "synthetic preserved preview",
+                }
+            ],
+        }
+
+    monkeypatch.setattr(LocalV3Candidate, "_run", run)
+    request = dict(
+        execution_context=context,
+        competitors_df=pd.DataFrame({"competitor_id": ["SYN001"], "competitor_name": ["Synthetic"]}),
+        round_id="round:synthetic",
+        target_context={},
+        ordered_competitor_ids=["competitor:synthetic"],
+    )
+    first = candidate.forecast_seeding(**request)
+    assert first == candidate.forecast_seeding(**request)
+    assert first[0]["engine_version"] == "3.0.0rc2"
+    assert "mark" not in first[0]
 
 
 def test_snapshot_is_frozen_across_live_changes_and_tamper_rejected(tmp_path, monkeypatch):
@@ -238,7 +330,7 @@ def test_invalid_numeric_evidence_is_rejected_before_persistence(tmp_path, monke
                     "competitor_id": "SYN001",
                     "predicted_time": bad,
                     "std_dev": 1,
-                    "engine_version": "3.0.0rc2",
+                    "engine_version": "3.0.0rc3",
                     "method_used": "synthetic",
                 }
             ],

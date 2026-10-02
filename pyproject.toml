@@ -15,7 +15,7 @@ dependencies = [
     "numpy",
     "openpyxl",
     "requests",
-    "cryptography>=43,<47",
+    "cryptography>=50.0.2,<51",
     # STRATHMARK is the handicap calculation engine, released under the Apache License 2.0.
     # License compatibility: STRATHEX is MIT and Apache 2.0 is a compatible permissive license.
     # V2 is published on PyPI; retain the reviewed Git source pin for the
