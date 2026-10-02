@@ -7,7 +7,7 @@
 3. [Architecture](ARCHITECTURE.md) — live modules and data flow.
 4. [Handicap System Explained](HANDICAP_SYSTEM_EXPLAINED.md) — prediction, uncertainty, and mark semantics.
 5. [STRATHMARK 2 Migration Decision](STRATHMARK_2_COMPATIBILITY_EVALUATION.md) — why the bridge was replaced.
-6. [STRATHEX 7.0.0 Release](RELEASE_v7.0.0.md) — upgrade and release gates.
+6. [STRATHEX 7.1.0 Release](RELEASE_v7.1.0.md) — upgrade and release gates.
 7. [Project Structure](PROJECT_STRUCTURE.md) — maintained code map.
 8. [Versioned Wiki Source](../wiki/README.md) — public wiki publication workflow.
 9. [Competition-scoped engine ADR](solutions/architecture-decisions/competition-scoped-prediction-engine.md) — why the project replaced a global-cutover assumption with judge-selected scope authority.
@@ -33,3 +33,7 @@ The following documents are retained only to explain earlier experiments. They d
 - older architecture solution records under `docs/solutions/`
 
 Historical pages must carry a visible status banner. Mutable test totals and “production ready” claims are not runtime authority.
+
+- [Contributor onboarding](../ONBOARDING.md)
+- [Changelog](../CHANGELOG.md)
+- [V3 rehearsal setup](V3_REHEARSAL.md)

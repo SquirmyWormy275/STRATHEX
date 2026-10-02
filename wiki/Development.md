@@ -25,9 +25,9 @@ Never import the API against an implicit production database. Restricted nested 
 ## Change rules
 
 - Keep the STRATHMARK adapter as the only live numeric boundary.
-- Persist one evidence cutoff per event.
+- V2 persists one exclusive evidence cutoff; V3 freezes one epoch per round.
 - Preserve IDs and all v2 metadata.
-- Do not reintroduce same-day evidence, silent transport fallback, or cross-store atomic claims.
+- Do not reintroduce same-day V2 evidence, engine/transport fallback, or cross-store atomic claims.
 - Add RED tests before calculation changes.
 - Re-run tournament replay, bracket-bye, state recovery, package, and parity gates.
 - Update maintained docs and all affected wiki pages in the same change.

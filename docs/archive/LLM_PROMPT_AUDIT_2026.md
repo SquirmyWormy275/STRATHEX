@@ -23,7 +23,7 @@ However, **your LLM prompts haven't been updated to reflect these advances**. Th
 
 ## Prompt 1: Time Prediction Prompt
 
-**Location**: [woodchopping/predictions/ai_predictor.py:168-336](woodchopping/predictions/ai_predictor.py#L168-L336)
+**Location**: [woodchopping/predictions/ai_predictor.py:168-336](../../woodchopping/predictions/ai_predictor.py#L168-L336)
 **Purpose**: Predicts competitor cutting times with wood quality adjustments
 **Model**: `qwen2.5:32b` (32 billion parameters)
 **Token Limit**: 50 tokens (fast single-number predictions)
@@ -313,7 +313,7 @@ Your quality adjustment modifies CONDITION within the species (softness/hardness
 
 ## Prompt 2: Fairness Assessment Prompt
 
-**Location**: [woodchopping/simulation/fairness.py:176-353](woodchopping/simulation/fairness.py#L176-L353)
+**Location**: [woodchopping/simulation/fairness.py:176-353](../../woodchopping/simulation/fairness.py#L176-L353)
 **Purpose**: Analyzes Monte Carlo simulation results to rate handicap fairness
 **Model**: `qwen2.5:32b`
 **Token Limit**: 5000 tokens (comprehensive multi-paragraph analysis)
@@ -529,7 +529,7 @@ Your FAIRNESS RATING should assess PREDICTION QUALITY, not competitive balance.
 
 ## Prompt 3: Championship Race Analysis Prompt
 
-**Location**: [woodchopping/simulation/fairness.py:610-669](woodchopping/simulation/fairness.py#L610-L669)
+**Location**: [woodchopping/simulation/fairness.py:610-669](../../woodchopping/simulation/fairness.py#L610-L669)
 **Purpose**: Sports-commentary style race outcome predictions
 **Model**: `qwen2.5:32b`
 **Token Limit**: 800 tokens (6-section sports commentary)

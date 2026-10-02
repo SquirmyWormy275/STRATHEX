@@ -13,7 +13,7 @@ def test_hatch_derives_package_version_from_one_canonical_source():
 
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "woodchopping/__init__.py"
-    assert woodchopping.__version__ == "7.0.0"
+    assert woodchopping.__version__ == "7.1.0"
 
 
 def test_wheel_includes_package_and_required_top_level_config():
@@ -24,6 +24,7 @@ def test_wheel_includes_package_and_required_top_level_config():
         "config.py",
         "explanation_system_functions.py",
         "MainProgramV5_2.py",
+        "strathex_cli.py",
     ]
 
 

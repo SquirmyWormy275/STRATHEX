@@ -1,7 +1,7 @@
 # System Status
 
 **Current target:** competition-scoped STRATHMARK V2/V3 selection in STRATHEX
-**Status date:** 2026-08-27
+**Status date:** 2026-10-01
 
 ## Implemented
 
@@ -34,14 +34,8 @@
 - Legacy local XGBoost/LLM modules are compatibility/history code, not live prediction authority.
 - V3 production mode is unavailable in this STRATHEX release. Even a service-level `production_ready` result is displayed as readiness evidence and bound to rehearsal mode; a separate explicit cutover release is required.
 
-## Remaining release operations
+## Verification and remaining qualification
 
-- full isolated suite, Ruff, build, and clean-wheel smoke;
-- copied ResultStore migration rehearsal;
-- operator terminal gallery and Windows smoke;
-- independent diff review;
-- feature-branch PRs and hosted checks;
-- publish and verify STRATHEX and STRATHMARK GitHub wikis;
-- create coordinated tags/releases only after those gates pass.
+The current release workflow runs full isolated tests, Ruff, documentation links, distribution build, and installed terminal startup/exit on Linux and Windows. The portable launcher accepts an explicit workbook and operator-data directory. The engine selector and ASCII Wizard are merged; wiki source is published separately and verified by the publication tool.
 
-This page does not claim deployment, public API security, or production readiness before those operations complete.
+V3 production mode still requires the designated STRATHMARK installation, exact-source/model evidence, native Windows capacity proof, CNG identities, signed eligibility, and a consumer release explicitly permitting production selection. Current Linux/V2 operation does not satisfy those installation gates.

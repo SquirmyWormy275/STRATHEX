@@ -2,7 +2,7 @@
 
 ## Competitor identity
 
-Roster rows carry stable competitor IDs and display names. Name remains local and judge-facing. V3 receives only namespaced pseudonymous identifiers and calculation-required sporting facts.
+Roster rows carry stable competitor IDs and display names. Existing IDs are preserved; new IDs are opaque UUID-backed identities so deleting a roster row cannot recycle a historical identity. Name remains local and judge-facing. V3 receives only namespaced pseudonymous identifiers and calculation-required sporting facts.
 
 ## Historical result
 

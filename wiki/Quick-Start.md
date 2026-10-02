@@ -26,7 +26,7 @@ STRATHEX pins the exact STRATHMARK `v2.0.0` release commit from GitHub; no STRAT
 9. Generate heats or a bracket.
 10. Record results; Excel is canonical and ResultStore is best-effort.
 11. Save/reload as needed. JSON saves use atomic replacement and backup recovery.
-11. Generate later rounds. The advancing field is recalculated using the original cutoff; same-day results are not prediction evidence.
+12. Generate later rounds. V2 retains its original exclusive cutoff and excludes same-day results. V3 keeps same-round epochs frozen and admits settled completions at a later-round boundary, then rebuilds and rebases the complete field.
 
 ## HTTP demo mode
 
@@ -39,3 +39,7 @@ python MainProgramV5_2.py
 ```
 
 A version mismatch or API failure stops the calculation visibly. Neither transport nor engine silently falls back.
+
+## Linux
+
+Install in a Python 3.13 virtual environment, then run `strathex --workbook /absolute/path/to/workbook.xlsx --data-dir /absolute/path/to/operator-data`. Use `source .venv/bin/activate` to activate the Linux environment. See the [Linux setup and rehearsal runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/ONBOARDING.md).

@@ -24,7 +24,6 @@ ENV/
 # AI tooling artifacts (machine-local instructions, may contain absolute paths)
 .claude/
 CLAUDE.md
-AGENTS.md
 .cursor/
 .aider*
 
@@ -64,3 +63,8 @@ htmlcov/
 
 # Runtime tournament state (session-specific)
 tournament_state.json
+
+# Portable development and release rehearsal artifacts
+.venv*/
+.tmp/
+.tmp-*/

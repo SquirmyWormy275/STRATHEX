@@ -1520,6 +1520,8 @@ def single_event_menu():
 
             try:
                 heat_choice = int(input("\nSelect heat to record (number): ").strip()) - 1
+                if not 0 <= heat_choice < len(available):
+                    raise IndexError
                 selected_heat = available[heat_choice]
 
                 # Record times
@@ -1957,7 +1959,7 @@ def multi_event_tournament_menu():
         elif menu_choice == "5":
             # Entry Fee Management & Payouts Submenu
             if not multi_event_tournament_state.get("tournament_name"):
-                display_actionable_error(
+                choice = display_actionable_error(
                     "CANNOT MANAGE FINANCES",
                     "Tournament must be created first.",
                     quick_action="create tournament now",
@@ -2156,6 +2158,9 @@ def multi_event_tournament_menu():
             display_tournament_earnings_summary(multi_event_tournament_state, competitor_earnings)
 
         elif menu_choice == "16":
+            view_wood_count(multi_event_tournament_state)
+
+        elif menu_choice == "17":
             # Save Tournament State
             if not multi_event_tournament_state.get("tournament_name"):
                 print("\nERROR: Create tournament first (Option 1)")
@@ -2172,7 +2177,7 @@ def multi_event_tournament_menu():
                 authority_store=_prediction_authority_store,
             )
 
-        elif menu_choice == "17":
+        elif menu_choice == "18":
             # Return to main menu
             print("\nReturning to main menu...")
             break

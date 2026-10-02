@@ -191,12 +191,13 @@ def enter_wood_quality(wood_selection: Dict) -> Dict:
 
         try:
             val = int(s)
-            val = max(1, min(10, val))  # Clamp between 1 and 10
+            if not 1 <= val <= 10:
+                raise ValueError("wood quality must be between 1 and 10")
             wood_selection["quality"] = val
             format_wood(wood_selection)
             break
         except ValueError:
-            print("Invalid input. Please enter an integer between 0 and 10.")
+            print("Invalid input. Please enter an integer between 1 and 10.")
 
     return wood_selection
 
