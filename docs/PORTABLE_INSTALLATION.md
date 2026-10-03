@@ -43,4 +43,4 @@ Encrypted recovery requires hard-link support for atomic publication without ove
 
 ## 7.4.2 buffered recovery
 
-The new profile is `strathex-7.4.2-strathmark-3.0.0rc7-recovery-reviewed`. The helper uses bounded bulk input/output through GPG pipes, avoiding tiny direct filesystem operations on large removable-drive archives. Complete authenticated readback and no-overwrite publication are unchanged. Retained rc6 competitions use their exact old runtime; the rc6 prospective protocol also requires that original implementation. New profiles cannot silently replace either identity. See [7.4.2 release notes](RELEASE_v7.4.2.md).
+The new profile is `strathex-7.4.2-strathmark-3.0.0rc7-recovery-final`. The helper uses bounded bulk input/output through GPG pipes, avoiding tiny direct filesystem operations on large removable-drive archives. Complete authenticated readback and no-overwrite publication are unchanged. Retained rc6 competitions use their exact old runtime; the rc6 prospective protocol also requires that original implementation. New profiles cannot silently replace either identity. See [7.4.2 release notes](RELEASE_v7.4.2.md).

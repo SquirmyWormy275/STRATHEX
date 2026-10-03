@@ -7,3 +7,5 @@ V2/V3 selection remains deliberate per competition. Retain earlier profiles and 
 The current numerical model and Formula remain unchanged. Two additional TRAIN/TUNE-only sparse-history experiments failed to beat the existing model. Historical workbook versions did not supply the 20 missing dates; possible repeated rows still require original heat/round confirmation. No source rows were deleted or corrected. See the [accuracy record](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/ACCURACY_AND_COUNCIL.md).
 
 The pre-existing prospective protocol stays pinned to the original rc6 implementation and requires 100 genuinely later results from ten new competitions. Keep that retained profile for the comparison. Encrypted recovery still needs an independent protected offline recovery-key copy before plaintext archives can be retired. Windows CNG qualification is unchanged.
+
+The rc7 accuracy CLI also fixes its freeze-export digest round trip. An evidence-verified `repair-freeze` command writes a separate companion for older exports, preserving the original cutoff and excluded evidence. The original protocol and benchmark remain unchanged.
