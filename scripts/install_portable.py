@@ -327,6 +327,8 @@ def launch(home, release, arguments, runtime=False):
             selected["runtime_root"],
             "--ml-bundle",
             selected["model"],
+            "--backup-dir",
+            selected["backup_dir"],
         ]
     else:
         command = [
