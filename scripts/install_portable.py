@@ -324,13 +324,15 @@ def verify_bundle(bundle):
     return manifest
 
 
-def install(home, bundle, workbook, backup, uv):
+def install(home, bundle, workbook, backup, uv, *, stage_only=False):
     bundle = bundle.resolve(strict=True)
     manifest = verify_bundle(bundle)
     release = identifier(manifest["release_id"])
     workbook = workbook.resolve(strict=True)
-    backup = backup.resolve(strict=True)
-    require_independent(home, backup, workbook)
+    backup = backup.expanduser().absolute()
+    if not stage_only or backup.exists():
+        backup = backup.resolve(strict=True)
+        require_independent(home, backup, workbook)
     root = home / "profiles" / release
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     try:
@@ -426,7 +428,8 @@ def install(home, bundle, workbook, backup, uv):
         }
         data["content_identity"] = capture_content_identity(data)
         atomic_json(root / "profile.json", data)
-        activate(home, release)
+        if not stage_only:
+            activate(home, release)
         return data
     except Exception:
         atomic_json(
@@ -533,6 +536,11 @@ def main():
     setup.add_argument("--workbook", type=Path, required=True)
     setup.add_argument("--backup-dir", type=Path, required=True)
     setup.add_argument("--uv", default=shutil.which("uv"))
+    setup.add_argument(
+        "--stage-only",
+        action="store_true",
+        help="Verify a new installed profile without changing selection; activation still requires an independent backup",
+    )
     choice = sub.add_parser("activate")
     choice.add_argument("release_id")
     sub.add_parser("list")
@@ -548,7 +556,12 @@ def main():
             if args.operation == "install":
                 if not args.uv:
                     raise ValueError("uv is required to provision Python 3.13 environments")
-                print(json.dumps(install(home, args.bundle, args.workbook, args.backup_dir, args.uv), indent=2))
+                print(
+                    json.dumps(
+                        install(home, args.bundle, args.workbook, args.backup_dir, args.uv, stage_only=args.stage_only),
+                        indent=2,
+                    )
+                )
             elif args.operation == "activate":
                 print(json.dumps(activate(home, args.release_id), indent=2))
             elif args.operation == "list":
