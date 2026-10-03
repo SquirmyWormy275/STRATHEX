@@ -17,8 +17,8 @@ from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired,
 from woodchopping.v3_authority_store import V3CommandStore
 
 LINUX_PROTOCOL = "strathmark.v3-linux-competition.v1"
-FROZEN_LINUX_SOURCE_COMMIT = "8d91657dba232aa3891febab76181ed19ccb6e17"
-FROZEN_LINUX_IMPLEMENTATION_DIGEST = "de871e62ae2a8d774fef1baefb64cda455d6d4eb8bc0c7208e5382c23b7ab59e"
+FROZEN_LINUX_SOURCE_COMMIT = "f3708af0942c5161c04b2398c2efa63df3342dcf"
+FROZEN_LINUX_IMPLEMENTATION_DIGEST = "e9bd62281fa94b84efcf7f162cfb2aeabb60777902636046acfcb770004ffe5d"
 # Frozen separately from the Windows V7 service and the earlier preview profile.
 LINUX_CONTRACT_DIGEST = "162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e"
 
