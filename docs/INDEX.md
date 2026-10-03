@@ -1,6 +1,6 @@
 # Documentation Index
 
-Current: [Complete Linux V3 competitions](V3_LINUX_COMPETITION.md) and [7.3.0 release notes](RELEASE_v7.3.0.md).
+Current: [Complete Linux V3 competitions](V3_LINUX_COMPETITION.md) and [7.3.1 release notes](RELEASE_v7.3.1.md).
 
 ## Current authority
 

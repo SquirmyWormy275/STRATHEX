@@ -1,4 +1,4 @@
-# STRATHEX 7.3.0
+# STRATHEX 7.3.1
 
 STRATHEX is the terminal application judges use to run woodchopping events. It handles rosters, wood setup, handicap and championship fields, brackets, multi-event days, schedules, results, autosave, and exports.
 
