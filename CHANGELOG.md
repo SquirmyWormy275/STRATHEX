@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.4.0] - 2026-10-03
+
+- Coordinate the improved STRATHMARK 3.0.0rc5 Formula/ML and calibrated uncertainty while preserving explicit V2/V3 selection, frozen contracts and existing competition source identities.
+- Add an offline wheel/model installer with immutable profiles, independent read-back-verified backups, and rollback retaining saved competitions and signing keys.
+- Verify copied real-meet operation separately from synthetic release tests and document accuracy, local council evaluation, installation and recovery.
+
+
 ## [7.2.1] - 2026-10-02
 
 - Raise cryptography to the maintained 50.0.2 floor and coordinate the exact STRATHMARK 3.0.0rc3 source and secure release lock.

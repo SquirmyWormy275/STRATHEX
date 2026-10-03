@@ -1,4 +1,4 @@
-# STRATHEX 7.3.2
+# STRATHEX 7.4.0
 
 STRATHEX is the terminal application judges use to run woodchopping events. It handles rosters, wood setup, handicap and championship fields, brackets, multi-event days, schedules, results, autosave, and exports.
 
@@ -22,3 +22,5 @@ Read [Choosing the Prediction Engine](Choosing-the-Prediction-Engine) before ope
 The full V7 design combines independent formula, ML, and LLM-council forecasts; the current Linux local profile uses verified Formula + ML with the council unavailable. Same-round fields share a frozen epoch; settled completions can update a later round. Its mark-free pre-field forecasts and exact-field marks remain distinct.
 
 Start with [Quick Start](Quick-Start), then read [Prediction Methods](Prediction-Methods), [Handicap System](Handicap-System-Explained), and [Architecture](Architecture).
+
+[Portable installation and rollback](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/PORTABLE_INSTALLATION.md) retain exact older competition profiles. [Accuracy and local council diagnostics](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/ACCURACY_AND_COUNCIL.md) describe the improved Linux candidate and its development evaluation limits.
