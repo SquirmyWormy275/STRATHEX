@@ -1,5 +1,9 @@
 # Version History
 
+## 7.3.1 (2026-10-02)
+
+Pins the coordinated rc4 runtime with portable recovery archive path normalization. The complete Linux workflow and explicit V2/V3 choice remain available; saved 7.3.0 scopes retain their original exact environments.
+
 ## 7.3.0 (2026-10-02)
 
 Complete separate Linux V3 competition lifecycle, explicit engine selection, real Formula/ML, local signed approval/issue/results/corrections, restart, verified recovery, championship receipts and later-round learning. Windows CNG qualification remains separate.
