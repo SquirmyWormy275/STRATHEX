@@ -33,6 +33,23 @@ def require_independent(home, backup, workbook):
         raise ValueError("recovery archive must be on an independent filesystem from installation and workbook")
 
 
+def require_atomic_archive_publication(backup):
+    """Reject unsupported recovery filesystems before staging private archives."""
+    descriptor, name = tempfile.mkstemp(prefix=".strath-publication-check-", dir=backup)
+    source = Path(name)
+    destination = source.with_name(source.name + ".link")
+    os.close(descriptor)
+    try:
+        os.link(source, destination)
+    except OSError as exc:
+        raise ValueError(
+            "encrypted recovery requires hard-link support for atomic no-overwrite publication; no archive was started"
+        ) from exc
+    finally:
+        destination.unlink(missing_ok=True)
+        source.unlink(missing_ok=True)
+
+
 def file_inventory(root):
     return {
         path.relative_to(root).as_posix(): sha(path)
@@ -194,6 +211,7 @@ def recovery_archive(home, backup, workbook):
         encryption = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(encryption)
         encryption.load_policy(encryption_policy)
+        require_atomic_archive_publication(backup)
         destination = destination.with_name(destination.name + ".gpg")
     files = {}
     for path in home.rglob("*"):
@@ -521,6 +539,7 @@ def launch(home, release, arguments, runtime=False):
         ]
     encryption_policy = home / "recovery-encryption-policy.json"
     if encryption_policy.exists() and selected.get("backup_encryption_supported") is True:
+        require_atomic_archive_publication(Path(selected["backup_dir"]))
         command.extend(
             ["--backup-encryption-policy" if runtime else "--local-v3-backup-encryption-policy", str(encryption_policy)]
         )

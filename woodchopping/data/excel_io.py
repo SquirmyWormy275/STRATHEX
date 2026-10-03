@@ -294,8 +294,6 @@ def load_results_df() -> pd.DataFrame:
             "FinishPosition": "finish_position",  # NEW: Nullable field for stacking ensemble
         }
         df = df.rename(columns=column_mapping)
-        if not df.empty and "competitor_id" in df:
-            df["competitor_name"] = _display_names(df["competitor_name"], df["competitor_id"])
 
         # Flexible normalization for variant headers (case-insensitive)
         if "size_mm" not in df.columns:
