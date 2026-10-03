@@ -1,4 +1,6 @@
 import json
+import shutil
+import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
@@ -42,9 +44,39 @@ def test_corrupt_release_refused_before_profile_or_active_changes(tmp_path):
     assert not (tmp_path / "active.json").exists()
 
 
-def test_profile_switch_and_rollback_preserve_keys_saved_scope_and_archive(tmp_path):
+@pytest.mark.parametrize("encrypted", [False, True])
+def test_profile_switch_and_rollback_preserve_keys_saved_scope_and_archive(tmp_path, encrypted):
     home = tmp_path / "installation"
     home.mkdir()
+    if encrypted:
+        binary = shutil.which("gpg")
+        if binary is None:
+            pytest.skip("native GPG required")
+        key_home = tmp_path / "gpg"
+        key_home.mkdir(mode=0o700)
+        command = [binary, "--homedir", str(key_home), "--batch", "--pinentry-mode", "loopback", "--passphrase", ""]
+        subprocess.run(
+            command + ["--quick-generate-key", "STRATH synthetic test", "ed25519", "cert", "0"],
+            check=True,
+            capture_output=True,
+        )
+        listing = subprocess.check_output(
+            command + ["--with-colons", "--list-keys"], stderr=subprocess.DEVNULL
+        ).decode()
+        fingerprint = next(line.split(":")[9] for line in listing.splitlines() if line.startswith("fpr:"))
+        subprocess.run(
+            command + ["--quick-add-key", fingerprint, "cv25519", "encr", "0"], check=True, capture_output=True
+        )
+        atomic_json(
+            home / "recovery-encryption-policy.json",
+            dict(
+                schema_version="strath-recovery-encryption-policy-v1",
+                gpg_binary=binary,
+                gpg_binary_sha256=sha(Path(binary)),
+                gpg_home=str(key_home),
+                recipient_fingerprint=fingerprint,
+            ),
+        )
     with tempfile.TemporaryDirectory(dir="/dev/shm", prefix="strath-rollback-") as directory:
         backup = Path(directory)
         if backup.stat().st_dev == home.stat().st_dev:
@@ -86,7 +118,20 @@ def test_profile_switch_and_rollback_preserve_keys_saved_scope_and_archive(tmp_p
         assert saved.read_bytes() == b'{"source_identity":"original-exact-source"}'
         active = json.loads((home / "active.json").read_text())
         assert active["release_id"] == "synthetic-1"
-        with tarfile.open(active["recovery_archive"]) as archive:
+        archive_path = Path(active["recovery_archive"])
+        if encrypted:
+            import io
+
+            from scripts.recovery_security import verify_file
+
+            verify_file(archive_path, home / "recovery-encryption-policy.json")
+            assert archive_path.name.endswith(".tar.gz.gpg")
+            assert not list(backup.glob("*.tar.gz"))
+            raw = subprocess.run(command + ["--decrypt", str(archive_path)], check=True, capture_output=True).stdout
+            archive_stream = tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz")
+        else:
+            archive_stream = tarfile.open(archive_path)
+        with archive_stream as archive:
             assert (
                 sum(
                     archive.extractfile(item).read() == key.read_bytes()
@@ -100,6 +145,8 @@ def test_profile_switch_and_rollback_preserve_keys_saved_scope_and_archive(tmp_p
                 == key.read_bytes()
             )
         assert Path(active["recovery_archive"]).stat().st_mode & 0o777 == 0o600
+    if encrypted:
+        subprocess.run(["gpgconf", "--homedir", str(key_home), "--kill", "gpg-agent"], capture_output=True)
 
 
 def test_workbook_and_backup_same_filesystem_refused(tmp_path):

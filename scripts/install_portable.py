@@ -11,6 +11,7 @@ import argparse
 import contextlib
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import re
@@ -183,6 +184,17 @@ def recovery_archive(home, backup, workbook):
     destination = backup / (
         "profile-switch-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex + ".tar.gz"
     )
+    encryption_policy = home / "recovery-encryption-policy.json"
+    encryption = None
+    if encryption_policy.exists():
+        helper = Path(__file__).with_name("recovery_security.py")
+        if not helper.is_file() or helper.is_symlink():
+            raise ValueError("install the release's standalone recovery_security.py beside this bootstrap")
+        spec = importlib.util.spec_from_file_location("strath_portable_recovery_security", helper)
+        encryption = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(encryption)
+        encryption.load_policy(encryption_policy)
+        destination = destination.with_name(destination.name + ".gpg")
     files = {}
     for path in home.rglob("*"):
         if (
@@ -196,6 +208,8 @@ def recovery_archive(home, backup, workbook):
         ):
             files["installation/" + path.relative_to(home).as_posix()] = path
     files["operator-workbook.xlsx"] = workbook
+    if encryption is not None:
+        files["installation/recovery-encryption-policy.json"] = encryption_policy
     # Adopted profiles can keep their original paths. Their authority and saved
     # competitions must be preserved just as completely as new managed profiles.
     for descriptor in sorted(home.glob("profiles/*/profile.json")):
@@ -217,19 +231,25 @@ def recovery_archive(home, backup, workbook):
     expected = {name: sha(path) for name, path in files.items()}
     # The signing key archive must be private from its first byte, irrespective
     # of the caller's umask. Some removable filesystems lack POSIX permissions.
-    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-    with os.fdopen(fd, "wb") as stream:
-        with tarfile.open(fileobj=stream, mode="w:gz") as archive:
-            for name, path in files.items():
-                archive.add(path, arcname=name, recursive=False)
-        stream.flush()
-        os.fsync(stream.fileno())
-    with tarfile.open(destination, "r:gz") as archive:
-        actual = {
-            item.name: hashlib.sha256(archive.extractfile(item).read()).hexdigest()
-            for item in archive.getmembers()
-            if item.isfile()
-        }
+    with tempfile.TemporaryDirectory(prefix=".recovery-stage-", dir=home) as staging:
+        local_archive = Path(staging) / "snapshot.tar.gz" if encryption is not None else destination
+        fd = os.open(local_archive, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "wb") as stream:
+            with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+                for name, path in files.items():
+                    archive.add(path, arcname=name, recursive=False)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if encryption is not None:
+            encryption.encrypt_file(local_archive, destination, encryption_policy)
+            actual = encryption.tar_digests(destination, encryption_policy)
+        else:
+            with tarfile.open(destination, "r:gz") as archive:
+                actual = {
+                    item.name: hashlib.sha256(archive.extractfile(item).read()).hexdigest()
+                    for item in archive.getmembers()
+                    if item.isfile()
+                }
     if actual != expected or any(sha(path) != expected[name] for name, path in files.items()):
         raise ValueError("independent rollback archive failed read-back verification")
     atomic_json(
@@ -304,13 +324,15 @@ def verify_bundle(bundle):
     return manifest
 
 
-def install(home, bundle, workbook, backup, uv):
+def install(home, bundle, workbook, backup, uv, *, stage_only=False):
     bundle = bundle.resolve(strict=True)
     manifest = verify_bundle(bundle)
     release = identifier(manifest["release_id"])
     workbook = workbook.resolve(strict=True)
-    backup = backup.resolve(strict=True)
-    require_independent(home, backup, workbook)
+    backup = backup.expanduser().absolute()
+    if not stage_only or backup.exists():
+        backup = backup.resolve(strict=True)
+        require_independent(home, backup, workbook)
     root = home / "profiles" / release
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     try:
@@ -401,11 +423,13 @@ def install(home, bundle, workbook, backup, uv):
             "backup_dir": str(backup),
             "data_dir": str(root / "data"),
             "runtime_root": str(root / "authority"),
+            "backup_encryption_supported": manifest.get("backup_encryption_supported", False),
             "release_manifest": manifest,
         }
         data["content_identity"] = capture_content_identity(data)
         atomic_json(root / "profile.json", data)
-        activate(home, release)
+        if not stage_only:
+            activate(home, release)
         return data
     except Exception:
         atomic_json(
@@ -422,7 +446,7 @@ def launch(home, release, arguments, runtime=False):
     if not Path(selected["backup_dir"]).is_dir():
         raise ValueError("connect the independent recovery drive before starting STRATH")
     managed = (
-        ("--runtime-root", "--ml-bundle", "--backup-dir")
+        ("--runtime-root", "--ml-bundle", "--backup-dir", "--backup-encryption-policy")
         if runtime
         else (
             "--workbook",
@@ -431,6 +455,7 @@ def launch(home, release, arguments, runtime=False):
             "--local-v3-ml-bundle",
             "--local-v3-runtime-root",
             "--local-v3-backup-dir",
+            "--local-v3-backup-encryption-policy",
         )
     )
     for argument in arguments:
@@ -494,6 +519,11 @@ def launch(home, release, arguments, runtime=False):
             selected["backup_dir"],
             *arguments,
         ]
+    encryption_policy = home / "recovery-encryption-policy.json"
+    if encryption_policy.exists() and selected.get("backup_encryption_supported") is True:
+        command.extend(
+            ["--backup-encryption-policy" if runtime else "--local-v3-backup-encryption-policy", str(encryption_policy)]
+        )
     return subprocess.call(command, env=environment)
 
 
@@ -506,6 +536,11 @@ def main():
     setup.add_argument("--workbook", type=Path, required=True)
     setup.add_argument("--backup-dir", type=Path, required=True)
     setup.add_argument("--uv", default=shutil.which("uv"))
+    setup.add_argument(
+        "--stage-only",
+        action="store_true",
+        help="Verify a new installed profile without changing selection; activation still requires an independent backup",
+    )
     choice = sub.add_parser("activate")
     choice.add_argument("release_id")
     sub.add_parser("list")
@@ -521,7 +556,12 @@ def main():
             if args.operation == "install":
                 if not args.uv:
                     raise ValueError("uv is required to provision Python 3.13 environments")
-                print(json.dumps(install(home, args.bundle, args.workbook, args.backup_dir, args.uv), indent=2))
+                print(
+                    json.dumps(
+                        install(home, args.bundle, args.workbook, args.backup_dir, args.uv, stage_only=args.stage_only),
+                        indent=2,
+                    )
+                )
             elif args.operation == "activate":
                 print(json.dumps(activate(home, args.release_id), indent=2))
             elif args.operation == "list":
