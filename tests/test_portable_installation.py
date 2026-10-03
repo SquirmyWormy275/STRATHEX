@@ -17,11 +17,29 @@ from scripts.install_portable import (
     installation_lock,
     launch,
     read_json,
+    require_atomic_archive_publication,
     require_independent,
     sha,
     verify_bundle,
     verify_content_identity,
 )
+
+
+def test_unsupported_encrypted_archive_filesystem_is_rejected_without_residue(tmp_path, monkeypatch):
+    import errno
+
+    def unsupported(*_args):
+        raise OSError(errno.EOPNOTSUPP, "hard links unavailable")
+
+    monkeypatch.setattr("scripts.install_portable.os.link", unsupported)
+    with pytest.raises(ValueError, match="no archive was started"):
+        require_atomic_archive_publication(tmp_path)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_encrypted_archive_publication_probe_cleans_up(tmp_path):
+    require_atomic_archive_publication(tmp_path)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_corrupt_release_refused_before_profile_or_active_changes(tmp_path):

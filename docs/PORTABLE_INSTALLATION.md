@@ -38,3 +38,5 @@ The current private profile is `strathex-7.4.1-strathmark-3.0.0rc6-release-revie
 `install --stage-only` provisions and verifies a new profile without changing the active selection. It can retain the intended archive path while the drive is unavailable; activation and launch still enforce the independent-backup prerequisite. Use `activate RELEASE_ID` after the drive is recognized. Staging is not proof of a durable backup.
 
 Encrypted archives publish through a locked private temporary file. Full authenticated readback finishes before the final ciphertext appears; interrupted publication can be retried without overwriting a completed archive. The verification receipt alone is not a completed backup.
+
+Encrypted recovery requires hard-link support for atomic publication without overwriting an existing archive. The bootstrap checks this capability before staging an activation/rollback archive and before launching an encrypted competition profile. Filesystems without hard links, including exFAT, are rejected before an archive starts. Use an independent filesystem that passes the check.
