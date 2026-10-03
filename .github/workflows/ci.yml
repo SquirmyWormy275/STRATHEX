@@ -168,7 +168,7 @@ jobs:
             producer=.tmp/linux-producer/bin/python
           fi
           "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.4.1-py3-none-any.whl
-          "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc5-py3-none-any.whl[v3-candidate]"
+          "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc6-py3-none-any.whl[v3-candidate]"
           "$producer" -I -m strathmark.v3.factory.synthetic_fixture --output .tmp/linux-synthetic-model
           "$consumer" scripts/smoke_linux_competition.py --v3-python "$producer" --ml-bundle .tmp/linux-synthetic-model/ml-bundle --output .tmp/linux-competition-smoke
 
