@@ -1,5 +1,7 @@
 # STRATHEX 7.4
 
+Version 7.4.1 also restores startup loading of ID-based workbook history, with roster names resolved before use and all historical rows retained.
+
 STRATHEX is the judge-facing woodchopping tournament application. It manages rosters, wood setup, handicap and championship fields, brackets, multi-event days, result entry, autosave, and Excel exports. Numeric prediction and mark assignment are owned by [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK).
 
 ## Prediction-engine choice

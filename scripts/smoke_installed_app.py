@@ -8,6 +8,7 @@ import subprocess
 import tarfile
 import tempfile
 import venv
+from datetime import datetime
 from pathlib import Path
 
 from openpyxl import Workbook
@@ -36,7 +37,9 @@ def main() -> None:
         )
         workbook = Workbook()
         workbook.remove(workbook.active)
-        workbook.create_sheet("Competitor").append(["CompetitorID", "Name", "Country", "State/Province", "Gender"])
+        roster = workbook.create_sheet("Competitor")
+        roster.append(["CompetitorID", "Name", "Country", "State/Province", "Gender"])
+        roster.append(["SYN001", "Synthetic One", "SYN", "", "M"])
         workbook.create_sheet("wood").append(
             [
                 "Scientific Name",
@@ -52,9 +55,10 @@ def main() -> None:
                 "MOE",
             ]
         )
-        workbook.create_sheet("Results").append(
-            ["competitor_name", "event", "raw_time", "species", "size_mm", "quality", "date"]
-        )
+        history = workbook.create_sheet("Results")
+        history.append(["CompetitorID", "Event", "Time (seconds)", "Species Code", "Size (mm)", "Quality", "Date"])
+        history.append(["SYN001", "UH", 30, "S01", 300, 5, datetime(2024, 1, 1)])
+        history.append(["SYN001", "UH", 31, "S01", 300, 5, datetime(2025, 1, 1)])
         workbook_path = root / "synthetic.xlsx"
         workbook.save(workbook_path)
         workbook.close()
@@ -72,7 +76,12 @@ def main() -> None:
             encoding="utf-8",
             timeout=60,
         )
-        if completed.returncode or "Goodbye!" not in completed.stdout:
+        if (
+            completed.returncode
+            or "Goodbye!" not in completed.stdout
+            or "Error loading results" in completed.stdout
+            or "migrated 2 historical results" not in completed.stdout
+        ):
             raise RuntimeError(completed.stdout + completed.stderr)
         print("Installed STRATHEX started and exited successfully with synthetic data outside the checkout.")
 

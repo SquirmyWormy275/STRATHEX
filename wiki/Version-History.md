@@ -2,7 +2,7 @@
 
 ## 7.4.1
 
-Coordinates rc6 Formula tail improvements and fixed regression/prospective controls; adds optional authenticated encrypted recovery archives. V2/V3 choice and saved competition source bindings remain explicit. Council diagnostic availability remains limited.
+Coordinates rc6 Formula tail improvements and fixed regression/prospective controls; adds optional authenticated encrypted recovery archives. V2/V3 choice and saved competition source bindings remain explicit. Council diagnostic availability remains limited. Startup now loads ID-based result history using roster display names, preserving repeated performances and distinct IDs.
 
 ## 7.4.0 — Measured accuracy and portable Linux profiles
 

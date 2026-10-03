@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 
 import pandas as pd
@@ -12,6 +13,37 @@ from openpyxl import Workbook, load_workbook
 
 from woodchopping.ui import history_entry, personnel_ui, state_persistence, v52_helpers
 from woodchopping.ui.bracket_ui import render_match_box_compact
+
+
+def test_id_only_history_loads_all_rows_with_roster_display_names(tmp_path, monkeypatch, capsys):
+    from woodchopping.data import excel_io
+
+    path = tmp_path / "history.xlsx"
+    workbook = Workbook()
+    roster = workbook.active
+    roster.title = "Competitor"
+    roster.append(["CompetitorID", "Name", "Country", "State/Province", "Gender"])
+    roster.append(["SYN001", "Same Name", "SYN", "", "M"])
+    roster.append(["SYN002", "Same Name", "SYN", "", "M"])
+    history = workbook.create_sheet("Results")
+    history.append(["CompetitorID", "Event", "Time (seconds)", "Size (mm)", "Species Code", "Date"])
+    history.append(["SYN001", "uh", 30, 300, "S01", "2024-01-01"])
+    history.append(["SYN001", "UH", 31, 300, "S01", "2025-01-01"])
+    history.append(["SYN002", "SB", 40, 275, "S01", "2025-01-02"])
+    workbook.save(path)
+    workbook.close()
+    before = path.read_bytes()
+    monkeypatch.setattr(excel_io, "paths", replace(excel_io.paths, EXCEL_FILE=str(path)))
+
+    results = excel_io.load_results_df()
+
+    assert results["competitor_id"].tolist() == ["SYN001", "SYN001", "SYN002"]
+    assert results["competitor_name"].tolist() == ["Same Name [SYN001]", "Same Name [SYN001]", "Same Name [SYN002]"]
+    assert results["raw_time"].tolist() == [30, 31, 40]
+    assert results["event"].tolist() == ["UH", "UH", "SB"]
+    assert results["date"].notna().all()
+    assert path.read_bytes() == before
+    assert "Error loading results" not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("decision,created", [("1", 1), ("", 0)])
