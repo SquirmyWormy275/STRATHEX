@@ -1,6 +1,6 @@
 # Current Runtime Contract
 
-**Applies to:** STRATHEX 7.4.1
+**Applies to:** STRATHEX 7.4.2
 **Prediction authority:** the competition-root selection persisted by STRATHEX; V2 remains the production baseline and V3 remains opt-in under exact readiness evidence
 
 ## Competition authority
@@ -30,7 +30,7 @@ V2 and the full V7 field contract include predicted time, legal mark, method, co
 
 ## Transport
 
-The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. The reviewed Linux producer source is `f3708af0942c5161c04b2398c2efa63df3342dcf`, implementation digest `e9bd62281fa94b84efcf7f162cfb2aeabb60777902636046acfcb770004ffe5d`. It binds the code, Formula, ML, and persistent installation key into the source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
+The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. The reviewed Linux producer source is `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84`, implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. It binds the code, Formula, ML, and persistent installation key into the source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
 
 The explicit Linux V3 numeric profile runs a separate Python 3.13 subprocess with
 verified trained ML, Formula, distribution pooling, and the V3 optimizer. Its

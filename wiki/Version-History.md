@@ -1,6 +1,10 @@
 # Version History
 
-## 7.4.2
+## 7.4.2 — Buffered recovery and prospective export repair
+
+Coordinates STRATHMARK rc7 and the identical standalone recovery helper, using bounded bulk GPG pipes with full authenticated readback and failure cleanup. Repairs prospective exports only against exact signed historical evidence while preserving their original cutoff. Sixteen additional sparse-history trials were rejected; the existing model and Formula remain unchanged. Retained profiles and explicit V2/V3 selection remain available.
+
+## 7.4.1
 
 Coordinates rc6 Formula tail improvements and fixed regression/prospective controls; adds optional authenticated encrypted recovery archives. Complete readback precedes atomic publication; interrupted publication is retryable. The installer rejects filesystems without the required hard-link capability before staging an archive. V2/V3 choice and saved competition source bindings remain explicit. Council diagnostic availability remains limited. Startup now loads ID-based result history using roster display names, preserving repeated performances and distinct IDs.
 
