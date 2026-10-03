@@ -1,6 +1,6 @@
 # Complete local Linux V3 competitions
 
-STRATHEX 7.4.0 offers the separate STRATHMARK 3.0.0rc5 Linux competition profile. Select V2 or V3 explicitly at the competition root; children inherit it and the first numeric action locks the choice. Linux V3 displays `LINUX READY` and records mode `local`. It runs actual Formula + trained CatBoost, pooling, capability adjustment, and complete-field optimization. The LLM council is unavailable, so fields require degraded or individual judge review. Windows V7 production qualification remains a separate installation gate.
+STRATHEX 7.4.1 offers the separate STRATHMARK 3.0.0rc6 Linux competition profile. Select V2 or V3 explicitly at the competition root; children inherit it and the first numeric action locks the choice. Linux V3 displays `LINUX READY` and records mode `local`. It runs actual Formula + trained CatBoost, pooling, capability adjustment, and complete-field optimization. The LLM council is unavailable, so fields require degraded or individual judge review. Windows V7 production qualification remains a separate installation gate.
 
 Install V2/STRATHEX and V3 in separate Python 3.13 environments. Keep the reviewed V2 dependency intact. Supply an authorized, verified trained ML bundle, and keep models and private history outside the repository. Follow STRATHMARK's [full runtime, model, policy, and recovery runbook](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/V3_LINUX_COMPETITION.md).
 

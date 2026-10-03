@@ -1,5 +1,9 @@
 # Version History
 
+## 7.4.1
+
+Coordinates rc6 Formula tail improvements and fixed regression/prospective controls; adds optional authenticated encrypted recovery archives. V2/V3 choice and saved competition source bindings remain explicit. Council diagnostic availability remains limited.
+
 ## 7.4.0 — Measured accuracy and portable Linux profiles
 
 Adds chronological V2/V3 accuracy evidence, improved relevant-history ML and learned Formula priors, calibrated intervals, and immutable portable Linux installation profiles with verified independent recovery archives and rollback. V2 and V3 remain explicit operator choices. The local three-model council is a retained diagnostic candidate; its availability and accuracy do not support numeric promotion. See [the release notes](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/RELEASE_v7.4.0.md).

@@ -17,8 +17,8 @@ from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired,
 from woodchopping.v3_authority_store import V3CommandStore
 
 LINUX_PROTOCOL = "strathmark.v3-linux-competition.v1"
-FROZEN_LINUX_SOURCE_COMMIT = "b003db9ba03995ce92455a71c1f4e895cadeda81"
-FROZEN_LINUX_IMPLEMENTATION_DIGEST = "490be7722b3a7f2c53e1ee8b4856e8888aa8257bc4b9b70cf9442d64e9be1e96"
+FROZEN_LINUX_SOURCE_COMMIT = "8d91657dba232aa3891febab76181ed19ccb6e17"
+FROZEN_LINUX_IMPLEMENTATION_DIGEST = "de871e62ae2a8d774fef1baefb64cda455d6d4eb8bc0c7208e5382c23b7ab59e"
 # Frozen separately from the Windows V7 service and the earlier preview profile.
 LINUX_CONTRACT_DIGEST = "162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e"
 
@@ -51,13 +51,26 @@ class LinuxV3Competition:
     pre_field_requires_local_roster = True
     requires_explicit_issue = True
 
-    def __init__(self, *, python, ml_bundle, workbook, runtime_root, command_store, backup_dir=None):
+    def __init__(
+        self,
+        *,
+        python,
+        ml_bundle,
+        workbook,
+        runtime_root,
+        command_store,
+        backup_dir=None,
+        backup_encryption_policy=None,
+    ):
         self.python = Path(python).expanduser().absolute()
         self.ml_bundle = Path(ml_bundle).expanduser().absolute()
         self.workbook = Path(workbook).resolve(strict=True)
         self.runtime_root = Path(runtime_root).expanduser().absolute()
         self.command_store = command_store
         self.backup_dir = None if backup_dir is None else Path(backup_dir).resolve(strict=True)
+        self.backup_encryption_policy = (
+            None if backup_encryption_policy is None else Path(backup_encryption_policy).resolve(strict=True)
+        )
         if os.environ.get("STRATHEX_TEST_DB") != "1" and (
             self.backup_dir is None
             or not self.backup_dir.is_dir()
@@ -119,6 +132,8 @@ class LinuxV3Competition:
         ]
         if self.backup_dir is not None:
             arguments.extend(["--backup-dir", str(self.backup_dir)])
+        if self.backup_encryption_policy is not None:
+            arguments.extend(["--backup-encryption-policy", str(self.backup_encryption_policy)])
         try:
             result = subprocess.run(
                 arguments,
@@ -489,4 +504,5 @@ def build_linux_v3_competition(runtime):
         runtime_root=runtime[names[3]],
         command_store=V3CommandStore(runtime[names[4]]),
         backup_dir=runtime.get("STRATHEX_V3_LOCAL_BACKUP_DIR"),
+        backup_encryption_policy=runtime.get("STRATHEX_V3_LOCAL_BACKUP_ENCRYPTION_POLICY"),
     )

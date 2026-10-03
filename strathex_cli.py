@@ -37,7 +37,16 @@ def main() -> None:
         type=Path,
         help="Saved competition JSON to append an official result correction instead of starting the menu",
     )
+    parser.add_argument(
+        "--local-v3-backup-encryption-policy",
+        type=Path,
+        help="Pinned local GPG backup policy for the separate Linux V3 runtime",
+    )
     args = parser.parse_args()
+    if args.local_v3_backup_encryption_policy is not None:
+        if args.local_v3_backup_dir is None or not args.local_v3_backup_encryption_policy.is_file():
+            parser.error("backup encryption requires an existing policy and recovery directory")
+        os.environ["STRATHEX_V3_LOCAL_BACKUP_ENCRYPTION_POLICY"] = str(args.local_v3_backup_encryption_policy.resolve())
     if args.correct_v3_results is not None:
         args.correct_v3_results = args.correct_v3_results.expanduser().resolve()
     if args.local_v3_runtime_root is not None and os.environ.get("STRATHEX_TEST_DB") != "1":
