@@ -6,7 +6,20 @@ from pathlib import Path
 import pytest
 
 pytest.importorskip("fcntl", reason="the standalone installer is a separate Linux profile")
-from scripts.install_portable import activate, atomic_json, identifier, installation_lock, read_json, verify_bundle
+from scripts.install_portable import (
+    V2_SOURCE_COMMIT,
+    V2_SOURCE_DIGEST,
+    activate,
+    atomic_json,
+    identifier,
+    installation_lock,
+    launch,
+    read_json,
+    require_independent,
+    sha,
+    verify_bundle,
+    verify_content_identity,
+)
 
 
 def test_corrupt_release_refused_before_profile_or_active_changes(tmp_path):
@@ -19,6 +32,8 @@ def test_corrupt_release_refused_before_profile_or_active_changes(tmp_path):
             "schema_version": "strath-portable-release-v1",
             "python": "3.13",
             "release_id": "synthetic-1",
+            "v2_source_commit": V2_SOURCE_COMMIT,
+            "v2_source_digest": V2_SOURCE_DIGEST,
             "files": {"package.whl": {"sha256": "a" * 64, "bytes": 13, "roles": ["app", "runtime"]}},
         },
     )
@@ -63,16 +78,92 @@ def test_profile_switch_and_rollback_preserve_keys_saved_scope_and_archive(tmp_p
             activate(home, "synthetic-1")
             activate(home, "synthetic-2")
             assert json.loads((home / "active.json").read_text())["previous"] == "synthetic-1"
+            unchanged = (home / "active.json").read_bytes()
+            activate(home, "synthetic-2")
+            assert (home / "active.json").read_bytes() == unchanged
             activate(home, "synthetic-1")
         assert key.read_bytes() == b"irreplaceable synthetic signing key"
         assert saved.read_bytes() == b'{"source_identity":"original-exact-source"}'
         active = json.loads((home / "active.json").read_text())
         assert active["release_id"] == "synthetic-1"
         with tarfile.open(active["recovery_archive"]) as archive:
+            assert not any(
+                name.startswith("retained-profiles/") and "/authority/" in name for name in archive.getnames()
+            )
             assert (
                 archive.extractfile("installation/profiles/synthetic-1/authority/private-key").read()
                 == key.read_bytes()
             )
+        assert Path(active["recovery_archive"]).stat().st_mode & 0o777 == 0o600
+
+
+def test_workbook_and_backup_same_filesystem_refused(tmp_path):
+    with tempfile.TemporaryDirectory(dir="/dev/shm") as directory:
+        backup = Path(directory)
+        workbook = backup / "workbook.xlsx"
+        workbook.write_bytes(b"synthetic")
+        with pytest.raises(ValueError, match="workbook"):
+            require_independent(tmp_path, backup, workbook)
+
+
+@pytest.mark.parametrize("field", ["v2_source_commit", "v2_source_digest"])
+def test_frozen_v2_identity_mandatory(tmp_path, field):
+    manifest = dict(
+        schema_version="strath-portable-release-v1",
+        python="3.13",
+        v2_source_commit=V2_SOURCE_COMMIT,
+        v2_source_digest=V2_SOURCE_DIGEST,
+    )
+    manifest.pop(field)
+    atomic_json(tmp_path / "release.json", manifest)
+    with pytest.raises(ValueError, match="frozen V2"):
+        verify_bundle(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "runtime,arguments",
+    [
+        (False, ["--workbook=elsewhere.xlsx"]),
+        (False, ["--local-v3-p", "/tmp/python"]),
+        (False, ["--data", "/tmp/data"]),
+        (True, ["status", "--runtime-root", "/tmp/root"]),
+        (True, ["status", "--ml-b=other"]),
+    ],
+)
+def test_managed_launch_paths_cannot_be_overridden(tmp_path, runtime, arguments):
+    atomic_json(tmp_path / "profiles/test/profile.json", dict(state="verified", backup_dir=str(tmp_path)))
+    with pytest.raises(ValueError, match="overridden"):
+        launch(tmp_path, "test", arguments, runtime=runtime)
+
+
+def test_modified_program_or_model_block_launch_but_missing_model_allows_recovery(tmp_path):
+    program = tmp_path / "program.py"
+    program.write_bytes(b"original program")
+    model = tmp_path / "model"
+    model.mkdir()
+    weights = model / "weights.json"
+    weights.write_bytes(b"original model")
+    selected = dict(
+        app_python=str(program), runtime_python=str(program), model=str(model), runtime_root=str(tmp_path / "authority")
+    )
+    selected["content_identity"] = dict(
+        schema_version="strath-portable-content-identity-v1",
+        profile_paths=selected.copy(),
+        core_files={str(program): sha(program)},
+        core_roots={},
+        model_files={"weights.json": sha(weights)},
+    )
+    verify_content_identity(selected)
+    weights.write_bytes(b"changed model")
+    with pytest.raises(ValueError, match="model"):
+        verify_content_identity(selected, allow_missing_model=True)
+    weights.unlink()
+    with pytest.raises(ValueError, match="model"):
+        verify_content_identity(selected)
+    verify_content_identity(selected, allow_missing_model=True)
+    program.write_bytes(b"changed program")
+    with pytest.raises(ValueError, match="program"):
+        verify_content_identity(selected, allow_missing_model=True)
 
 
 def test_adopted_external_authority_is_in_the_independent_archive(tmp_path):

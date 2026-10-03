@@ -23,6 +23,104 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
+V2_SOURCE_COMMIT = "a231ad65fe82317516cc82a282761d73adb0c0e3"
+V2_SOURCE_DIGEST = "9033a9086661cab47e76344dbca7cc425f6cb9b215bb9661f6fe193dc712c530"
+
+
+def require_independent(home, backup, workbook):
+    if backup.stat().st_dev in {home.stat().st_dev, workbook.stat().st_dev}:
+        raise ValueError("recovery archive must be on an independent filesystem from installation and workbook")
+
+
+def file_inventory(root):
+    return {
+        path.relative_to(root).as_posix(): sha(path)
+        for path in sorted(root.rglob("*"))
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"
+    }
+
+
+def capture_content_identity(selected):
+    """Capture only after trusted wheel/source checks; never recapture at launch."""
+    roots, files, hooks = {}, {}, {}
+    for role, modules in (("app", ("woodchopping", "strathmark")), ("runtime", ("strathmark",))):
+        interpreter = Path(selected[role + "_python"])
+        files[str(interpreter)] = sha(interpreter)
+        configuration = interpreter.parent.parent / "pyvenv.cfg"
+        files[str(configuration)] = sha(configuration)
+        code = (
+            "import importlib,json,sysconfig;"
+            f"modules={modules!r};"
+            "print(json.dumps({'roots':[importlib.import_module(m).__file__ for m in modules],"
+            "'site':sysconfig.get_path('purelib')}))"
+        )
+        located = json.loads(subprocess.check_output([str(interpreter), "-I", "-c", code], text=True))
+        for name in located["roots"]:
+            root = Path(name).parent
+            roots[str(root)] = file_inventory(root)
+        site = Path(located["site"])
+        hooks[str(site)] = {
+            path.name: sha(path)
+            for path in [*site.glob("*.pth"), site / "sitecustomize.py", site / "usercustomize.py"]
+            if path.is_file()
+        }
+        for path in [*site.glob("*.pth"), site / "sitecustomize.py", site / "usercustomize.py"]:
+            if path.is_file():
+                files[str(path)] = sha(path)
+        if role == "app":
+            for name in ("strathex_cli.py", "MainProgramV5_2.py"):
+                files[str(site / name)] = sha(site / name)
+    for name in ("installation-key.pem", "installation-identity.json"):
+        path = Path(selected["runtime_root"]) / name
+        files[str(path)] = sha(path)
+    formula = Path(selected["model"]).parent / "formula_manifest.json"
+    if formula.exists():
+        files[str(formula)] = sha(formula)
+    return {
+        "schema_version": "strath-portable-content-identity-v1",
+        "profile_paths": {name: selected[name] for name in ("app_python", "runtime_python", "model", "runtime_root")},
+        "core_files": files,
+        "core_roots": roots,
+        "site_hooks": hooks,
+        "formula_file": {"path": str(formula), "sha256": sha(formula) if formula.exists() else None},
+        "model_files": file_inventory(Path(selected["model"])),
+    }
+
+
+def verify_content_identity(selected, *, allow_missing_model=False):
+    expected = selected.get("content_identity")
+    if not expected or expected.get("schema_version") != "strath-portable-content-identity-v1":
+        raise ValueError("profile has no verified installed content identity")
+    if any(selected[name] != value for name, value in expected["profile_paths"].items()):
+        raise ValueError("profile paths differ from verified installed identity")
+    for name, digest in expected["core_files"].items():
+        path = Path(name)
+        if not path.is_file() or sha(path) != digest:
+            raise ValueError("installed program, interpreter, Formula or signing identity changed")
+    for name, inventory in expected["core_roots"].items():
+        if file_inventory(Path(name)) != inventory:
+            raise ValueError("installed program identity changed")
+    for name, inventory in expected.get("site_hooks", {}).items():
+        site = Path(name)
+        current = {
+            path.name: sha(path)
+            for path in [*site.glob("*.pth"), site / "sitecustomize.py", site / "usercustomize.py"]
+            if path.is_file()
+        }
+        if current != inventory:
+            raise ValueError("installed Python import hooks changed")
+    formula = expected.get("formula_file")
+    if formula:
+        path = Path(formula["path"])
+        if (sha(path) if path.exists() else None) != formula["sha256"]:
+            raise ValueError("installed Formula identity changed")
+    current = file_inventory(Path(selected["model"]))
+    original = expected["model_files"]
+    if (not allow_missing_model and current != original) or any(
+        name not in original or digest != original[name] for name, digest in current.items()
+    ):
+        raise ValueError("installed model identity changed")
+
 
 def read_json(path):
     if path.stat().st_size > 1_000_000:
@@ -81,8 +179,7 @@ def profile(home, release):
 
 def recovery_archive(home, backup, workbook):
     backup = backup.resolve(strict=True)
-    if backup.stat().st_dev == home.stat().st_dev:
-        raise ValueError("rollback archive must be on an independent filesystem")
+    require_independent(home, backup, workbook)
     destination = backup / (
         "profile-switch-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex + ".tar.gz"
     )
@@ -106,18 +203,26 @@ def recovery_archive(home, backup, workbook):
         prefix = "retained-profiles/" + identifier(saved["release_id"])
         for key in ("data_dir", "runtime_root"):
             root = Path(saved[key])
-            if root.exists():
+            if root.exists() and not root.resolve().is_relative_to(home.resolve()):
                 for path in root.rglob("*"):
                     if path.is_symlink():
                         raise ValueError("competition recovery data must not contain symlinks")
                     if path.is_file():
                         files[prefix + "/" + key + "/" + path.relative_to(root).as_posix()] = path
-        files[prefix + "/operator-workbook.xlsx"] = Path(saved["workbook"])
+        saved_workbook = Path(saved["workbook"])
+        if saved_workbook.resolve() != workbook.resolve():
+            files[prefix + "/operator-workbook.xlsx"] = saved_workbook
+    if any(path.stat().st_dev == backup.stat().st_dev for path in files.values()):
+        raise ValueError("recovery archive must be independent from every retained source")
     expected = {name: sha(path) for name, path in files.items()}
-    with tarfile.open(destination, "x:gz") as archive:
-        for name, path in files.items():
-            archive.add(path, arcname=name, recursive=False)
-    with destination.open("rb") as stream:
+    # The signing key archive must be private from its first byte, irrespective
+    # of the caller's umask. Some removable filesystems lack POSIX permissions.
+    fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "wb") as stream:
+        with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+            for name, path in files.items():
+                archive.add(path, arcname=name, recursive=False)
+        stream.flush()
         os.fsync(stream.fileno())
     with tarfile.open(destination, "r:gz") as archive:
         actual = {
@@ -146,6 +251,9 @@ def activate(home, release):
         if not Path(selected[key]).exists():
             raise ValueError(f"profile prerequisite unavailable: {key}")
     previous = read_json(home / "active.json") if (home / "active.json").exists() else None
+    require_independent(home, Path(selected["backup_dir"]), Path(selected["workbook"]))
+    if previous is not None and previous["release_id"] == release:
+        return selected
     backup = recovery_archive(home, Path(selected["backup_dir"]), Path(selected["workbook"]))
     atomic_json(
         home / "active.json",
@@ -162,6 +270,8 @@ def verify_bundle(bundle):
     manifest = read_json(bundle / "release.json")
     if manifest["schema_version"] != "strath-portable-release-v1" or manifest["python"] != "3.13":
         raise ValueError("unsupported portable release")
+    if manifest.get("v2_source_commit") != V2_SOURCE_COMMIT or manifest.get("v2_source_digest") != V2_SOURCE_DIGEST:
+        raise ValueError("portable release requires the exact frozen V2 source identity")
     identifier(manifest["release_id"])
     if not manifest["files"] or len(manifest["files"]) > 300:
         raise ValueError("invalid release file count")
@@ -200,8 +310,7 @@ def install(home, bundle, workbook, backup, uv):
     release = identifier(manifest["release_id"])
     workbook = workbook.resolve(strict=True)
     backup = backup.resolve(strict=True)
-    if backup.stat().st_dev == home.stat().st_dev:
-        raise ValueError("installation requires an independent recovery filesystem")
+    require_independent(home, backup, workbook)
     root = home / "profiles" / release
     root.mkdir(parents=True, exist_ok=False, mode=0o700)
     try:
@@ -256,7 +365,7 @@ def install(home, bundle, workbook, backup, uv):
                 ).strip()
                 if observed != expected:
                     raise ValueError("installed package version differs from its release")
-        if manifest.get("v2_source_digest"):
+        if manifest["v2_source_digest"]:
             code = "import strathmark,pathlib,hashlib,json;root=pathlib.Path(strathmark.__file__).parent;content={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*.py')};print(hashlib.sha256(json.dumps(content,sort_keys=True,separators=(',',':')).encode()).hexdigest())"
             observed = subprocess.check_output([str(root / "app/bin/python"), "-I", "-c", code], text=True).strip()
             if observed != manifest["v2_source_digest"]:
@@ -294,6 +403,7 @@ def install(home, bundle, workbook, backup, uv):
             "runtime_root": str(root / "authority"),
             "release_manifest": manifest,
         }
+        data["content_identity"] = capture_content_identity(data)
         atomic_json(root / "profile.json", data)
         activate(home, release)
         return data
@@ -311,6 +421,40 @@ def launch(home, release, arguments, runtime=False):
         raise ValueError("profile is not verified")
     if not Path(selected["backup_dir"]).is_dir():
         raise ValueError("connect the independent recovery drive before starting STRATH")
+    managed = (
+        ("--runtime-root", "--ml-bundle", "--backup-dir")
+        if runtime
+        else (
+            "--workbook",
+            "--data-dir",
+            "--local-v3-python",
+            "--local-v3-ml-bundle",
+            "--local-v3-runtime-root",
+            "--local-v3-backup-dir",
+        )
+    )
+    for argument in arguments:
+        option = argument.split("=", 1)[0]
+        if option.startswith("--") and any(flag.startswith(option) for flag in managed):
+            raise ValueError("profile-managed paths cannot be overridden by launch arguments")
+    retained_operations = {
+        "status",
+        "approval_page",
+        "approval_detail",
+        "approve",
+        "issue",
+        "settle",
+        "correct",
+        "close_round",
+        "close_scope",
+        "advance",
+        "lookup",
+        "backup",
+    }
+    allow_missing = (runtime and arguments and arguments[0] in retained_operations) or (
+        not runtime and any(arg.split("=", 1)[0] == "--correct-v3-results" for arg in arguments)
+    )
+    verify_content_identity(selected, allow_missing_model=bool(allow_missing))
     environment = {
         key: value
         for key, value in os.environ.items()
