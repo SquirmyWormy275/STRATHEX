@@ -14,7 +14,7 @@ python3 scripts/install_portable.py list
 python3 scripts/install_portable.py launch
 python3 scripts/install_portable.py runtime -- status
 python3 scripts/install_portable.py rollback
-python3 scripts/install_portable.py activate strathex-7.4.0-strathmark-3.0.0rc5
+python3 scripts/install_portable.py activate strathex-7.4.0-strathmark-3.0.0rc5-reviewed
 ```
 
 The installation home defaults to `~/.local/share/strath/installations`; use `--home /private/location` before the operation to choose another. Selection and rollback first create an independent archive of profile descriptors, workbooks, saved competitions, command outboxes and signing-authority files. Every regular member is read back and checked against its source SHA256, and a dated verification record explains the change. Adopted profiles retain their original paths; their external data and authority directories are included too. The backup location must be on a different filesystem from both the installation and every retained workbook or authority. Archives are created with owner-only mode 0600 from their first byte on filesystems that support POSIX permissions; removable filesystems such as some NTFS mounts may not enforce that mode, so their physical/access permissions determine confidentiality. Never discard the exact old environments, trained model, signing keys or saved data after upgrading.

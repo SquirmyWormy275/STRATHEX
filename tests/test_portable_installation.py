@@ -87,8 +87,13 @@ def test_profile_switch_and_rollback_preserve_keys_saved_scope_and_archive(tmp_p
         active = json.loads((home / "active.json").read_text())
         assert active["release_id"] == "synthetic-1"
         with tarfile.open(active["recovery_archive"]) as archive:
-            assert not any(
-                name.startswith("retained-profiles/") and "/authority/" in name for name in archive.getnames()
+            assert (
+                sum(
+                    archive.extractfile(item).read() == key.read_bytes()
+                    for item in archive.getmembers()
+                    if item.isfile()
+                )
+                == 1
             )
             assert (
                 archive.extractfile("installation/profiles/synthetic-1/authority/private-key").read()
