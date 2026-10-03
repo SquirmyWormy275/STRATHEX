@@ -62,7 +62,9 @@ def main() -> None:
     if args.local_v3_python is not None:
         if args.workbook is None or args.data_dir is None:
             parser.error("local V3 requires an explicit --workbook and --data-dir")
-        if not args.local_v3_python.expanduser().is_file() or not args.local_v3_ml_bundle.expanduser().is_dir():
+        if not args.local_v3_python.expanduser().is_file() or (
+            not args.local_v3_ml_bundle.expanduser().is_dir() and args.correct_v3_results is None
+        ):
             parser.error("local V3 Python or ML bundle does not exist")
         os.environ["STRATHEX_V3_LOCAL_PYTHON"] = str(args.local_v3_python.expanduser().absolute())
         os.environ["STRATHEX_V3_LOCAL_ML_BUNDLE"] = str(args.local_v3_ml_bundle.expanduser().resolve())

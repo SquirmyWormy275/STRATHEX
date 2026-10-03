@@ -51,6 +51,10 @@ allow-direct-references = true
 [tool.hatch.version]
 path = "woodchopping/__init__.py"
 
+[tool.hatch.build.targets.sdist]
+# Operator history is an input, not a public release asset.
+exclude = ["/woodchopping.xlsx", "/woodchopping_clean.xlsx"]
+
 [tool.hatch.build.targets.wheel]
 only-include = [
     "woodchopping",
