@@ -1,5 +1,17 @@
 # Changelog
 
+## [7.4.2] - 2026-10-03
+
+- Coordinate STRATHMARK rc7 and its bounded bulk GPG recovery helper. Preserve V2/V3 choice, original signing identities and retained profiles.
+- Add native bootstrap coverage for full authenticated streaming, early failure, oversized pipe input and truncated ciphertext.
+- Document rejected sparse-history experiments and the unchanged rc6 prospective comparison. No diagnostic accuracy improvement is claimed.
+
+## [7.4.1] - 2026-10-03
+
+- Coordinate the rc6 tail/regression/accuracy controls and encrypted-recovery support.
+- Resolve ID-only history names before constructing ResultStore records; preserve all original workbook values.
+- Reject archive filesystems lacking atomic hard-link publication before staging backups.
+
 ## [7.4.0] - 2026-10-03
 
 - Coordinate the improved STRATHMARK 3.0.0rc5 Formula/ML and calibrated uncertainty while preserving explicit V2/V3 selection, frozen contracts and existing competition source identities.

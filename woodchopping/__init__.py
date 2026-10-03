@@ -5,7 +5,7 @@ A comprehensive system for calculating fair handicaps in woodchopping competitio
 using STRATHMARK v2 predictions and Monte Carlo simulation.
 """
 
-__version__ = "7.4.1"
+__version__ = "7.4.2"
 __author__ = "STRATHEX Project"
 
 # Import key components for easy access

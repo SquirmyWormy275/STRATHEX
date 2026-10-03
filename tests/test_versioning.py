@@ -13,7 +13,7 @@ def test_hatch_derives_package_version_from_one_canonical_source():
 
     assert pyproject["project"]["dynamic"] == ["version"]
     assert pyproject["tool"]["hatch"]["version"]["path"] == "woodchopping/__init__.py"
-    assert woodchopping.__version__ == "7.4.1"
+    assert woodchopping.__version__ == "7.4.2"
 
 
 def test_wheel_includes_package_and_required_top_level_config():
