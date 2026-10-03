@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import subprocess
+import tarfile
 import tempfile
 import venv
 from pathlib import Path
@@ -15,8 +16,16 @@ from openpyxl import Workbook
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--wheel", type=Path, required=True)
+    parser.add_argument("--sdist", type=Path)
     args = parser.parse_args()
     wheel = args.wheel.resolve(strict=True)
+    if args.sdist:
+        with tarfile.open(args.sdist.resolve(strict=True)) as archive:
+            if any(
+                Path(item.name).name in {"woodchopping.xlsx", "woodchopping_clean.xlsx", "installation-key.pem"}
+                for item in archive.getmembers()
+            ):
+                raise ValueError("operator workbook or signing key must not enter a public source release")
     with tempfile.TemporaryDirectory(prefix="strathex-installed-") as temporary:
         root = Path(temporary)
         environment = root / "environment"

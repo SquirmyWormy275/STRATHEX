@@ -91,7 +91,7 @@ jobs:
         run: python -m build
 
       - name: Start and exit installed app outside checkout
-        run: python scripts/smoke_installed_app.py --wheel dist/strathex-7.4.0-py3-none-any.whl
+        run: python scripts/smoke_installed_app.py --wheel dist/strathex-7.4.0-py3-none-any.whl --sdist dist/strathex-7.4.0.tar.gz
 
   v3_pair:
     name: Installed V3 pair (${{ matrix.os }} / Python 3.13)
