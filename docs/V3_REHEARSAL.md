@@ -1,6 +1,6 @@
 # STRATHEX V3 rehearsal setup
 
-For complete Linux local competitions in 7.3.1, use [Linux competition workflow](V3_LINUX_COMPETITION.md). This page retains the older preview and V7 rehearsal profiles.
+For complete Linux local competitions in 7.3.2, use [Linux competition workflow](V3_LINUX_COMPETITION.md). This page retains the older preview and V7 rehearsal profiles.
 
 ## Runnable Linux numeric option
 

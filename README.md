@@ -12,9 +12,9 @@ Every new competition begins with no prediction engine selected. The judge must 
 - the choice locks at the first numeric operation;
 - an outage or incompatible response blocks work rather than calling the other engine.
 
-STRATHEX 7.3.1 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate.
+STRATHEX 7.3.2 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate.
 
-V3 pre-field seeding forecasts are forbidden from carrying a mark. Generate actual heats/stands before complete-field marks, then review and explicitly issue. Unissued sheets and results are blocked. [Setup and full operation](docs/V3_LINUX_COMPETITION.md), [release notes](docs/RELEASE_v7.3.1.md).
+V3 pre-field seeding forecasts are forbidden from carrying a mark. Generate actual heats/stands before complete-field marks, then review and explicitly issue. Unissued sheets and results are blocked. [Setup and full operation](docs/V3_LINUX_COMPETITION.md), [release notes](docs/RELEASE_v7.3.2.md).
 
 ## V2 production baseline
 

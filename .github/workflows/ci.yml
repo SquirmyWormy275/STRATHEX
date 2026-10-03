@@ -91,7 +91,7 @@ jobs:
         run: python -m build
 
       - name: Start and exit installed app outside checkout
-        run: python scripts/smoke_installed_app.py --wheel dist/strathex-7.3.1-py3-none-any.whl
+        run: python scripts/smoke_installed_app.py --wheel dist/strathex-7.3.2-py3-none-any.whl
 
   v3_pair:
     name: Installed V3 pair (${{ matrix.os }} / Python 3.13)
@@ -128,7 +128,7 @@ jobs:
           python scripts/smoke_v3_pair.py
           --service-checkout .tmp/service-source
           --service-source 8a1d40aa5645715f9ab876d0517b64c36602a77e
-          --consumer-wheel .tmp/consumer-dist/strathex-7.3.1-py3-none-any.whl
+          --consumer-wheel .tmp/consumer-dist/strathex-7.3.2-py3-none-any.whl
           --service-wheel .tmp/service-dist/strathmark-3.0.0rc3-py3-none-any.whl
           --output .tmp/installed-v3-pair.json
           --with-local-numerics
@@ -147,7 +147,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: SquirmyWormy275/STRATHMARK
-          ref: cc7b7a26fbe7469c8e2efe13ce6d8c4cc6623eda
+          ref: d0247945e2218addc0cbe5805f906456df0d2afe
           path: .tmp/linux-service-source
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -167,7 +167,7 @@ jobs:
             consumer=.tmp/linux-consumer/bin/python
             producer=.tmp/linux-producer/bin/python
           fi
-          "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.3.1-py3-none-any.whl
+          "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.3.2-py3-none-any.whl
           "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc4-py3-none-any.whl[v3-candidate]"
           "$producer" -I -m strathmark.v3.factory.synthetic_fixture --output .tmp/linux-synthetic-model
           "$consumer" scripts/smoke_linux_competition.py --v3-python "$producer" --ml-bundle .tmp/linux-synthetic-model/ml-bundle --output .tmp/linux-competition-smoke
