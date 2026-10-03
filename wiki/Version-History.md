@@ -1,5 +1,10 @@
 # Version History
 
+## 7.3.2 — Serialized Linux recovery reads
+
+Coordinates the runtime fix for verified startup/state/lookup readers and retained-head replacement. Preserve exact older installations for saved competitions.
+
+
 ## 7.3.1 (2026-10-02)
 
 Pins the coordinated rc4 runtime with portable recovery archive path normalization. The complete Linux workflow and explicit V2/V3 choice remain available; saved 7.3.0 scopes retain their original exact environments.

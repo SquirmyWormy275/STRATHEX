@@ -1,6 +1,6 @@
 # Current Runtime Contract
 
-**Applies to:** STRATHEX 7.3.1
+**Applies to:** STRATHEX 7.3.2
 **Prediction authority:** the competition-root selection persisted by STRATHEX; V2 remains the production baseline and V3 remains opt-in under exact readiness evidence
 
 ## Competition authority
