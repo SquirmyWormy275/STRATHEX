@@ -1,13 +1,45 @@
-# Multi-Event Tournaments
+# Run a multi-event day
 
-A multi-event day stores tournament metadata, one deliberate root engine selection, a shared roster, event-specific competitors, wood, format, rounds, marks, schedules, results, and payouts. Child events and rounds inherit the root selection and never expose their own selector.
+Create the day through **Design a Tournament (Multiple Events)**. Set its date,
+shared roster and prediction engine, then configure each event's competitors,
+wood, format, rounds and payouts.
 
-The tournament date becomes the default exclusive STRATHMARK evidence cutoff. Each event persists its own copy so save/reload and recalculation remain reproducible.
+The tournament chooses V2 or V3 once. Child events and rounds inherit it; they do
+not offer their own selector. Each event retains its evidence boundary for resume
+and recalculation.
 
-With V2 selected, batch handicap calculation preserves the established V2 field contract. With V3 selected, mark-free forecasts support initial seeding; exact field membership and stand assignments are then sent for complete field-relative marks. Championship events keep mark 3. Later rounds inherit the tournament engine and recalculate their advancing field under its evidence contract; they never switch engines or apply an undocumented fallback.
+## Calculate and schedule
 
-Recalculation is blocked once results entry begins. Recalculating a scheduled event invalidates its generated heats. If recalculation fails, the affected event's previous marks and pending rounds are cleared and its status becomes `recalculation_failed`. Results entry and schedule export stay blocked until that event calculates successfully and the day schedule is regenerated.
+With V2, calculate each event's handicap field, review it and generate heats.
+With Linux V3, obtain seeding times first, create exact heats and stands, then
+calculate, approve and separately issue each field. Championship marks stay at 3.
 
-Results are written to Excel first. The best-effort ResultStore write includes the tournament date and a stable competition ID. Multi-event JSON saves use the same validation, atomic replacement, and backup recovery as single-event state.
+Generate the day schedule after fields are ready. Check it against the event and
+competitor assignments before export.
 
-Legacy bracket entries inside a multi-event day are rejected. Run a bracket through the single-event bracket workflow until a dedicated multi-event bracket contract is implemented and replay-tested.
+## Recalculate before results begin
+
+Recalculation is blocked once results entry starts. Recalculating a scheduled event
+invalidates its generated heats, so regenerate the day schedule afterward.
+
+If recalculation fails, that event's old marks and pending rounds are cleared and
+its status becomes `recalculation_failed`. Results and schedule export remain
+blocked until calculation succeeds and the schedule is regenerated.
+
+## Enter results and advance
+
+Excel is the canonical result record. The separate ResultStore write retains the
+tournament date and stable competition ID. JSON saves preserve the day and use
+validation, atomic replacement and rolling backups.
+
+V2 retains its original date cutoff and excludes same-day results. Linux V3 keeps
+one round's evidence frozen, then learns from valid settled completions in later
+rounds. Events advance independently; settle every field in an event's prior round
+before advancing that event.
+
+See [Tournament workflow](Tournament-Workflow) for results, issue and corrections.
+
+## Brackets
+
+Multi-event bracket entries are currently rejected. Run brackets through the
+[single-event workflow](Bracket-Tournaments).

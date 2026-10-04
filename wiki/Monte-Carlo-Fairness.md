@@ -1,13 +1,31 @@
-# Monte Carlo Fairness
+# Simulation and fairness
 
-STRATHEX runs simulation locally after STRATHMARK returns predicted times, legal marks, and performance standard deviations.
+STRATHEX can simulate a field after STRATHMARK returns predicted cutting times,
+marks and performance standard deviations. Simulated races show how the field
+might behave under those assumptions.
 
-The forecast interval is not used as race-to-race noise. Simulation uses performance spread. This distinction prevents model uncertainty from being mistaken for athlete variability.
+## Read the report
 
-Simulation output can include win rates, finish distributions, margins, and field summaries. It is decision support for a specific configured field, not a general accuracy or fairness guarantee.
+Reports can show win rates, podium chances, finish distributions and margins. Large
+differences can help a judge decide which fields need closer review.
 
-Championship simulation uses an adaptive memory budget: no more than 250,000 races and two million competitor-cells. Aggregate results are retained; an unused list of every race's finish spread is not.
+The simulation uses **performance spread** for race-to-race noise. A forecast
+interval is uncertainty in the prediction and is not a substitute for that spread.
 
-The normal CLI configuration, championship simulator, and STRATHMARK REST `/simulate` have different run limits. The public REST endpoint caps runs at 250,000 and also caps competitor-cells; it is not a transparent replacement for STRATHEX's larger local modes.
+A simulation cannot prove equal real-world chances or rulebook compliance. Poor
+predictions produce misleading simulations. Review warnings, degraded cases,
+history quality and the complete field alongside the numerical report.
 
-Narrative LLM output, if any remains in a historical compatibility tool, is not numeric prediction authority. Judges should rely on the numerical simulation, v2 provenance, warnings, and explicit manual review.
+## Run limits
+
+The championship simulator is capped at 250,000 races and a two-million
+competitor-cell budget. Normal local CLI modes and STRATHMARK's REST `/simulate`
+have separate limits. The REST endpoint is capped at 250,000 runs and its own
+competitor-cell budget; it is not an interchangeable local mode.
+
+## Official decisions
+
+Judges determine legal outcomes and authorized adjustments. Historical narrative
+LLM tools do not supply numeric authority. A close finish does not by itself prove
+a valid handicap or cheating. See [Handicaps explained](Handicap-System-Explained)
+and [Rules and officials](AAA-and-QAA-Rules-Compliance).

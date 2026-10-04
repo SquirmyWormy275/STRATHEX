@@ -1,44 +1,55 @@
-# Choosing the Prediction Engine
+# Choose V2 or V3
 
-## Where the choice is made
+Choose the engine when you create the competition. Nothing is selected by default.
 
-- Single event: choose once during event setup.
-- Multi-event tournament: choose once at tournament creation.
-- Tournament child events, heats, semifinals, and finals inherit the root choice. They never show their own selector.
+- **Single event: choose once during event setup.**
+- **Multi-event tournament: choose once at tournament creation.** Child events
+  and rounds inherit the choice and never show their own selector.
 
-Nothing is selected by default. The judge records a reason, and the choice locks when the first authoritative prediction or calculation begins.
+The first numeric operation locks the choice. There is no fallback between engines.
+A later competition can use a different engine; an existing one must resume with
+its selected engine and original installation.
 
-## V2
+## Read the V3 label
 
-V2 is the established deterministic production baseline. It keeps the existing prior-only prediction, fixed evidence cutoff, and joint mark optimizer unchanged.
+| Label | What it means |
+| --- | --- |
+| `LINUX READY` | Configured local Linux competition runtime with Formula and trained ML. Supports review, issue, results, settlement and recovery. |
+| `NUMERIC PREVIEW ONLY` | Older preview profile. Can propose times and marks, but cannot issue or settle a competition. |
+| `REHEARSAL` | Development service. Does not establish Windows production eligibility. |
 
-## V3
+V2 is the established local engine on Linux and Windows. The full Linux V3 profile
+requires STRATHMARK 3.0.0rc7 with STRATHEX 7.4.2, a trained model, signing key and
+independent backups. Use the
+[Linux setup guide](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md).
+Windows V7 production qualification remains incomplete.
 
-V3 can use the authenticated local V7 service with exact reviewed identities, or
-the explicitly configured Linux numeric candidate. `REHEARSAL` means non-production.
-The Linux profile displays `NUMERIC PREVIEW ONLY` and executes actual Formula,
-trained ML, distribution pooling, and optimization in a separate Python environment.
-It supplies mark-free seeding and field-relative proposed marks. It cannot approve,
-issue, settle results, or learn from the next round. A saved competition binds its
-exact code and model; changing either blocks it until the original artifacts return.
-Follow [V3 setup](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_REHEARSAL.md).
+## Why are there times but no marks yet?
 
-V3 has two deliberately different outputs:
+The V3 pre-field forecast contains no mark. It supplies cutting-time predictions
+for seeding before exact heats and stands exist.
 
-1. A pre-field forecast estimates raw completion time for seeding. It contains no mark and cannot be approved or issued as a mark sheet.
-2. After exact heat membership and stand positions exist, V3 prepares every competitor card and assembles the complete field-relative marks.
+Generate the actual heats and stands, then calculate the complete field's proposed
+marks. Review and approve them, then confirm **Issue these approved marks now?**
+separately. An approved but unissued field cannot be printed as an official sheet
+or accept results.
 
-With the full V7 service, ordinary green/amber fields can be mass approved. Degraded fields require a separate deliberate batch. Flagged fields are opened individually for accept, exclude, or defer. Retained numeric previews have no approval/issue authority. The Linux competition profile supports both, with a separate issue confirmation.
+Linux V3's LLM council is unavailable. Fields therefore require explicit degraded
+or individual review. Formula/ML counterfactual disagreement of five or more marks
+requires individual review.
 
-## Failure and recovery
+## What happens after a heat?
 
-There is no fallback between engines. If V3 is unavailable, incompatible, incomplete, or ambiguous, new numeric work stops. For an ambiguous command, STRATHEX displays its durable identity and the judge may retry that exact command or leave the scope blocked. Existing issued marks and results are never re-ranked.
+V2 keeps its original exclusive date cutoff and excludes same-day results. Linux
+V3 keeps all heats in a round on frozen evidence, then uses valid settled results
+at the next round boundary. It recalculates the advancing field together; marks
+are not copied from a previous heat.
 
-V3 service credentials are installation controls, not competition choices. STRATHEX
-stores only an environment-variable or OS-keyring reference and rereads it for every
-request. Rotation and revocation are performed by the deployment administrator; the
-judge workflow never displays or saves the one-time replacement secret.
+## Resuming saved work
 
-## Championship events
+Keep the original source, trained model, authority key and runtime. An upgrade can
+block an old V3 scope if those no longer match. Restore the original profile rather
+than switching engines or creating a new key. See [Recovery](Backups-and-Recovery).
 
-Championship and bracket scratch rules remain Mark 3. The selected engine may supply supported predictions or seeding, but it does not turn a scratch event into a handicap race.
+[Accuracy Preview](https://github.com/SquirmyWormy275/STRATHMARK/wiki/Accuracy-Preview)
+is a separate program. It does not replace either competition engine.
