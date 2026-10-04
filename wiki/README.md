@@ -1,16 +1,30 @@
-# STRATHEX Wiki Source
+# Maintain the STRATHEX wiki
 
-This directory is the canonical, versioned source for the STRATHEX GitHub wiki. It describes the competition-scoped STRATHMARK V2/V3 selection workflow. V2 remains the production baseline and V3 remains readiness-gated; these pages do not authorize a global V3 cutover.
+This directory contains the source for the
+[GitHub wiki](https://github.com/SquirmyWormy275/STRATHEX/wiki). `Home.md` is its
+front page; `_Sidebar.md` and `_Footer.md` provide navigation. This README is not
+published as a wiki page.
 
-A repository merge does not update GitHub's separate wiki repository. Publication is a release operation:
+Write for the person doing the task. Put the action first, explain necessary
+choices, and link to detailed specifications rather than repeating them. Keep
+current behavior separate from dated release records. Engine labels and V2/V3
+evidence rules must match the application.
 
-1. merge the code and these pages;
-2. clone or fetch the `STRATHEX.wiki.git` repository;
-3. copy the versioned pages without deleting unrelated wiki metadata;
-4. review the wiki diff;
-5. push the wiki commit;
-6. fetch the public wiki again and verify its HEAD and page contents.
+Use extensionless links for other wiki pages and full GitHub links for repository
+files. Add new pages to the sidebar and the relevant task guide.
 
-Do not publish pre-release semantics as current. Dated release pages in `docs/` remain the evidence for older versions.
+Before merging:
 
-Use `python scripts/publish_wiki.py --mode preview` to review changes, then `--mode publish` from the exact clean merged main commit. Publication fetches and verifies the remote pages; `--mode check` verifies synchronization without writing.
+```bash
+python scripts/check_docs.py
+```
+
+After merging, from a clean checkout at the exact remote `main` commit:
+
+```bash
+python scripts/publish_wiki.py --mode publish
+```
+
+The script copies the pages, pushes the separate wiki and verifies their remote
+contents. `--mode preview` shows the changes; `--mode check` checks the published
+wiki against the current source.

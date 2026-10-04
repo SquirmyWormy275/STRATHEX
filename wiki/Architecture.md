@@ -1,32 +1,47 @@
 # Architecture
 
-## Available runtime profiles
+STRATHEX owns the judge's workflow. STRATHMARK owns numeric predictions, mark
+optimization and engine eligibility. Every calculation uses the engine deliberately
+chosen for the competition; it cannot silently switch.
 
-STRATHEX 7.4.2 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate.
-
-The authenticated V7 profile uses signed lifecycle receipts and requires full backend composition and installation qualification. Its lifecycle behavior described below applies only when that full runtime is configured and ready. The checked-in transport rehearsal uses fixtures and does not prove a real numeric lifecycle. A judge deliberately selects V2 or an available V3 profile once per competition root; failures stop the selected workflow.
+## Application flow
 
 ```text
-Judge -> STRATHEX terminal
-          |-- tournament state and UI
-          |-- canonical competition engine authority
-          |-- Excel canonical results
-          |-- atomic JSON saves
-          |-- best-effort ResultStore
-          |
-          +-- V2 direct Python / HTTP calculate --+
-          +-- V3 authenticated lifecycle API -----+--> STRATHMARK
-                                                       V2 baseline or V3 ensemble
-                                                       signed forecast evidence
-                                                       complete-field marks
+Judge -> STRATHEX menus -> selected STRATHMARK engine
+             |                   |
+             |              times, marks, evidence
+             |
+             +-- workbook results
+             +-- JSON saves and engine-selection records
+             +-- local history and V3 command/receipt records
 ```
 
-STRATHEX owns the deliberate competition-root choice, inheritance, workflow, names, and persistence decisions. STRATHMARK owns eligibility, numeric prediction, mark optimization, and signed evidence. An engine-neutral router binds every numeric call to the canonical selection and forbids fallback.
+## Calculation connections
 
-V2 direct mode is offline-capable. V2 HTTP sends the complete common-wood field and history because public `/calculate` is stateless. The V7 profile sends pseudonymous sporting data through an authenticated loopback lifecycle pinned to one reviewed contract/source identity. V3 pre-field forecasts are mark-free; exact fields and stands are required for marks.
+| Connection | Use |
+| --- | --- |
+| V2 direct Python | Default local calculation; offline-capable. |
+| V2 HTTP | Explicit stateless calculation demo with complete field/history in the request. |
+| Linux V3 subprocess | Separate Python 3.13 competition runtime with signed local authority. |
+| V3 V7 service | Separate authenticated lifecycle pinned to an exact contract/source; Windows qualification remains incomplete. |
 
-Championship competitors are grouped when target wood and history context match. Distinct target wood or curated peak windows require separate calls. The simulator fixes one cutoff, rejects mixed model bundles, and aborts rather than producing a partial field.
+V3 pre-field forecasts supply seed times without marks. Exact heat membership and
+stands are required before marks. Review and issue are separate steps.
 
-Excel and ResultStore are separate writes, not a distributed transaction. V2 stateless calculation and its historical ledger remain separate. Full V7 scopes also retain durable command identities and signed lifecycle receipts.
+## Records and boundaries
 
-See the repository [architecture document](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/ARCHITECTURE.md) for the module map.
+The workbook is canonical for results. JSON preserves competition progress.
+ResultStore is a separate best-effort history write. V3 also retains durable command
+IDs and signed lifecycle receipts. These stores are not one distributed transaction.
+
+V2 calculation is distinct from its optional trusted PredictionLedger. Ordinary
+STRATHEX V2 calculation does not write trusted ledger receipts.
+
+## Championship scenarios
+
+Competitors can be grouped when target wood and history context match. Different
+wood or curated peak windows need separate calls. The simulator fixes its evidence,
+rejects mixed model bundles and stops rather than returning a partial field.
+
+For the module map and detailed interfaces, see the
+[architecture document](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/ARCHITECTURE.md).

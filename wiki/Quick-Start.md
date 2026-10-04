@@ -1,51 +1,85 @@
-# Quick Start
+# Start your first event
 
-## Available runtime profiles
+Use this guide for a V2 event. If you want Linux V3, complete the separate
+[Linux V3 setup](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md)
+first, then follow the [V3 workflow](Tournament-Workflow).
 
-STRATHEX 7.4.2 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate.
+## 1. Install STRATHEX
 
-The authenticated V7 profile uses signed lifecycle receipts and requires full backend composition and installation qualification. Its lifecycle behavior described below applies only when that full runtime is configured and ready. The checked-in transport rehearsal uses fixtures and does not prove a real numeric lifecycle. A judge deliberately selects V2 or an available V3 profile once per competition root; failures stop the selected workflow.
+You need Python 3.13 and Git. Download this repository:
 
-## Install
+```bash
+git clone https://github.com/SquirmyWormy275/STRATHEX.git
+cd STRATHEX
+```
 
-Use Python 3.13 or newer.
+Create and activate the environment on Linux:
+
+```bash
+python3.13 -m venv .venv
+source .venv/bin/activate
+```
+
+Or in Windows PowerShell:
 
 ```powershell
-python -m venv .venv
+py -3.13 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-python MainProgramV5_2.py
 ```
 
-STRATHEX pins the exact STRATHMARK `v2.0.0` release commit from GitHub; no STRATHMARK PyPI distribution is required. Ollama is not required for numeric prediction.
+Then install:
 
-## Run an event with V2 or the full authenticated V7 runtime
+```bash
+python -m pip install -e .
+```
 
-1. Start a single event and deliberately select V2 or an eligible V3 mode. For a multi-event tournament, make this choice once during tournament creation; child events do not choose again.
-2. Select the event and configure species, diameter, and quality.
-3. Select competitors from the roster.
-4. Configure stands and format.
-5. Calculate. V2 returns its established mark sheet. V3 first returns signed mark-free forecasts for seeding, then calculates marks after exact heats and stands are generated.
-6. Review predicted time, mark, 90% interval, confidence, method, engine state, and warnings.
-7. Run local Monte Carlo fairness analysis if desired.
-8. Approve marks. V3 offers ordinary green/amber fields as a compact batch and singles out flagged fields for individual disposition.
-9. Generate heats or a bracket.
-10. Record results; Excel is canonical and ResultStore is best-effort.
-11. Save/reload as needed. JSON saves use atomic replacement and backup recovery.
-12. Generate later rounds. V2 retains its original exclusive cutoff and excludes same-day results. V3 keeps same-round epochs frozen and admits settled completions at a later-round boundary, then rebuilds and rebases the complete field.
+The installation includes the reviewed STRATHMARK V2 source dependency. You do
+not need Ollama or a separate PyPI installation for V2 predictions.
 
-## HTTP demo mode
+## 2. Select your data paths
 
-Start STRATHMARK on loopback with an explicit database path, then set:
+Keep a backup of your workbook before first use. It needs the `Competitor`, `wood`
+and `Results` sheets described in [Workbook and data](Data-Model).
+
+Linux example:
+
+```bash
+strathex --workbook /home/you/Competition/competition.xlsx --data-dir /home/you/Competition/operator-data
+```
+
+Windows example:
 
 ```powershell
-$env:STRATHMARK_TRANSPORT = "http"
-$env:STRATHMARK_API_URL = "http://127.0.0.1:8000"
-python MainProgramV5_2.py
+strathex --workbook "C:\Competition\competition.xlsx" --data-dir "C:\Competition\operator-data"
 ```
 
-A version mismatch or API failure stops the calculation visibly. Neither transport nor engine silently falls back.
+Replace those paths with your own. The data directory holds saves and local
+competition records. Explicit environment settings can take precedence; see
+[Troubleshooting](Troubleshooting) if the application opens unexpected data.
 
-## Linux local competitions
+## 3. Create the event
 
-Follow the [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) for the separate interpreter, verified trained bundle, persistent authority, independent recovery directory, and complete approval/issue/results workflow. Retained preview profiles remain unissued.
+1. Choose **Design an Event (Single Event)** from the main menu.
+2. Deliberately choose **V2** when asked for the prediction engine.
+3. Select the event, species, diameter, quality, stands and format.
+4. Select competitors from the roster. Check names and stable IDs.
+5. Calculate and review the predicted times, marks, intervals and warnings.
+6. Apply any authorized V2 adjustments explicitly, then generate heats.
+7. Check the actual start sheet before running the race.
+
+A smaller mark starts earlier. The predicted time is the competitor's raw cutting
+time, not their finish time measured from the starter's first count.
+[Handicaps explained](Handicap-System-Explained) has a worked example.
+
+## 4. Record results and continue
+
+Enter raw cutting times and official outcomes through the event workflow. Save
+before closing. Use **Load Previous Event/Tournament** to resume.
+
+Select advancing competitors and calculate the next field. V2 retains the event's
+original date cutoff, so today's results are recorded but do not change its
+same-day predictions. Linux V3 handles later-round learning differently.
+
+For payouts, multiple rounds, brackets and V3 approval/issue, continue with
+[Tournament workflow](Tournament-Workflow). Keep [backups](Backups-and-Recovery)
+for the workbook and saved state together.

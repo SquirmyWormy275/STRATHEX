@@ -1,22 +1,30 @@
-# AAA and QAA Rules Compliance
+# Rules and officials
 
-STRATHEX supports judge workflow and mark review; this page does not claim formal sanctioning-body certification.
+STRATHEX supports competition administration and mark review. It does not claim
+formal AAA or QAA certification. The governing rulebook and event officials remain
+the authority for legal outcomes.
 
-## Implemented safeguards
+## Software safeguards
 
-- legal mark floor and ceiling delegated to STRATHMARK;
-- whole-field deterministic optimization;
-- explicit manual judge adjustment;
-- recorded competitor identity, event, wood, result, heat, and competition context;
-- forecast uncertainty and performance spread shown separately;
-- warnings, degraded state, provenance, and optimizer evidence retained;
-- championship marks fixed at 3;
-- reproducible prior-only evidence cutoff.
+STRATHMARK calculates complete fields within legal mark limits. Championship marks
+are fixed at 3. STRATHEX retains competitor identities, event/wood context, uncertainty,
+warnings and engine evidence for review.
 
-## QAA interpolation
+V2 permits explicit judge adjustments and uses a reproducible prior-only cutoff.
+Linux V3 requires reviewed fields, separate issue confirmation, complete outcomes
+and signed settlement. Its same-round evidence stays frozen.
 
-The former STRATHEX QAA diameter interpolation and quality-adjustment implementation is historical. STRATHMARK 2's prior-only core is the live prediction authority. Wood quality is a compatibility field and numeric no-op.
+## Historical QAA scaling
 
-## Operator responsibility
+The old STRATHEX QAA diameter interpolation and quality adjustment are historical.
+They are not the live v7 prediction method. In V2, wood quality is accepted as
+compatibility context but has no numerical effect.
 
-A judge must review the field, warnings, degraded state, and any manual changes. Monte Carlo output is decision support, not proof that the field is fair or formally compliant. Rulebooks and event-specific directives remain external authority.
+## Before running a race
+
+Check the actual competitors, stands, marks, warnings and authorized changes.
+Use the V3 issued sheet when running a V3 field. Simulation assists review; it does
+not establish formal compliance.
+
+The shared [handicap reference](https://github.com/SquirmyWormy275/STRATHMARK/wiki/Handicap-Mark-Math)
+explains start counts, book marks, field rebasing and officials' responsibilities.

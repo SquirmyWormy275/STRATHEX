@@ -1,20 +1,27 @@
-**STRATHEX 7**
+**Run a competition**
 
 - [Home](Home)
-- [Quick Start](Quick-Start)
-- [Choosing the Prediction Engine](Choosing-the-Prediction-Engine)
-- [Architecture](Architecture)
-- [Prediction Methods](Prediction-Methods)
-- [Handicap System](Handicap-System-Explained)
-- [Tournament Workflow](Tournament-Workflow)
-- [Multi-Event Tournaments](Multi-Event-Tournaments)
-- [Bracket Tournaments](Bracket-Tournaments)
-- [Championship Simulator](Championship-Simulator)
-- [Monte Carlo Fairness](Monte-Carlo-Fairness)
-- [Data Model](Data-Model)
-- [AAA and QAA](AAA-and-QAA-Rules-Compliance)
-- [Ecosystem](Ecosystem)
-- [Development](Development)
+- [Quick start](Quick-Start)
+- [Choose V2 or V3](Choosing-the-Prediction-Engine)
+- [Tournament workflow](Tournament-Workflow)
+- [Multi-event days](Multi-Event-Tournaments)
+- [Brackets](Bracket-Tournaments)
+- [Backups and recovery](Backups-and-Recovery)
 - [Troubleshooting](Troubleshooting)
 - [FAQ](FAQ)
-- [Version History](Version-History)
+
+**Understand the system**
+
+- [Handicaps explained](Handicap-System-Explained)
+- [Workbook and data](Data-Model)
+- [Prediction methods](Prediction-Methods)
+- [Championship simulator](Championship-Simulator)
+- [Simulation and fairness](Monte-Carlo-Fairness)
+- [Rules and officials](AAA-and-QAA-Rules-Compliance)
+
+**Develop and integrate**
+
+- [Architecture](Architecture)
+- [Related projects](Ecosystem)
+- [Development](Development)
+- [Version history](Version-History)

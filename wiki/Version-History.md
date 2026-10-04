@@ -1,51 +1,74 @@
-# Version History
+# Version history
 
-## 7.4.2 — Buffered recovery and prospective export repair
+For current installation choices, use [Engine selection](Choosing-the-Prediction-Engine).
+This page records how the application changed; older limitations apply to those
+versions. Full dated notes remain in the
+[repository](https://github.com/SquirmyWormy275/STRATHEX/tree/main/docs).
 
-Coordinates STRATHMARK rc7 and the identical standalone recovery helper, using bounded bulk GPG pipes with full authenticated readback and failure cleanup. Repairs prospective exports only against exact signed historical evidence while preserving their original cutoff. Sixteen additional sparse-history trials were rejected; the existing model and Formula remain unchanged. Retained profiles and explicit V2/V3 selection remain available.
+## 7.4.2
+
+Coordinates STRATHMARK rc7 and the recovery helper. Encrypted recovery uses bounded
+GPG pipes, authenticated readback and cleanup after failure. Prospective export
+repairs require exact signed historical evidence and retain the original cutoff.
+Startup loads ID-based workbook history through roster names without dropping rows.
+Sixteen additional sparse-history trials were rejected; the competition model and
+Formula were retained.
 
 ## 7.4.1
 
-Coordinates rc6 Formula tail improvements and fixed regression/prospective controls; adds optional authenticated encrypted recovery archives. Complete readback precedes atomic publication; interrupted publication is retryable. The installer rejects filesystems without the required hard-link capability before staging an archive. V2/V3 choice and saved competition source bindings remain explicit. Council diagnostic availability remains limited. Startup now loads ID-based result history using roster display names, preserving repeated performances and distinct IDs.
+Coordinates rc6 Formula improvements and regression/prospective checks. Adds optional
+encrypted recovery archives, verified readback before publication and retry after
+interruption. The installer checks hard-link support before staging an archive.
+Existing saved competitions keep their original source and model bindings.
 
-## 7.4.0 — Measured accuracy and portable Linux profiles
+## 7.4.0
 
-Adds chronological V2/V3 accuracy evidence, improved relevant-history ML and learned Formula priors, calibrated intervals, and immutable portable Linux installation profiles with verified independent recovery archives and rollback. V2 and V3 remain explicit operator choices. The local three-model council is a retained diagnostic candidate; its availability and accuracy do not support numeric promotion. See [the release notes](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/RELEASE_v7.4.0.md).
+Adds chronological V2/V3 accuracy evidence, relevant-history ML, learned Formula
+priors and calibrated intervals. Portable Linux profiles preserve installations,
+independent recovery archives and rollback. The local three-model council remains
+a diagnostic candidate; it was not promoted into numeric prediction.
 
-## 7.3.2 — Serialized Linux recovery reads
+## 7.3.2
 
-Coordinates the runtime fix for verified startup/state/lookup readers and retained-head replacement. Preserve exact older installations for saved competitions.
+Coordinates serialized Linux recovery reads and retained-head replacement. Older
+saved competitions still require their exact installation.
 
+## 7.3.1 — 2 October 2026
 
-## 7.3.1 (2026-10-02)
+Coordinates rc4 with normalized portable recovery paths. Keeps the full Linux
+workflow and explicit V2/V3 choice; saved 7.3.0 scopes retain their original environment.
 
-Pins the coordinated rc4 runtime with portable recovery archive path normalization. The complete Linux workflow and explicit V2/V3 choice remain available; saved 7.3.0 scopes retain their original exact environments.
+## 7.3.0 — 2 October 2026
 
-## 7.3.0 (2026-10-02)
-
-Complete separate Linux V3 competition lifecycle, explicit engine selection, real Formula/ML, local signed approval/issue/results/corrections, restart, verified recovery, championship receipts and later-round learning. Windows CNG qualification remains separate.
+Adds the separate complete Linux V3 competition workflow: Formula/ML, local signed
+approval and issue, results, corrections, restart, verified recovery, championship
+receipts and later-round learning. Windows qualification remains separate.
 
 ## 7.1.0
 
-Competition-scoped V2/V3 selection and the ASCII Wizard; durable V3 rehearsal recovery and acknowledgments; finance/bracket/roster repairs; valid history dates and payout resume; portable Linux/Windows launch paths; maintained documentation and enforced CI. V2 remains production authority and V3 remains rehearsal-only.
+Introduces competition-level V2/V3 selection, the ASCII Wizard, durable V3 rehearsal
+recovery and acknowledgments. Repairs finance, brackets, rosters, history dates and
+payout resume, with portable Linux/Windows launch paths and CI. At this release,
+V3 was rehearsal-only; the full Linux workflow arrived in 7.3.0.
 
 ## 7.0.0
 
-Breaking STRATHMARK 2 migration:
+Moves live numerical prediction to STRATHMARK 2:
 
-- direct v2 field calculation replaces the manual-override bridge;
-- explicit Python and HTTP transports with fixed-cutoff parity;
-- stable identity, calibrated intervals, provenance, warnings, and optimizer evidence;
-- bracket and championship predictions routed through v2;
-- same-day weighting, numeric LLM, local XGBoost selection, and QAA scaling retired;
-- scikit-learn and XGBoost removed from runtime dependencies;
-- pre-v2 ResultStore backup and stable competition IDs;
-- maintained docs, in-app help, and wiki reconciled.
+- Direct V2 fields replace the old manual-override prediction bridge.
+- Python and HTTP transports preserve fixed-cutoff parity and prediction metadata.
+- Brackets and championship forecasts use V2.
+- Same-day weighting, numeric LLM selection, local XGBoost selection and QAA scaling
+  are retired; scikit-learn and XGBoost leave the application runtime dependencies.
+- Existing ResultStore gets a pre-V2 backup; results retain stable competition IDs.
 
 ## 6.0.1
 
-Maintenance release that repaired the STRATHMARK 0.4.1 bridge, prediction-display reuse, workbook recovery safety, tournament replay, atomic JSON state, bracket byes, packaging, and terminal rendering. Its dated release notes remain authoritative for that version.
+Repairs the STRATHMARK 0.4.1 bridge, prediction display reuse, workbook recovery,
+tournament replay, atomic JSON state, bracket byes, packaging and terminal rendering.
 
 ## 5.x and earlier
 
-Introduced multi-event operation, brackets, championship simulation, local predictor experiments, prompt tooling, and the early 97/3 tournament-weighting behavior. Those prediction semantics are historical and are not current in v7.
+Introduces multi-event days, brackets, championship simulation, local predictor
+experiments, prompt tooling and early 97/3 tournament weighting. Those prediction
+semantics are historical, not the current v7 engine behavior.

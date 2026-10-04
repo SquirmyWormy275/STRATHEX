@@ -1,128 +1,96 @@
-# STRATHEX 7.4
+# STRATHEX
 
-Version 7.4.2 also restores startup loading of ID-based workbook history, with roster names resolved before use and all historical rows retained.
+STRATHEX is a terminal application for running woodchopping events. It manages
+competitors, wood setup, handicap and championship fields, brackets, multi-event
+days, results, saves and Excel exports.
 
-STRATHEX is the judge-facing woodchopping tournament application. It manages rosters, wood setup, handicap and championship fields, brackets, multi-event days, result entry, autosave, and Excel exports. Numeric prediction and mark assignment are owned by [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK).
+[STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK) supplies the predicted
+cutting times and handicap marks. STRATHEX gives judges the workflow to review
+those marks and run the competition.
 
-## Prediction-engine choice
+## Start here
 
-Every new competition begins with no prediction engine selected. The judge must deliberately choose STRATHMARK V2 or V3:
-
-- a single event chooses once during event setup;
-- a multi-event tournament chooses once at tournament creation, and every child event and round inherits it;
-- no child event can override the tournament choice;
-- the choice locks at the first numeric operation;
-- an outage or incompatible response blocks work rather than calling the other engine.
-
-STRATHEX 7.4.2 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate. The new [portable installer and rollback](docs/PORTABLE_INSTALLATION.md) retain separate release profiles. [Accuracy and local council evaluation](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/ACCURACY_AND_COUNCIL.md) describes the improved training and calibration pipeline.
-
-V3 pre-field seeding forecasts are forbidden from carrying a mark. Generate actual heats/stands before complete-field marks, then review and explicitly issue. Unissued sheets and results are blocked. [Setup and full operation](docs/V3_LINUX_COMPETITION.md), [release notes](docs/RELEASE_v7.4.2.md).
-
-## V2 production baseline
-
-STRATHEX 7 is integrated with the [STRATHMARK 2.0.0 release](https://github.com/SquirmyWormy275/STRATHMARK/releases/tag/v2.0.0) at exact commit `a231ad65fe82317516cc82a282761d73adb0c0e3`. STRATHMARK 2.0.0 and the documentation patch 2.0.1 are published on PyPI. STRATHEX deliberately retains its exact reviewed 2.0.0 Git commit pin for reproducibility and parity.
-
-The live calculation contract is:
-
-- one prior-only hierarchical prediction core;
-- stable competitor IDs and dated history;
-- one persisted, exclusive `prediction_as_of` cutoff per event;
-- calibrated forecast intervals, separate race-performance standard deviation, and explicit provenance;
-- deterministic joint optimization of legal handicap marks;
-- manual operator adjustments as explicit authority;
-- no numeric LLM prediction, no local XGBoost selection cascade, and no 97/3 same-tournament reweighting;
-- wood quality and same-tournament times retained as compatibility context but ignored by v2 numerics.
-
-V2-selected bracket seeding, championship predictions, single-event handicaps, and multi-event handicaps use this boundary unchanged.
-
-## Transports
-
-Direct Python is the default and remains usable without a race-day network:
-
-```powershell
-python MainProgramV5_2.py
-```
-
-The demo can explicitly call STRATHMARK's stateless FastAPI field endpoint:
-
-```powershell
-# In the STRATHMARK checkout
-$env:STRATHMARK_DB_PATH = "C:\path\to\strathmark-demo.db"
-uvicorn strathmark.api:app --host 127.0.0.1 --port 8000
-
-# In the STRATHEX shell
-$env:STRATHMARK_TRANSPORT = "http"
-$env:STRATHMARK_API_URL = "http://127.0.0.1:8000"
-python MainProgramV5_2.py
-```
-
-HTTP mode checks the audited 2.0.0 `/calculate` OpenAPI request/response shape and every result's required audit metadata. It never silently falls back to Python or follows redirects, and response bodies are size-bounded. Plaintext HTTP is accepted only on loopback; remote endpoints require HTTPS, and configured URLs cannot contain credentials, paths, queries, or fragments. `POST /calculate` is stateless and unauthenticated, so do not expose it publicly without a deliberate security boundary.
-
-## Persistence
-
-Excel is the judge-canonical result record. STRATHEX then attempts a best-effort write to STRATHMARK ResultStore. These are two separate writes, not one cross-store atomic transaction. A ResultStore failure does not roll back a successful Excel write.
-
-Single-event and multi-event JSON state use validated temporary files, atomic replacement, and rolling backups. Before STRATHMARK v2 first opens an existing ResultStore, STRATHEX creates a one-time `.pre-v2.bak` copy. New result writes include a stable competition ID and event date.
-
-ResultStore history, STRATHMARK PredictionLedger receipts, and the public stateless calculation endpoint are distinct facilities. STRATHEX 7 uses ResultStore history locally and does not write trusted PredictionLedger receipts through `/ledger/calculate`.
-
-## Install and test
-
-Requirements: Python 3.13 on Linux or Windows, a UTF-8 terminal, and an existing workbook with the supplied schema.
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -e ".[dev,api-test]"
-```
-
-Tests must always use a disposable STRATHMARK database:
-
-```powershell
-$env:STRATHMARK_TEST_DB = "1"
-$env:STRATHMARK_DB_PATH = "$env:TEMP\strathex-tests.db"
-python -m pytest -p no:cacheprovider --basetemp "$env:TEMP\strathex-pytest"
-python -m ruff check --no-cache .
-python -m ruff format --check --no-cache .
-```
-
-The cache flags are needed only in restricted nested worktrees. Never point tests at the production ResultStore or workbook.
-
-### Separate accuracy preview
-
-The [STRATH accuracy preview](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/tools/accuracy-preview/README.md)
-is a separately packaged terminal program for baseline/candidate cutting-time comparisons
-on read-only snapshots. It has no official mark, issue or settlement operation and does
-not change this program's deliberate V2/V3 choice. Its historical 2.81% gain remains below
-the installation requirement; the competition model stays unchanged.
-
-### Linux launch
+You need **Python 3.13**, a UTF-8 terminal and a competition workbook with the
+[required sheets](wiki/Data-Model.md). From this repository, on Linux:
 
 ```bash
 python3.13 -m venv .venv
 source .venv/bin/activate
-python -m pip install -e ".[dev,api-test]"
-strathex --workbook /absolute/path/to/workbook.xlsx --data-dir /absolute/path/to/operator-data
+python -m pip install -e .
 ```
 
-The launcher selects paths before opening data. The operator directory holds saves and durable authority/command databases; explicit environment settings take precedence. Existing `python MainProgramV5_2.py` operation is also supported. See [V3 rehearsal setup](docs/V3_REHEARSAL.md) for the separately installed, exact-source service.
+Or in Windows PowerShell:
 
-## Documentation
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install -e .
+```
 
-- [Current runtime contract](docs/CURRENT_RUNTIME_CONTRACT.md)
-- [Choosing the prediction engine](wiki/Choosing-the-Prediction-Engine.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Handicap system](docs/HANDICAP_SYSTEM_EXPLAINED.md)
-- [STRATHMARK 2 migration decision](docs/STRATHMARK_2_COMPATIBILITY_EVALUATION.md)
-- [STRATHEX 7.2.1 security release notes](docs/RELEASE_v7.2.1.md)
-- [STRATHEX 7.2.0 release notes](docs/RELEASE_v7.2.0.md)
-- [Changelog](CHANGELOG.md)
-- [Contributor onboarding](ONBOARDING.md)
-- [Documentation index](docs/INDEX.md)
-- [Versioned wiki source](wiki/README.md)
+Launch with explicit paths to your workbook and a directory for saved work:
 
-Dated v6.0.1 release and audit documents are preserved as historical evidence. Baseline/XGBoost/Ollama, QAA interpolation, and prompt-engineering reports are historical and do not describe the live v7 runtime.
+```bash
+strathex --workbook /absolute/path/to/competition.xlsx --data-dir /absolute/path/to/operator-data
+```
 
-## License
+On Windows, use Windows paths such as `C:\Competition\competition.xlsx` and
+`C:\Competition\operator-data`. Quote any path containing spaces.
 
-STRATHEX is MIT licensed. STRATHMARK is Apache 2.0 licensed.
+The [quick start](wiki/Quick-Start.md) walks through your first event. For a portable
+Linux installation with separate release profiles and rollback, use the
+[installer guide](docs/PORTABLE_INSTALLATION.md).
+
+## Choose V2 or V3
+
+Each new event or tournament asks you to choose an engine. A tournament's events
+and rounds inherit that choice. The first numeric operation locks it; a failure
+stops the selected workflow instead of switching engines.
+
+| Choice | What works |
+| --- | --- |
+| **V2** | Established local prediction and handicap workflow on Linux and Windows. Included with the normal installation. |
+| **V3 — LINUX READY** | Full local competition workflow using Formula and trained ML, with review, issue, results, recovery and learning between rounds. Requires separate setup. |
+| **V3 — NUMERIC PREVIEW ONLY** | Older preview installation. Proposed times and marks; no official issue or settlement. |
+| **V3 — REHEARSAL** | Development service. Windows production qualification is incomplete. |
+
+The current Linux competition pair is **STRATHEX 7.4.2 + STRATHMARK 3.0.0rc7**.
+Follow the [Linux V3 setup guide](docs/V3_LINUX_COMPETITION.md) for its separate
+Python environment, trained model, signing key and independent backup directory.
+The Linux LLM council is unavailable, so fields require explicit degraded or
+individual judge review.
+
+A V3 pre-field forecast is forbidden from carrying a mark. Create the actual heats
+and stands before calculating field marks, then approve and confirm issue
+separately. See [engine selection](wiki/Choosing-the-Prediction-Engine.md).
+
+## Run and save a competition
+
+Set up the event and competitors, create fields, review marks, record official
+outcomes and generate later rounds. The [workflow guide](wiki/Tournament-Workflow.md)
+explains the order for each engine.
+
+Excel is the canonical result record. JSON saves preserve the competition workflow.
+A separate ResultStore write supplies historical evidence; failure there does not
+undo a successful workbook write. Back up these records together. V3 also needs
+its signing authority, receipts, original model and runtime for recovery.
+
+Use [backups and recovery](wiki/Backups-and-Recovery.md) before moving or upgrading
+an installation, and [troubleshooting](wiki/Troubleshooting.md) if work is blocked.
+
+## Accuracy Preview
+
+The [separate preview program](https://github.com/SquirmyWormy275/STRATHMARK/wiki/Accuracy-Preview)
+is implemented and runnable. Its calibration candidate reduced historical average
+error from 23.12 to 22.47 seconds, a 2.81% gain. That misses the 5% qualification
+target and has no independent future validation. It is **not enabled in competition
+predictions** and does not add another choice to the V2/V3 selector.
+
+## More help
+
+- [Wiki](https://github.com/SquirmyWormy275/STRATHEX/wiki): operator guides and explanations.
+- [FAQ](wiki/FAQ.md): common questions about engines, data and marks.
+- [Current runtime contract](docs/CURRENT_RUNTIME_CONTRACT.md): detailed integration rules.
+- [Onboarding](ONBOARDING.md) and [development](wiki/Development.md): contributor setup and isolated tests.
+- [Changelog](CHANGELOG.md): release history.
+
+STRATHEX uses the [MIT license](LICENSE). STRATHMARK uses Apache 2.0.

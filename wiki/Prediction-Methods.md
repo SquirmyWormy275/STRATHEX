@@ -1,40 +1,46 @@
-# Prediction Methods
+# Prediction methods
 
-## Available runtime profiles
+STRATHEX sends calculations to the STRATHMARK engine chosen for the competition.
+It does not choose between hidden local predictors.
 
-STRATHEX 7.4.2 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate.
+## Active engines
 
-The authenticated V7 profile uses signed lifecycle receipts and requires full backend composition and installation qualification. Its lifecycle behavior described below applies only when that full runtime is configured and ready. The checked-in transport rehearsal uses fixtures and does not prove a real numeric lifecycle. A judge deliberately selects V2 or an available V3 profile once per competition root; failures stop the selected workflow.
+| Engine | How it predicts |
+| --- | --- |
+| V2 | A hierarchical model combines prior-only personal history with population estimates, calibrated uncertainty and joint mark optimization. |
+| Linux V3 competition | Independent Formula and trained CatBoost ML forecasts, capability updates and earned component weights, followed by complete-field mark calculation. |
 
-Each STRATHEX competition has exactly one live numeric authority: the STRATHMARK V2 or V3 engine deliberately selected at its root. V2 remains the production baseline; Linux V3 uses explicit local authority; Windows V7 remains readiness-gated and rehearsal-only until its production evidence exists.
+Linux V3's LLM council is unavailable. The wider three-member council design and
+local diagnostic experiments are not an active numeric council in this profile.
+Older preview and Windows rehearsal installations have their own limitations;
+see [Engine selection](Choosing-the-Prediction-Engine).
 
-## V2 authority order
+## History and wood
 
-1. An explicit manual override, when supplied.
-2. The v2 hierarchical core.
-3. A promoted residual only if STRATHMARK activates one.
-4. A broad prior/degraded fallback when compatible artifacts are unavailable.
+V2 sends stable competitor IDs and valid dated history under one exclusive cutoff.
+Undated, same-day, future and invalid observations are excluded. Quality and
+same-tournament weighting are accepted but do not change V2 numbers.
 
-The former numeric Ollama LLM, local XGBoost model, independent baseline comparison, and expected-error selector are retired from live calculation.
+V3 freezes evidence for all fields in a round. Valid settled results become eligible
+at the next round boundary. An advancing field is reconstructed and recalculated,
+rather than inheriting individual marks.
 
-## Full authenticated V7 evidence stages
+## What to review
 
-V3's signed pre-field forecast contains raw-time estimates for prediction-based seeding and cannot contain a mark. Once STRATHEX has exact heat membership and stand assignments, V3 prepares the component evidence and jointly assembles a complete field-relative mark receipt. The judge reviews ordinary fields in a compact batch and flagged fields individually.
+A prediction includes more than a time: uncertainty, performance spread, cutoff,
+engine/model versions, warnings, degraded state and provenance. V2 returns optimizer
+evidence. V3 retains component forecasts and signed field, review, issue and result
+receipts.
 
-No V3 failure invokes V2. No V2 failure invokes V3.
+An explicit V2 manual override remains a judge decision. It is not evidence that
+an experimental model has been promoted.
 
-## V2 evidence
+## What is historical or experimental?
 
-Each field sends stable competitor IDs and dated history under one exclusive cutoff. Valid observations before the cutoff can contribute. Undated, same-day, future, and invalid observations are excluded.
+The STRATHEX-side baseline/XGBoost/Ollama selector and QAA interpolation are retired
+from live v7 prediction. Old reports remain as dated records.
 
-Wood quality and same-tournament fields remain accepted compatibility context but are numeric no-ops in v2. The response identifies ignored factors.
-
-## Full authenticated V7 evidence
-
-V3 seals one evidence epoch for every field in the same round. Valid settled results become eligible at the next round boundary. Reconstruct and rebase the complete advancing field; never copy a local mark from a previous heat.
-
-## Output
-
-A prediction is more than one number. STRATHEX preserves predicted time, confidence, explanation, forecast interval, performance standard deviation, engine/model/calibration versions, cutoff, optimizer evidence, warnings, degraded state, provenance, and ignored factors.
-
-V2 direct and HTTP transports are required to match on all release-critical fields. V3 uses a separate authenticated loopback lifecycle pinned to an exact consumer contract and source identity.
+[Accuracy Preview](https://github.com/SquirmyWormy275/STRATHMARK/wiki/Accuracy-Preview)
+is implemented separately. Its candidate is not enabled in competition predictions.
+For numerical details, read [V2](https://github.com/SquirmyWormy275/STRATHMARK/wiki/Prediction-Engine-V2)
+or [V3](https://github.com/SquirmyWormy275/STRATHMARK/wiki/Prediction-Engine-V3).

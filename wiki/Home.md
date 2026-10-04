@@ -1,30 +1,42 @@
-# STRATHEX 7.4.2
+# STRATHEX
 
-The separate [accuracy preview](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/tools/accuracy-preview/README.md)
-compares frozen candidate and baseline cutting times on read-only snapshots. It carries
-no competition authority and preserves STRATHEX's deliberate V2/V3 engine choice.
+STRATHEX helps judges set up and run woodchopping competitions. It is a terminal
+application with menus for events, tournaments, competitors, results and exports.
+[STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK/wiki) calculates the
+predicted cutting times and handicap marks.
 
-STRATHEX is the terminal application judges use to run woodchopping events. It handles rosters, wood setup, handicap and championship fields, brackets, multi-event days, schedules, results, autosave, and exports.
+## Find what you need
 
-Numeric prediction and handicap marks come from the STRATHMARK engine deliberately selected for that competition. V2 remains the production baseline. V3 can use the complete separate Linux competition profile with actual Formula + trained ML, optimized exact fields, deliberate judge approval, separate issue, complete settlement, restart, official corrections and later-round learning. The LLM council is unavailable, and degraded or individual review is required. Retained numeric previews and Windows V7 rehearsal scopes keep their own contracts. See the [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md).
+| I want to… | Start here |
+| --- | --- |
+| Install and run my first event | [Quick start](Quick-Start) |
+| Choose V2 or V3 | [Engine selection](Choosing-the-Prediction-Engine) |
+| Run heats, enter results and advance | [Tournament workflow](Tournament-Workflow) |
+| Run several events in one day | [Multi-event tournaments](Multi-Event-Tournaments) |
+| Run a bracket | [Brackets](Bracket-Tournaments) |
+| Prepare my workbook | [Workbook and data](Data-Model) |
+| Understand handicap marks | [Handicaps explained](Handicap-System-Explained) |
+| Back up or recover saved work | [Backups and recovery](Backups-and-Recovery) |
+| Fix a blocked workflow | [Troubleshooting](Troubleshooting) |
+| Find a quick answer | [FAQ](FAQ) |
 
-The retained Windows V7 rehearsal pins its service to security-maintained source `8a1d40aa5645715f9ab876d0517b64c36602a77e`. Linux and Windows CI exercise installed consumer/service wheels over loopback, including approval/issue separation and exact settlement recovery after a consumer restart. This synthetic development-key check does not qualify the designated production installation. See [the rehearsal runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_REHEARSAL.md).
+## What works today?
 
-Read [Choosing the Prediction Engine](Choosing-the-Prediction-Engine) before operating V3.
+**V2** runs locally on Linux and Windows. **Linux V3**, with STRATHEX 7.4.2 and
+STRATHMARK 3.0.0rc7, supports review, issue, results, recovery and later-round
+learning. It requires a separately configured runtime and trained model.
 
-## V2 production prediction contract
+Older V3 numeric previews cannot issue official marks or settle results. The
+Windows V7 service is for rehearsal; Windows production qualification is incomplete.
+Read the engine label when choosing V3.
 
-- one prior-only hierarchical core;
-- stable competitor identity;
-- one exclusive evidence cutoff per event;
-- calibrated forecast interval and separate performance spread;
-- deterministic joint mark optimizer;
-- explicit engine/model/calibration versions, provenance, warnings, degraded state, and ignored factors;
-- manual judge authority remains explicit;
-- the former numeric LLM cascade, local XGBoost selection, QAA scaling, block-quality adjustment, and 97/3 weighting are retired in V2.
+The accuracy changes are available in a separate
+[Accuracy Preview](https://github.com/SquirmyWormy275/STRATHMARK/wiki/Accuracy-Preview).
+They have not replaced the competition model.
 
-The full V7 design combines independent formula, ML, and LLM-council forecasts; the current Linux local profile uses verified Formula + ML with the council unavailable. Same-round fields share a frozen epoch; settled completions can update a later round. Its mark-free pre-field forecasts and exact-field marks remain distinct.
+## For contributors
 
-Start with [Quick Start](Quick-Start), then read [Prediction Methods](Prediction-Methods), [Handicap System](Handicap-System-Explained), and [Architecture](Architecture).
-
-[Portable installation and rollback](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/PORTABLE_INSTALLATION.md) retain exact older competition profiles. [Accuracy and local council diagnostics](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/ACCURACY_AND_COUNCIL.md) describe the improved Linux candidate and its development evaluation limits.
+Use [Development](Development) for setup and tests, [Architecture](Architecture)
+for application boundaries, and [Version history](Version-History) for changes.
+Detailed specifications and dated release records live in the
+[repository docs](https://github.com/SquirmyWormy275/STRATHEX/tree/main/docs).

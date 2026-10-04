@@ -1,23 +1,26 @@
-# Ecosystem
+# Related projects
 
-## STRATHEX
+| Project | Responsibility |
+| --- | --- |
+| STRATHEX | Judge-facing event setup, fields, schedules, review, results, advancement, payouts, saves and exports. |
+| [STRATHMARK](https://github.com/SquirmyWormy275/STRATHMARK) | Predictions, calibration, mark optimization, history and signed competition evidence. |
+| MNEMEX | Portable competitor identity and finalized history. |
+| Missoula Pro-Am Manager | Its own live/provisional event results and operator workflow. |
 
-Judge-facing tournament operations: roster, event configuration, schedules, marks display, approval, results, advancement, payouts, saves, and exports.
+## Race-day operation
 
-## STRATHMARK
+STRATHEX uses local data and its selected STRATHMARK runtime. MNEMEX must not become
+a race-day network requirement: event laptops use pinned local snapshots and reconcile
+afterward.
 
-Prediction and settlement authority: v2 predictive distribution, calibration, performance spread, mark optimization, provenance, health metadata, ResultStore history, and optional PredictionLedger receipts.
+V2 direct Python, the public V2 HTTP demo, local Linux V3 and the V7 service are
+different integrations. Optional Missoula shadow integration uses a separate trusted
+contract; it is not STRATHEX's public stateless calculation route.
 
-STRATHEX 7 consumes STRATHMARK through direct Python or explicit stateless HTTP calculation. It does not use trusted ledger calculation yet.
+## Keep ownership clear
 
-## MNEMEX
+Live and provisional results belong to the event application. Portable finalized
+history belongs to MNEMEX. Prediction and settlement receipts belong to STRATHMARK.
+An integration must not silently take over another project's authority.
 
-Portable competitor identity and finalized history. MNEMEX must not become a race-day network dependency. Event laptops use pinned local snapshots and reconcile after the event.
-
-## Missoula Pro-Am Manager
-
-Owns its live/provisional event results and operator workflow. Optional STRATHMARK shadow integration remains a separate trusted contract and is not the same as STRATHEX's public stateless demo route.
-
-## Authority boundary
-
-Live/provisional results belong to the event application. Portable finalized history belongs to MNEMEX. Prediction and settlement receipts belong to STRATHMARK. No service should silently assume another system's authority.
+See [Architecture](Architecture) for STRATHEX's active connections.
