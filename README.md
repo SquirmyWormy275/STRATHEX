@@ -88,6 +88,14 @@ python -m ruff format --check --no-cache .
 
 The cache flags are needed only in restricted nested worktrees. Never point tests at the production ResultStore or workbook.
 
+### Separate accuracy preview
+
+The [STRATH accuracy preview](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/tools/accuracy-preview/README.md)
+is a separately packaged terminal program for baseline/candidate cutting-time comparisons
+on read-only snapshots. It has no official mark, issue or settlement operation and does
+not change this program's deliberate V2/V3 choice. Its historical 2.81% gain remains below
+the installation requirement; the competition model stays unchanged.
+
 ### Linux launch
 
 ```bash

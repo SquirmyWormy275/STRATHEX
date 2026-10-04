@@ -1,5 +1,9 @@
 # STRATHEX 7.4.2
 
+The separate [accuracy preview](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/tools/accuracy-preview/README.md)
+compares frozen candidate and baseline cutting times on read-only snapshots. It carries
+no competition authority and preserves STRATHEX's deliberate V2/V3 engine choice.
+
 STRATHEX is the terminal application judges use to run woodchopping events. It handles rosters, wood setup, handicap and championship fields, brackets, multi-event days, schedules, results, autosave, and exports.
 
 Numeric prediction and handicap marks come from the STRATHMARK engine deliberately selected for that competition. V2 remains the production baseline. V3 can use the complete separate Linux competition profile with actual Formula + trained ML, optimized exact fields, deliberate judge approval, separate issue, complete settlement, restart, official corrections and later-round learning. The LLM council is unavailable, and degraded or individual review is required. Retained numeric previews and Windows V7 rehearsal scopes keep their own contracts. See the [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md).
