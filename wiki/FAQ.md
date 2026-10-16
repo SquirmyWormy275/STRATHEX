@@ -8,7 +8,7 @@ operation locks it. See [Engine selection](Choosing-the-Prediction-Engine).
 
 ## Can V3 run a full competition?
 
-Yes, with the separately configured Linux competition runtime: STRATHEX 7.4.2 and
+Yes, with the separately configured Linux competition runtime: STRATHEX 7.4.3 and
 STRATHMARK 3.0.0rc7, labeled `LINUX READY`. Older numeric previews cannot issue or
 settle, and Windows V7 production qualification remains incomplete.
 

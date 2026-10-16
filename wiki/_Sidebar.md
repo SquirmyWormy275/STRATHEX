@@ -3,6 +3,7 @@
 - [Home](Home)
 - [Quick start](Quick-Start)
 - [Choose V2 or V3](Choosing-the-Prediction-Engine)
+- [Shared managed events](Shared-Managed-Events)
 - [Tournament workflow](Tournament-Workflow)
 - [Multi-event days](Multi-Event-Tournaments)
 - [Brackets](Bracket-Tournaments)

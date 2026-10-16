@@ -1,5 +1,12 @@
 # Changelog
 
+## [7.4.3] - 2026-10-16
+
+- Add explicit launch/resume paths to the optional shared STRATHMARK CLI and
+  authenticated workspace without importing legacy startup or copying event state.
+- Preserve retro menus, workbook canonical results, existing engine/source pins,
+  saved competition selection and the separate Linux V3 recovery workflow.
+
 ## [7.4.2] - 2026-10-03
 
 - Coordinate STRATHMARK rc7 and its bounded bulk GPG recovery helper. Preserve V2/V3 choice, original signing identities and retained profiles.

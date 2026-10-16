@@ -1,8 +1,14 @@
 # Contributor instructions
 
+New delegated event sessions use the shared STRATHMARK operations described in
+[managed events](docs/MANAGED_EVENTS.md) and the
+[ecosystem agreement](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/MODULAR_ECOSYSTEM.md).
+The existing retro/workbook workflows below retain their current authority and
+runtime pins. Do not silently migrate a saved competition into managed mode.
+
 Before analyzing or changing predictions, marks, fields, simulations, or results, read the complete [STRATHMARK handicap foundations](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/wiki/Handicap-Mark-Math.md). Then read [ONBOARDING.md](ONBOARDING.md).
 
-STRATHEX owns judge workflows, stable identities, persisted competition selection, official result entry, and Excel output. STRATHMARK owns numeric forecasts and marks. Keep one selected engine per competition root, no child overrides, and no fallback to another engine after failure. V2 is the production baseline. The separate Linux V3 competition profile supports the local lifecycle with explicit operator selection and persistent local keys; Windows V7 remains rehearsal-only and CNG qualification gates are unchanged.
+For retained calculation-only/retro events, STRATHEX owns judge workflows, stable identities, persisted competition selection, official result entry, and Excel output. STRATHMARK owns numeric forecasts and marks. Keep one selected engine per competition root, no child overrides, and no fallback to another engine after failure. V2 is the production baseline. The separate Linux V3 competition profile supports the local lifecycle with explicit operator selection and persistent local keys; Windows V7 remains rehearsal-only and CNG qualification gates are unchanged.
 
 Use synthetic workbooks and unique database and pytest temporary paths before collection. Never import MainProgramV5_2 during tests against operator paths: its legacy initialization opens data and begins the menu. Exercise menu functions without initialization or use the installed-app smoke with a disposable workbook.
 

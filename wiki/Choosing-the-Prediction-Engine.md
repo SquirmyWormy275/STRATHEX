@@ -19,7 +19,7 @@ its selected engine and original installation.
 | `REHEARSAL` | Development service. Does not establish Windows production eligibility. |
 
 V2 is the established local engine on Linux and Windows. The full Linux V3 profile
-requires STRATHMARK 3.0.0rc7 with STRATHEX 7.4.2, a trained model, signing key and
+requires STRATHMARK 3.0.0rc7 with STRATHEX 7.4.3, a trained model, signing key and
 independent backups. Use the
 [Linux setup guide](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md).
 Windows V7 production qualification remains incomplete.

@@ -1,0 +1,2 @@
+# Install only in the separate, explicitly selected managed-event environment.
+strathmark[workspace]==3.0.0rc11

@@ -10,6 +10,17 @@ from pathlib import Path
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run STRATHEX with a selected workbook and data directory.")
+    parser.add_argument(
+        "--managed-workspace-url",
+        help="Optional shared STRATHMARK workspace origin; sign in there with a scoped operator account",
+    )
+    parser.add_argument("--managed-event-id", help="Existing persistent shared event identity")
+    parser.add_argument(
+        "--managed-cli-python", type=Path, help="Explicit separate interpreter for shared STRATHMARK operations"
+    )
+    parser.add_argument(
+        "--managed", nargs=argparse.REMAINDER, help="Pass remaining arguments to the standalone STRATHMARK CLI"
+    )
     parser.add_argument("--workbook", type=Path, help="Existing workbook with Competitor, Wood, and Results sheets")
     parser.add_argument("--data-dir", type=Path, help="Directory for saves, authority, commands, and ResultStore")
     parser.add_argument(
@@ -43,6 +54,27 @@ def main() -> None:
         help="Pinned local GPG backup policy for the separate Linux V3 runtime",
     )
     args = parser.parse_args()
+    if args.managed_workspace_url is not None:
+        import webbrowser
+
+        from woodchopping.managed_launcher import workspace_url
+
+        try:
+            target = workspace_url(args.managed_workspace_url, args.managed_event_id)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if not webbrowser.open(target):
+            parser.error("The browser could not open the configured workspace origin.")
+        print(
+            "Shared workspace opened. Sign in with your event-scoped operator account; use deliberate CLI/GUI editor handover."
+        )
+        return
+    if args.managed is not None:
+        if args.managed_cli_python is None:
+            parser.error("--managed requires --managed-cli-python; no runtime is selected automatically")
+        from woodchopping.managed_launcher import run_cli
+
+        raise SystemExit(run_cli(args.managed_cli_python, args.managed))
     if args.local_v3_backup_encryption_policy is not None:
         if args.local_v3_backup_dir is None or not args.local_v3_backup_encryption_policy.is_file():
             parser.error("backup encryption requires an existing policy and recovery directory")
