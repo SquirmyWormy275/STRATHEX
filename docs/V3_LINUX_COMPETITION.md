@@ -1,6 +1,6 @@
 # Complete local Linux V3 competitions
 
-STRATHEX 7.4.2 offers the separate STRATHMARK 3.0.0rc7 Linux competition profile. Select V2 or V3 explicitly at the competition root; children inherit it and the first numeric action locks the choice. Linux V3 displays `LINUX READY` and records mode `local`. It runs actual Formula + trained CatBoost, pooling, capability adjustment, and complete-field optimization. The LLM council is unavailable, so fields require degraded or individual judge review. Windows V7 production qualification remains a separate installation gate.
+STRATHEX 7.4.3 offers the separate STRATHMARK 3.0.0rc7 Linux competition profile. Select V2 or V3 explicitly at the competition root; children inherit it and the first numeric action locks the choice. Linux V3 displays `LINUX READY` and records mode `local`. It runs actual Formula + trained CatBoost, pooling, capability adjustment, and complete-field optimization. The LLM council is unavailable, so fields require degraded or individual judge review. Windows V7 production qualification remains a separate installation gate.
 
 Install V2/STRATHEX and V3 in separate Python 3.13 environments. Keep the reviewed V2 dependency intact. Supply an authorized, verified trained ML bundle, and keep models and private history outside the repository. Follow STRATHMARK's [full runtime, model, policy, and recovery runbook](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/V3_LINUX_COMPETITION.md).
 
@@ -21,3 +21,8 @@ Confirmed ID-bound outcomes and exact settlement requests are saved before submi
 For an official correction, rerun the same launcher and add `--correct-v3-results /operator/strathex-data/saves/tournament_state.json`. Select the settled field, enter a reason and complete revised outcomes. This appends a signed revision, reverses superseded predictive scores, preserves prior observations and issued marks, and retains frozen epochs and saved advancement. Excel retains superseded raw values outside active history. Current saved times and official placings reflect the accepted revision. Review advancement separately after an official correction.
 
 `python scripts/smoke_linux_competition.py --v3-python /path/to/v3/bin/python --ml-bundle /private/operator/ml-bundle --output /new/synthetic-smoke-directory` verifies the installed consumer, real inference, approval/issue distinction, explicit outcomes, restart, later-round changes, championship receipts, corrections, and closure with synthetic workbook data. Never run a test against an operator workbook.
+
+Previously installed 7.4.2 profiles retain their original manifest, source, model
+and key bindings. The maintenance version does not rewrite those frozen profile
+identifiers or migrate saved competition authority. New optional delegated clients
+use the separate synthetic V2 profile in [managed events](MANAGED_EVENTS.md).

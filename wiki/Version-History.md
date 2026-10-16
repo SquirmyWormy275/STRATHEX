@@ -5,6 +5,15 @@ This page records how the application changed; older limitations apply to those
 versions. Full dated notes remain in the
 [repository](https://github.com/SquirmyWormy275/STRATHEX/tree/main/docs).
 
+## 7.4.3
+
+Adds explicit shared managed CLI/workspace access while preserving the retro
+terminal, workbook authority and existing V2/V3 source/model pins. The first
+shared profile is synthetic SB/UH with real V2 predictions; official activation
+remains disabled. Encrypted portable profiles keep their fixed retro policy
+flags before managed passthrough arguments. Existing 7.4.2 profile identifiers
+and saved competition bindings remain historical, unchanged artifacts.
+
 ## 7.4.2
 
 Coordinates STRATHMARK rc7 and the recovery helper. Encrypted recovery uses bounded

@@ -540,9 +540,19 @@ def launch(home, release, arguments, runtime=False):
     encryption_policy = home / "recovery-encryption-policy.json"
     if encryption_policy.exists() and selected.get("backup_encryption_supported") is True:
         require_atomic_archive_publication(Path(selected["backup_dir"]))
-        command.extend(
-            ["--backup-encryption-policy" if runtime else "--local-v3-backup-encryption-policy", str(encryption_policy)]
+        fixed_policy = [
+            "--backup-encryption-policy" if runtime else "--local-v3-backup-encryption-policy",
+            str(encryption_policy),
+        ]
+        boundary = next(
+            (
+                i
+                for i, argument in enumerate(command)
+                if not runtime and (argument == "--managed" or argument.startswith("--managed="))
+            ),
+            len(command),
         )
+        command[boundary:boundary] = fixed_policy
     return subprocess.call(command, env=environment)
 
 

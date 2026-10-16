@@ -276,3 +276,48 @@ def test_adopted_external_authority_is_in_the_independent_archive(tmp_path):
 def test_profile_names_cannot_escape_installation(release):
     with pytest.raises(ValueError):
         identifier(release)
+
+
+def test_encrypted_portable_profile_keeps_retro_flags_out_of_managed_cli(tmp_path, monkeypatch):
+    import sys
+
+    import scripts.install_portable as installer
+    import strathex_cli
+    from woodchopping import managed_launcher
+
+    selected = dict(
+        state="verified",
+        app_python="/fixture/app-python",
+        runtime_python="/fixture/runtime-python",
+        workbook=str(tmp_path / "unused.xlsx"),
+        data_dir=str(tmp_path / "data"),
+        model=str(tmp_path / "model"),
+        runtime_root=str(tmp_path / "runtime"),
+        backup_dir=str(tmp_path),
+        backup_encryption_supported=True,
+    )
+    atomic_json(tmp_path / "profiles/test/profile.json", selected)
+    atomic_json(tmp_path / "recovery-encryption-policy.json", {"synthetic": "unused by managed mode"})
+    monkeypatch.setattr(installer, "verify_content_identity", lambda *_args, **_kwargs: None)
+    received = []
+    monkeypatch.setattr(
+        managed_launcher, "run_cli", lambda interpreter, arguments: received.append((interpreter, list(arguments))) or 0
+    )
+
+    def run(command, env):
+        monkeypatch.setattr(sys, "argv", ["strathex_cli", *command[4:]])
+        with pytest.raises(SystemExit) as stopped:
+            strathex_cli.main()
+        assert stopped.value.code == 0
+        return 0
+
+    monkeypatch.setattr(installer.subprocess, "call", run)
+    assert (
+        launch(
+            tmp_path,
+            "test",
+            ["--managed-cli-python", "/explicit/component/python", "--managed", "capabilities", "--json"],
+        )
+        == 0
+    )
+    assert received == [(Path("/explicit/component/python"), ["capabilities", "--json"])]

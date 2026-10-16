@@ -25,7 +25,7 @@ They preserve the retro application and saved competition authority.
 
 ## What works today?
 
-**V2** runs locally on Linux and Windows. **Linux V3**, with STRATHEX 7.4.2 and
+**V2** runs locally on Linux and Windows. **Linux V3**, with STRATHEX 7.4.3 and
 STRATHMARK 3.0.0rc7, supports review, issue, results, recovery and later-round
 learning. It requires a separately configured runtime and trained model.
 
