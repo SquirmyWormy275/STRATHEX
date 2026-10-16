@@ -1,6 +1,6 @@
 # Current Runtime Contract
 
-**Applies to:** STRATHEX 7.4.2
+**Applies to:** STRATHEX 7.4.3
 **Prediction authority:** the competition-root selection persisted by STRATHEX; V2 remains the production baseline and V3 remains opt-in under exact readiness evidence
 
 ## Competition authority
@@ -10,6 +10,11 @@ New scopes have no default. A single event selects once at setup. A tournament s
 The choice locks before the first numeric operation. Neither engine may call the other after timeout, incompatibility, partial response, or outage. An ambiguous V3 command is shown with its durable identity and requires an exact judge-directed retry. A locked scope never changes engine in place.
 
 ## Ownership
+
+The following ownership describes retained retro/workbook competitions.
+[New delegated sessions](MANAGED_EVENTS.md) instead use STRATHMARK's shared event
+operations for fields, issue, outcomes and advancement. STRATHEX is a thin
+launcher/client in that explicit mode. Existing saves are never converted.
 
 STRATHEX owns operator interaction, tournament state, schedules, advancement, judge approval, result entry, Excel output, and local recovery.
 

@@ -1,5 +1,11 @@
 # STRATHEX
 
+The retro CLI remains the normal entry point. An explicit optional
+[shared event mode](docs/MANAGED_EVENTS.md) launches the standalone STRATHMARK
+operations or its authenticated workspace against the same persistent event.
+Initial managed SB/UH events are synthetic-only; existing V2/V3 saves retain
+their original runtime and Excel authority.
+
 STRATHEX is a terminal application for running woodchopping events. It manages
 competitors, wood setup, handicap and championship fields, brackets, multi-event
 days, results, saves and Excel exports.
@@ -53,7 +59,7 @@ stops the selected workflow instead of switching engines.
 | **V3 — NUMERIC PREVIEW ONLY** | Older preview installation. Proposed times and marks; no official issue or settlement. |
 | **V3 — REHEARSAL** | Development service. Windows production qualification is incomplete. |
 
-The current Linux competition pair is **STRATHEX 7.4.2 + STRATHMARK 3.0.0rc7**.
+The current Linux competition pair is **STRATHEX 7.4.3 + STRATHMARK 3.0.0rc7**.
 Follow the [Linux V3 setup guide](docs/V3_LINUX_COMPETITION.md) for its separate
 Python environment, trained model, signing key and independent backup directory.
 The Linux LLM council is unavailable, so fields require explicit degraded or

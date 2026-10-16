@@ -20,6 +20,9 @@ predicted cutting times and handicap marks.
 | Fix a blocked workflow | [Troubleshooting](Troubleshooting) |
 | Find a quick answer | [FAQ](FAQ) |
 
+New synthetic delegated sessions can use the [shared managed workspace or CLI](Shared-Managed-Events).
+They preserve the retro application and saved competition authority.
+
 ## What works today?
 
 **V2** runs locally on Linux and Windows. **Linux V3**, with STRATHEX 7.4.2 and
