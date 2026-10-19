@@ -12,7 +12,7 @@ From the repository root, create and activate a virtual environment as shown in
 python -m pip install -e ".[dev,api-test]"
 ```
 
-The reviewed STRATHMARK 3.0.0rc12 security source is pinned by immutable commit
+The reviewed STRATHMARK 3.0.0rc13 security source is pinned by immutable commit
 in `pyproject.toml` and `scripts/install_portable.py`. It preserves V2 numerical
 behavior and the `2.0.0` calculation contract. Changing that dependency requires
 fixed-cutoff Python/HTTP parity checks and a migration decision. New V2 roots

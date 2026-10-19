@@ -13,7 +13,7 @@
 - Stable competitor identity and fixed exclusive evidence cutoffs.
 - Full v2 interval, provenance, optimizer, warning, and degraded metadata.
 - V2 bracket seeding and championship prediction.
-- Atomic tournament-state persistence with structural validation and backup recovery.
+- Atomic tournament-state persistence with full-byte installation binding, structural validation and preserved backups requiring reviewed recovery.
 - Canonical Excel result writes plus clearly documented best-effort ResultStore writes.
 - Pre-v2 ResultStore backup and stable competition IDs.
 - Single/multi-event replay and bracket-bye regression coverage.

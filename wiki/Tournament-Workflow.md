@@ -12,11 +12,11 @@ IDs and the actual field before running a race.
 ## V2: calculate, review and run
 
 1. Calculate predictions and marks through V2.
-2. Review the times, intervals, warnings and handicap sheet.
+2. Review the times, intervals, warnings and handicap sheet, then record judge approval.
 3. Record any authorized manual mark adjustments explicitly.
 4. Generate heats and check the start sheet.
 5. Enter raw cutting times and official outcomes.
-6. Select advancers and recalculate the complete next field.
+6. Select advancers, recalculate the complete next field and approve its new sheet.
 7. Complete final placings and payouts, then save.
 
 The event retains its original exclusive history cutoff. Same-day results are
@@ -54,8 +54,10 @@ round; separate events advance independently.
 
 ## Save, resume and correct
 
-Save before closing. **Load Previous Event/Tournament** restores validated state;
-JSON writes use atomic replacement and rolling backups. Excel is the canonical
+Save before closing. **Load Previous Event/Tournament** requires the exact saved
+bytes bound to this installation; unbound or changed saves stop for recovery review.
+JSON writes use atomic replacement and preserve a rolling backup without automatically
+activating it. Excel is the canonical
 result record. The separate best-effort ResultStore write does not make those
 stores one transaction.
 
@@ -74,10 +76,11 @@ See [Backups and recovery](Backups-and-Recovery) before moving installations.
 
 ## Current approval and field-change safeguards
 
-V2 single-event marks must be reviewed and approved before generating heats,
+V2 single-event and multi-event marks must be reviewed and approved before generating heats,
 recording results or exporting a start schedule. Approval binds the complete sheet,
 ordered competitor identities, wood, cutoff and selected authority. New later-round
-marks require fresh review. Older unfinished saves must be recalculated and reviewed.
+marks require fresh review. Historical unbound saves require the retained profile or independent recovery review;
+a new installation cannot authorize them by merely recalculating.
 
 Editing a draft field or scratching/restoring a competitor invalidates its current
 marks and day schedule while retaining previous drafts for recovery. Issued fields

@@ -2,7 +2,7 @@
 
 STRATHEX 7.4 supplies `scripts/install_portable.py`, a standard-library Linux bootstrap. A private release bundle contains `release.json`, complete SHA256-pinned wheel sets for two Python 3.13 environments, and the operator's exact Formula/ML candidate. Models and workbook history stay outside the public repository and GitHub releases. The public installer does not contain trained weights or operator data.
 
-New app environments use the reviewed STRATHMARK 3.0.0rc12 security source pinned in `pyproject.toml` and the installer. The package retains the V2 numerical engine and its `2.0.0` calculation contract. The runtime environment contains the separately reviewed V3 wheel. Installation checks every file before provisioning, uses offline wheels without dependency resolution, and verifies installed runtime/model/Formula identities and package versions. New profiles use separate saved-data and signing-authority directories. Installation errors leave the previous active profile selected.
+New 7.4.5 app environments use the reviewed STRATHMARK 3.0.0rc13 security source pinned in `pyproject.toml` and the installer. The package retains the V2 numerical engine and its `2.0.0` calculation contract. The runtime environment contains the separately reviewed V3 wheel. Installation copies every checked file into an exclusive private snapshot, hashes those exact opened bytes before provisioning, uses only that snapshot with offline wheels and no dependency resolution, and verifies installed runtime/model/Formula identities and package versions. New profiles use separate saved-data and signing-authority directories. Installation errors leave the previous active profile selected.
 
 The security upgrade changes the default source for new installations and newly selected V2 roots. It does not rewrite saved root receipts, issued marks, history, or the old `a231ad65fe82317516cc82a282761d73adb0c0e3` source identity in retained profiles. Resume an existing immutable Linux V3 competition using its original profile, interpreter, model, keys and backups. New private bundles must carry the installer's current `V2_SOURCE_COMMIT` and `V2_SOURCE_DIGEST`; an old bundle is not accepted as a new release. The digest is computed from the exact installed wheel's Python sources, and fixed-cutoff direct/HTTP parity must pass before changing either pin.
 
@@ -99,3 +99,11 @@ The new checks preserve source files and rejected archives, retain permissive
 removable-drive ciphertext storage, and do not change saved profile source identities.
 Keep the new installer and standalone helper paired with their release, and retain
 historical helpers/runtimes with their original profiles.
+
+
+Installation and profile-parent directories must have trusted ownership and no peer
+write access; existing unsafe directories and symlink aliases stop without changing
+their permissions. Missing dedicated directories are created with mode 0700 regardless
+of umask. New profile directories are never substituted for old ones, and failed staging
+does not change the active profile. Preserve the original 7.4.4/rc12 and 7.4.2/rc7
+profiles and their identities when provisioning 7.4.5/rc13.

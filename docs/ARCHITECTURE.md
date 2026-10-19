@@ -49,7 +49,7 @@ STRATHMARK imports nothing from STRATHEX. STRATHEX translates DataFrames and ope
 | `woodchopping/ui/bracket_ui.py` | v2 bracket seeding and bracket state |
 | `woodchopping/ui/championship_simulator.py` | grouped v2 raw-time forecasts, all marks fixed at 3, memory-bounded simulation |
 | `woodchopping/ui/multi_event_ui.py` | per-event state, fixed cutoff, schedules, sequential results |
-| `woodchopping/ui/state_persistence.py` | schema validation, atomic replace, backup recovery |
+| `woodchopping/ui/state_persistence.py` | full-byte save authority, schema validation, atomic replace, preserved recovery evidence |
 | `woodchopping/data/excel_io.py` | canonical result write followed by best-effort ResultStore write |
 
 ## V3 two-stage evidence flow
@@ -90,6 +90,6 @@ ResultStore stores historical results. PredictionLedger stores immutable predict
 - There is no silent transport fallback.
 - There is no silent engine fallback. A V3 timeout enters durable recovery and requires a deliberate exact retry.
 - Degraded engine results and optimizer fallbacks remain visible in returned metadata.
-- A malformed save is rejected and may recover from its valid `.bak`.
+- A malformed, changed or unbound save is rejected; its `.bak` and authority evidence remain preserved for independent recovery review without automatic promotion.
 - A derived-store failure never rewrites or rolls back the canonical Excel workbook.
 - The one-time pre-v2 SQLite backup uses SQLite's snapshot API, includes committed WAL rows, is validated, and is atomically published before migration.

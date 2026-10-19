@@ -16,14 +16,21 @@ those marks and run the competition.
 
 ## Security maintenance
 
-STRATHEX 7.4.4 protects exported text and preserves competition evidence when
-setup changes. Single-event V2 marks need approval before official use. HTTP
-connections require verified HTTPS; the V7 rehearsal also needs an independently
-provisioned signer identity. See the [security update and migration notes](docs/SECURITY_CLOUD_2026-10-19.md)
-before upgrading. Keep the original runtime and backups for saved V3 competitions.
-New 7.4.4 installations use the reviewed STRATHMARK 3.0.0rc12 security release.
-Its V2 engine retains the established calculation contract. Installing application
-code does not select V3 or configure a local competition profile.
+STRATHEX 7.4.5 binds saved competition bytes to private installation evidence,
+requires sheet-bound V2 approval in single and multi-event workflows, and protects
+workbook and installer writes. Later encrypted recovery verification requires an
+independently retained plaintext identity. See the
+[follow-up security notes](docs/SECURITY_CLOUD_FOLLOWUP_2026-10-19.md) and
+[7.4.5 release notes](docs/RELEASE_v7.4.5.md) before upgrading.
+
+New installations use STRATHMARK 3.0.0rc13 with the unchanged V2 numerical
+contract. Unbound legacy or changed saves stop without being modified or
+silently trusted. Keep the original installation and complete backups for saved
+competitions, including 7.4.4/rc12 and 7.4.2/rc7 profiles. Resume through the
+retained profile where compatible; new profiles do not migrate old evidence.
+HTTP prediction connections still require verified HTTPS, and the V7 rehearsal
+requires an independently provisioned signer identity. Installing code does not
+select V3, activate a profile or grant Windows production qualification.
 
 ## Start here
 
@@ -73,13 +80,13 @@ stops the selected workflow instead of switching engines.
 | **V3 — NUMERIC PREVIEW ONLY** | Older preview installation. Proposed times and marks; no official issue or settlement. |
 | **V3 — REHEARSAL** | Development service. Windows production qualification is incomplete. |
 
-The new Linux competition pair is **STRATHEX 7.4.4 + STRATHMARK 3.0.0rc12**.
+The new Linux competition pair is **STRATHEX 7.4.5 + STRATHMARK 3.0.0rc13**.
 Follow the [Linux V3 setup guide](docs/V3_LINUX_COMPETITION.md) for its separate
 Python environment, trained model, signing key and independent backup directory.
 The Linux LLM council is unavailable, so fields require explicit degraded or
 individual judge review.
 
-Existing **7.4.2/rc7 profiles** and other retained competitions keep their original
+Existing **7.4.4/rc12 and 7.4.2/rc7 profiles** and other retained competitions keep their original
 interpreter, source identity, model, signing authority and saved data. Resume them
 with their original profile; a new installation does not migrate an active event.
 Windows compatibility checks do not grant Windows V7 production qualification.

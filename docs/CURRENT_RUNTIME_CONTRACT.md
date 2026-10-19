@@ -1,6 +1,6 @@
 # Current Runtime Contract
 
-**Applies to:** STRATHEX 7.4.4
+**Applies to:** STRATHEX 7.4.5
 **Prediction authority:** the competition-root selection persisted by STRATHEX; V2 remains the production baseline and V3 remains opt-in under exact readiness evidence
 
 ## Competition authority
@@ -11,27 +11,27 @@ The choice locks before the first numeric operation. Neither engine may call the
 
 ## Supported release profiles
 
-STRATHEX 7.4.4 uses the reviewed STRATHMARK 3.0.0rc12 security source for new
+STRATHEX 7.4.5 uses the reviewed STRATHMARK 3.0.0rc13 security source for new
 installations. The package still supplies the established V2 numerical engine
 and its frozen `2.0.0` calculation contract. Package installation never selects
 an engine on behalf of a competition.
 
 | Profile | Runtime boundary |
 | --- | --- |
-| New local Linux competition | STRATHEX 7.4.4 with the separately installed reviewed STRATHMARK 3.0.0rc12 runtime, exact model and persistent installation key. |
-| Retained rc7 competition, including the 7.4.2 recovery profile | Original rc7 interpreter, source, model, key and saved authority. Keep the original profile available for resumption. |
+| New local Linux competition | STRATHEX 7.4.5 with the separately installed reviewed STRATHMARK 3.0.0rc13 runtime, exact model and persistent installation key. |
+| Retained rc12/7.4.4 or rc7/7.4.2 competition | Original application, interpreter, source, model, key and saved authority. Keep the complete original profile available for compatible resumption. |
 | Retained numeric preview or V7 service rehearsal | Its separately frozen source and contract. The new Linux pair does not replace either profile. |
 
 The [Linux adapter](../woodchopping/strathmark_v3_linux.py) lists the exact reviewed
 source, implementation digest and package-version pairs. The
 [portable installer](../scripts/install_portable.py) records and verifies the
-installed file identities. Accepting both reviewed Linux implementations does not
+installed file identities. Recognizing reviewed Linux implementations does not
 let a saved competition change its recorded source identity. Stage new profiles
 separately and activate them deliberately after backup and installed-workflow
 verification; see [portable installation and rollback](PORTABLE_INSTALLATION.md).
 
 Native Windows compatibility coverage does not grant Windows V7 production
-eligibility or provision a CNG identity. STRATHMARK rc12's operational V3 SQLite
+eligibility or provision a CNG identity. STRATHMARK rc13's operational V3 SQLite
 event authority also requires a separately provisioned independent witness; see
 [authority trust](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/AUTHORITY_TRUST.md).
 The Linux profile uses its separate signed local lifecycle. Installing this
@@ -63,7 +63,7 @@ V2 and the full V7 field contract include predicted time, legal mark, method, co
 
 ## Transport
 
-The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. New profiles use the reviewed rc12 implementation listed in the [Linux adapter](../woodchopping/strathmark_v3_linux.py). Retained rc7 profiles keep source `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84` and implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. Each profile binds the code, package version, Formula, ML, and persistent installation key into its source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
+The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. New profiles use the reviewed rc13 implementation listed in the [Linux adapter](../woodchopping/strathmark_v3_linux.py). Retained rc7 profiles keep source `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84` and implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. Each profile binds the code, package version, Formula, ML, and persistent installation key into its source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
 
 The explicit Linux V3 numeric profile runs a separate Python 3.13 subprocess with
 verified trained ML, Formula, distribution pooling, and the V3 optimizer. Its
@@ -93,14 +93,22 @@ Simulation remains local. Championship simulation uses at most 250,000 races and
 
 Excel is judge-canonical. ResultStore is a derived, best-effort second write. The two stores are not one atomic transaction and a ResultStore failure does not undo Excel.
 
-New authority storage uses explicit owner-only permissions. On Windows, the
+Authority storage uses explicit owner-only permissions on POSIX and Windows. The
 application provisions only a new or empty dedicated data directory. An existing
 nonempty directory is verified without changing its ACL or saved files. Shared
 write access, unsafe ancestry, links and unsupported permission checks stop
 startup. Keep data beneath a trusted private location; do not select a home root
 or shared project directory as the application's data directory.
 
-Tournament JSON saves are schema-validated, written to a same-directory temporary file, flushed, verified, atomically replaced, and backed up. Load can recover a valid backup when the primary is malformed.
+Tournament JSON saves are schema-validated, written to a same-directory temporary file,
+flushed, atomically replaced and bound by their full byte digest to the private local
+authority database and save path. A rolling previous copy is retained. Loading requires
+the exact current digest; JSON cannot authenticate its own completion, placement or
+approval claims. Missing, changed, historical or unbound saves and backups stop for
+recovery review without automatic activation or rewriting. Restore the complete trusted
+installation evidence, not an isolated JSON file. Original retained profiles remain the
+compatible path for historical competitions; there is no automatic migration or rollback
+of save authority. See [follow-up recovery guidance](SECURITY_CLOUD_FOLLOWUP_2026-10-19.md).
 
 A one-time `.pre-v2.bak` SQLite snapshot protects an existing ResultStore before v2 schema migration. It includes committed WAL rows, passes SQLite integrity validation, and is atomically published. New result writes include `competition_id` and the event date.
 
@@ -118,4 +126,4 @@ A STRATHEX release is acceptable only when:
 6. published wikis are synced and verified separately;
 7. no test touches the production workbook or ResultStore.
 
-Single-event V2 official use requires judge approval bound to the current context and full mark sheet. Setup changes invalidate draft calculations and schedules; issued or recorded fields are retained through correction/recovery. Event identities remain immutable across display reordering and removal of unreferenced drafts.
+Single-event and multi-event V2 official use requires judge approval bound to the current context and full mark sheet. Setup changes invalidate draft calculations and schedules; issued or recorded fields are retained through correction/recovery. Event identities remain immutable across display reordering and removal of unreferenced drafts.

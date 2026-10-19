@@ -1,8 +1,8 @@
 # Complete local Linux V3 competitions
 
-New STRATHEX 7.4.4 installations use the reviewed STRATHMARK 3.0.0rc12 security source for the separate Linux competition profile. Select V2 or V3 explicitly at the competition root; children inherit it and the first numeric action locks the choice. Linux V3 displays `LINUX READY` and records mode `local`. It runs actual Formula + trained CatBoost, pooling, capability adjustment, and complete-field optimization. The LLM council is unavailable, so fields require degraded or individual judge review. Windows compatibility tests do not provision Windows V7 production eligibility; its CNG qualification remains a separate installation gate.
+New STRATHEX 7.4.5 installations use the reviewed STRATHMARK 3.0.0rc13 security source for the separate Linux competition profile. Select V2 or V3 explicitly at the competition root; children inherit it and the first numeric action locks the choice. Linux V3 displays `LINUX READY` and records mode `local`. It runs actual Formula + trained CatBoost, pooling, capability adjustment, and complete-field optimization. The LLM council is unavailable, so fields require degraded or individual judge review. Windows compatibility tests do not provision Windows V7 production eligibility; its CNG qualification remains a separate installation gate.
 
-Install V2/STRATHEX and V3 in separate Python 3.13 environments. Keep the reviewed V2 dependency intact. The consumer accepts only the explicitly reviewed source-digest/package-version pairs in [the Linux adapter](../woodchopping/strathmark_v3_linux.py). The retained rc7 pair is accepted for existing saved profiles; the security rc12 pair is the new installation default. Every competition still binds its exact code, Formula, ML bundle and installation signing key. Changing an installed runtime in place does not migrate that identity. Supply an authorized, verified trained ML bundle, and keep models and private history outside the repository. Follow STRATHMARK's [full runtime, model, policy, and recovery runbook](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/V3_LINUX_COMPETITION.md).
+Install V2/STRATHEX and V3 in separate Python 3.13 environments. Keep the reviewed V2 dependency intact. The consumer accepts only the explicitly reviewed source-digest/package-version pairs in [the Linux adapter](../woodchopping/strathmark_v3_linux.py). Retained rc12/7.4.4 and rc7/7.4.2 profiles keep their original application/runtime pair; the security rc13 pair is for new installations. Every competition still binds its exact code, Formula, ML bundle and installation signing key. Changing an installed runtime in place does not migrate that identity. Supply an authorized, verified trained ML bundle, and keep models and private history outside the repository. Follow STRATHMARK's [full runtime, model, policy, and recovery runbook](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/V3_LINUX_COMPETITION.md).
 
 ```bash
 strathex --workbook /operator/competition.xlsx --data-dir /operator/strathex-data \
@@ -22,7 +22,14 @@ For an official correction, rerun the same launcher and add `--correct-v3-result
 
 `python scripts/smoke_linux_competition.py --v3-python /path/to/v3/bin/python --ml-bundle /private/operator/ml-bundle --output /new/synthetic-smoke-directory` verifies the installed consumer, real inference, approval/issue distinction, explicit outcomes, restart, later-round changes, championship receipts, corrections, and closure with synthetic workbook data. Never run a test against an operator workbook.
 
-Previously installed 7.4.2 profiles retain their original manifest, source, model
+Previously installed 7.4.4 and 7.4.2 profiles retain their original manifest, source, model
 and key bindings. The maintenance version does not rewrite those frozen profile
 identifiers or migrate saved competition authority. New optional delegated clients
 use the separate synthetic V2 profile in [managed events](MANAGED_EVENTS.md).
+
+
+Saved JSON now requires its original private installation-held byte identity. Historical
+or edited saves are preserved but not automatically promoted by a new installation.
+Keep the retained app/runtime profile and its authority database; use the original
+profile where compatible or independently review recovery. See the
+[7.4.5 security follow-up](SECURITY_CLOUD_FOLLOWUP_2026-10-19.md).
