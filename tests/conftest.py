@@ -8,6 +8,10 @@ workbook are also excluded; v7 integration tests use synthetic fixtures only.
 
 from __future__ import annotations
 
+import os
+
+import pytest
+
 collect_ignore_glob = [
     "test_baseline_hybrid.py",
     "test_both_events.py",
@@ -20,3 +24,12 @@ collect_ignore_glob = [
     "validation/test_model_comparison.py",
     "validation/test_xgboost_upgrade.py",
 ]
+
+
+@pytest.fixture(autouse=True)
+def private_windows_test_root(request):
+    """Provision only pytest's disposable synthetic storage directory."""
+    if os.name == "nt":
+        from strathmark.private_storage import private_directory
+
+        private_directory(request.getfixturevalue("tmp_path"))
