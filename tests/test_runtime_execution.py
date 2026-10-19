@@ -183,6 +183,9 @@ Set-Acl -LiteralPath $path -AclObject $acl
     final = ancestor / "runtime.py"
     final.write_text("reviewed = True\n")
     assert _resolved(final, {}) == final
+    for suffix in (".", " ", ":alternate"):
+        with pytest.raises(ValueError, match="ambiguous"):
+            _trusted(final.with_name(final.name + suffix))
     environment.update(CI_ANCESTOR_PATH=str(final), CI_ACCESS_RIGHT="WriteData")
     subprocess.run(
         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], check=True, env=environment

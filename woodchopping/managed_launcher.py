@@ -32,7 +32,7 @@ def run_cli(interpreter, arguments):
     from woodchopping.runtime_execution import TrustedPython
 
     runtime = TrustedPython(interpreter)
-    executable = runtime.verify()
+    executable = runtime.executable
     # The component owns parsing, numerical authority, lifecycle and storage.
     # A failed selected interpreter never falls back to STRATHEX's V2 adapter.
     return subprocess.run([str(executable), "-I", "-m", "strathmark", *arguments], check=False).returncode

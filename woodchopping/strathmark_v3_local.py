@@ -80,7 +80,8 @@ class LocalV3Candidate:
         try:
             if not hasattr(self, "_runtime_guard"):
                 self._runtime_guard = TrustedPython(self.python)
-            self._runtime_guard.verify()
+            else:
+                self._runtime_guard.verify()
         except (OSError, ValueError) as error:
             raise V3RuntimeConfigurationError(f"selected Python runtime is unsafe or changed: {error}") from error
         child_environment = {

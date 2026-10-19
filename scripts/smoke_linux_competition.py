@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,9 @@ from openpyxl import Workbook
 
 
 def main():
+    guard_log = logging.getLogger("woodchopping.runtime_execution")
+    guard_log.setLevel(logging.DEBUG)
+    guard_log.addHandler(logging.StreamHandler())
     parser = argparse.ArgumentParser()
     parser.add_argument("--v3-python", type=Path, required=True)
     parser.add_argument("--ml-bundle", type=Path, required=True)

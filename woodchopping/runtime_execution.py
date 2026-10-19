@@ -8,8 +8,10 @@ an already configured client instead of silently selecting a different runtime.
 
 from __future__ import annotations
 
+import logging
 import os
 import stat
+import time
 from pathlib import Path
 
 
@@ -22,12 +24,15 @@ def _trusted(path, *, directory=False, symlink=False, ancestor=False):
     """Inspect ownership/access without tightening any selected or shared path."""
     from strathmark.private_storage import reject_links
 
-    reject_links(path.parent)
     if os.name == "nt":
         from strathmark.private_storage import _windows
 
+        if any(":" in part or part.endswith((".", " ")) for part in path.parts[1:]):
+            raise ValueError("Selected runtime cannot use alternate streams or ambiguous names")
         # This read-only check accepts owner/admin/system installation files,
         # and rejects peer modification without changing their DACLs.
+        # Its handle checks also reject every ancestor reparse point; a second
+        # reject_links walk would repeat the same complete native ACL traversal.
         if ancestor and directory:
             # An ancestor's create-child right does not modify an existing
             # protected child. Actual importable directories below stay strict.
@@ -35,6 +40,7 @@ def _trusted(path, *, directory=False, symlink=False, ancestor=False):
         else:
             _windows().verify_ancestors(path, include_tool_input=True)
     else:
+        reject_links(path.parent)
         value = path.lstat()
         if value.st_uid not in (0, os.geteuid()) or (
             not symlink and value.st_mode & 0o022 and not (ancestor and directory and value.st_mode & stat.S_ISVTX)
@@ -99,6 +105,7 @@ class TrustedPython:
         self.identity = self._capture()
 
     def _capture(self):
+        started = time.perf_counter()
         identity = {}
         selected = self.executable
         root = _resolved(selected.parent.parent, identity)
@@ -151,6 +158,9 @@ class TrustedPython:
                     # both protected link names and the actual library bytes.
                     resolved = _resolved(library, identity)
                     identity[str(resolved)] = _trusted(resolved)
+        logging.getLogger(__name__).debug(
+            "Verified %d runtime inputs in %.3f seconds", len(identity), time.perf_counter() - started
+        )
         return identity
 
     def verify(self):
