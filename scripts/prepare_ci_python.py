@@ -34,13 +34,29 @@ def copy_installation(source, private_root):
     # permissions. The enclosing fresh private root must never be its target.
     shutil.copytree(source, target, symlinks=False)
     if os.name == "posix":
+        removed = 0
         for directory, _, files in os.walk(target):
-            Path(directory).chmod(0o700)
+            removed += private_mode(Path(directory), 0o700)
             for name in files:
                 path = Path(directory) / name
                 executable = bool(path.stat().st_mode & 0o111)
-                path.chmod(0o700 if executable else 0o600)
+                removed += private_mode(path, 0o700 if executable else 0o600)
+        print(f"Removed {removed} copied POSIX access/default ACLs from the disposable installation.")
     return target
+
+
+def private_mode(path, mode):
+    """Drop copied ACL inheritance only on newly owned disposable CI paths."""
+    removed = 0
+    if sys.platform == "linux":
+        # copytree also copies ACL xattrs. A default ACL overrides the umask
+        # for future pip-created children, even after chmod protects the parent.
+        for name in os.listxattr(path):
+            if name in {"system.posix_acl_access", "system.posix_acl_default"}:
+                os.removexattr(path, name)
+                removed += 1
+    path.chmod(mode)
+    return removed
 
 
 def private_shell_environment(private_root):
@@ -60,6 +76,8 @@ def main():
     source = Path(sys.base_prefix)
     private_root = Path.home() / (".strathex-ci-python-" + uuid4().hex)
     private_root.mkdir(mode=0o700)
+    if os.name == "posix":
+        private_mode(private_root, 0o700)
     # Dereference the reviewed runner image's links while copying, so the new
     # installation never returns to a mutable shared tool-cache directory.
     target = copy_installation(source, private_root)

@@ -2,7 +2,9 @@
 
 import os
 import stat
+import struct
 import subprocess
+import sys
 
 import pytest
 
@@ -55,3 +57,29 @@ def test_later_workflow_shell_preserves_private_package_creation(tmp_path):
         os.umask(previous)
     assert stat.S_IMODE((tmp_path / "installed").stat().st_mode) == 0o700
     assert stat.S_IMODE((tmp_path / "installed/module.py").stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux default POSIX ACL inheritance")
+def test_copy_drops_default_acl_before_subsequent_package_installation(tmp_path):
+    source = tmp_path / "tool-cache"
+    source.mkdir()
+    site = source / "site-packages"
+    site.mkdir()
+    # Linux UAPI posix_acl_xattr: version2, user/group/other rwx entries.
+    acl = struct.pack("<I", 2) + b"".join(struct.pack("<HHI", tag, 7, 0xFFFFFFFF) for tag in (1, 4, 32))
+    os.setxattr(site, "system.posix_acl_default", acl)
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    copied = copy_installation(source, private)
+    previous = os.umask(0o077)
+    try:
+        # The source retains its shared cache policy, proving umask alone is
+        # insufficient. The disposable copy must not pass that ACL to new code.
+        (site / "source-package").mkdir()
+        (copied / "site-packages/installed-package").mkdir()
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE((site / "source-package").stat().st_mode) == 0o777
+    assert stat.S_IMODE((copied / "site-packages/installed-package").stat().st_mode) == 0o700
+    assert os.getxattr(site, "system.posix_acl_default") == acl
+    assert "system.posix_acl_default" not in os.listxattr(copied / "site-packages")
