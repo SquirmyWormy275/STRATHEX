@@ -16,6 +16,7 @@ from openpyxl import Workbook, load_workbook
 
 from config import paths, rules, sim_config
 from woodchopping.data import detect_results_sheet, get_competitor_id_name_mapping, load_results_df
+from woodchopping.data.excel_io import append_literal_row
 from woodchopping.data.validation import (
     check_diameter_sample_size,
     get_diameter_variance_warning,
@@ -909,7 +910,7 @@ def append_results_to_excel(
 
         # Append rows
         for r in rows_to_write:
-            ws.append(r)
+            append_literal_row(ws, r)
 
         wb.save(RESULTS_FILE)
         wb.close()

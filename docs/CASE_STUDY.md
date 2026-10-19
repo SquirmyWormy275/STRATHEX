@@ -28,7 +28,7 @@ The exact `v2.0.0` release commit is pinned because STRATHMARK distributes this 
 
 A fixed-cutoff fixture is calculated through direct Python and FastAPI. The release gate compares names, stable IDs, marks, predicted times, engine/model/calibration versions, cutoff, optimizer, interval, provenance, and ignored factors.
 
-Tournament replay verifies save/reload across heats and finals. Bracket tests cover byes. Persistence tests corrupt primaries and prove backup recovery. All storage used by tests is disposable.
+Tournament replay verifies save/reload across heats and finals. Bracket tests cover byes. Persistence tests corrupt primaries and prove fail-closed preservation of the primary, rolling backup and installation-held authority record. All storage used by tests is disposable.
 
 ## Lesson
 

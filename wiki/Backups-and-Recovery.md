@@ -17,7 +17,8 @@ copies are verified before acknowledgment or export.
 | V2 | Workbook, JSON saves and rolling backups, ResultStore, engine-selection records and original application/dependency version. |
 | Linux V3 | Everything above, plus command ledger, signed receipts, runtime database and separate head, signing key/identity, frozen histories, trained model and exact runtime/wheels. |
 
-A JSON save alone is not a complete V3 backup. Source, model and key changes can
+A JSON save alone is not a complete backup for either engine: keep the private
+installation authority database that binds its bytes and original path as well. Source, model and key changes can
 block a saved competition. Preserve older installation profiles when upgrading.
 
 ## Resume after an interruption
@@ -28,12 +29,20 @@ block a saved competition. Preserve older installation profiles when upgrading.
 4. If a V3 command's outcome is uncertain, use its saved command ID and the exact
    retry/recovery action. Do not submit a replacement command with a new identity.
 
-The loader can recover a valid rolling `.bak` if the primary JSON save is damaged.
-If both copies are invalid, preserve them and restore a known-good backup.
+From 7.4.5, loading requires the exact save bytes recorded in the private installation
+authority store. An edited, missing, historical or unbound save stops; a `.bak` is
+preserved for reviewed recovery and is never automatically promoted. Keep both copies
+and the original private database. Resume a historical competition through its original
+retained profile where compatible, including 7.4.4/rc12 or 7.4.2/rc7. Do not edit JSON
+or reset the authority database to bypass the block. A complete independently verified
+recovery is required when the original profile cannot resume.
 
 ## Restore into a new directory
 
-Restore the complete set into a private directory and verify it before opening.
+Preserve a complete copy in a private recovery directory and verify it before opening.
+Save authority binds original paths; copying JSON into a new profile does not migrate
+that evidence or make it loadable. Retain the original profile and use independently
+reviewed recovery for path/authority changes.
 For Linux V3, keep authority directories at mode 700 and key, identity, database
 and head files at mode 600. Never initialize a replacement signing key over an
 existing competition or edit its database to bypass a recovery block.
@@ -53,3 +62,11 @@ workstation and archive drive. A fingerprint or public key cannot decrypt the ar
 Retain plaintext copies until encrypted readback and recovery-key storage are
 verified. The portable guide covers policy setup, filesystem requirements and
 retrying interrupted archive publication.
+
+
+Later encrypted `verify` operations require an independently retained plaintext SHA256,
+never a value from the neighboring unsigned receipt. A public-key holder can produce
+new ciphertext and matching receipt hashes. Without independent evidence, `inspect`
+only reports integrity and cannot authorize restore. Large archives need a source- or
+inventory-owned size allowance. Existing encryption keys and archives remain readable;
+see the [release-paired recovery helper guide](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/PORTABLE_INSTALLATION.md#745-independent-recovery-identity).

@@ -5,6 +5,25 @@ This page records how the application changed; older limitations apply to those
 versions. Full dated notes remain in the
 [repository](https://github.com/SquirmyWormy275/STRATHEX/tree/main/docs).
 
+## 7.4.5
+
+Binds complete save bytes to private installation evidence and extends sheet-bound
+V2 approval to multi-event official workflows. Historical, unbound or changed saves
+stop for reviewed recovery; their files and rolling backups are preserved rather
+than automatically promoted. Keep the original profile for older competitions.
+
+Installer inputs are privately staged and checked before use, profile ancestry is
+validated, existing data permissions are checked without rewriting them, result
+identifiers stay literal and workbook publication uses an exclusive private file.
+Managed event links use the shared canonical identity rules. Encrypted recovery
+verification now needs an independent plaintext identity, with explicitly separate
+legacy integrity inspection and finite GPG resource limits.
+
+New profiles pair with STRATHMARK 3.0.0rc13. Original 7.4.4/rc12 and 7.4.2/rc7
+profiles, numerical rules, trained model, keys and saved competition identities are
+preserved. See the [release notes](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/RELEASE_v7.4.5.md).
+This maintenance release does not grant Windows V7 production qualification.
+
 ## 7.4.4
 
 Closes the October security findings: exports preserve spreadsheet text and escape

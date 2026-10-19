@@ -134,20 +134,25 @@ def require_current_calculation(state, root_state=None):
         raise ValueError("Field or wood changed, or this saved sheet predates context validation. Recalculate first.")
 
 
-def approve_marks(state, initials, timestamp):
-    require_current_calculation(state)
+def approve_marks(state, initials, timestamp, *, root_state=None):
+    require_current_calculation(state, root_state)
+    if state.get("status") == "completed" or any(
+        item.get("status") == "in_progress" or (item.get("status") != "completed" and item.get("actual_results"))
+        for item in state.get("rounds", [])
+    ):
+        raise ValueError("Started or completed marks require the result correction workflow.")
     if not initials or not str(initials).strip() or not timestamp or not state.get("handicap_results_all"):
         raise ValueError("A complete mark sheet, judge identity and approval time are required.")
     state["mark_approval"] = {
         "judge": str(initials).strip(),
         "at": str(timestamp),
-        "context_digest": field_context_digest(state),
+        "context_digest": field_context_digest(state, root_state),
         "sheet_digest": _sheet_digest(state["handicap_results_all"]),
     }
 
 
-def require_approved_marks(state, *, include_rounds=True):
-    require_current_calculation(state)
+def require_approved_marks(state, *, include_rounds=True, root_state=None):
+    require_current_calculation(state, root_state)
     approval = state.get("mark_approval", {})
     rows = state.get("handicap_results_all", [])
     if (
@@ -155,7 +160,7 @@ def require_approved_marks(state, *, include_rounds=True):
         or not approval.get("judge")
         or not approval.get("at")
         or (
-            approval.get("context_digest") != field_context_digest(state)
+            approval.get("context_digest") != field_context_digest(state, root_state)
             or approval.get("sheet_digest") != _sheet_digest(rows)
         )
     ):

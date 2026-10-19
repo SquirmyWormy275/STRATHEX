@@ -45,7 +45,7 @@ def test_selector_has_no_default_and_records_deliberate_v2_choice(authority_stor
     assert receipt.reason_code == "known_baseline"
     assert receipt.reason_note == "Trusted baseline for this event"
     assert receipt.contract_identity == "strathmark-v2/2.0.0"
-    assert receipt.source_identity == "strathmark:5408939a9eeb40c9c03f47a28c0ddb181ff99894"
+    assert receipt.source_identity == "strathmark:f064d67abe4baf7672239a14796c0bdc4f8c2071"
     assert set(state) == {"prediction_authority_ref"}
     assert "No engine is selected by default" in capsys.readouterr().out
 

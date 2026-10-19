@@ -17,6 +17,7 @@ from woodchopping.strathmark_v3_linux import (
     LINUX_CONTRACT_DIGEST,
     LINUX_PROTOCOL,
     LINUX_SECURITY_IMPLEMENTATION_DIGEST,
+    PREVIOUS_LINUX_SECURITY_IMPLEMENTATION_DIGEST,
     LinuxV3Competition,
     digest,
     encoded,
@@ -151,7 +152,11 @@ def test_retained_competition_source_is_checked_before_cached_ack(authority, mon
 
 @pytest.mark.parametrize(
     ("source", "version"),
-    [(FROZEN_LINUX_IMPLEMENTATION_DIGEST, "3.0.0rc7"), (LINUX_SECURITY_IMPLEMENTATION_DIGEST, "3.0.0rc12")],
+    [
+        (FROZEN_LINUX_IMPLEMENTATION_DIGEST, "3.0.0rc7"),
+        (PREVIOUS_LINUX_SECURITY_IMPLEMENTATION_DIGEST, "3.0.0rc12"),
+        (LINUX_SECURITY_IMPLEMENTATION_DIGEST, "3.0.0rc13"),
+    ],
 )
 def test_exact_reviewed_linux_source_version_pairs_preserve_signed_identity(authority, source, version):
     client, _context, _sealed = authority

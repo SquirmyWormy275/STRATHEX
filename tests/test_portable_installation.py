@@ -1,4 +1,6 @@
+import hashlib
 import json
+import os
 import shutil
 import subprocess
 import tarfile
@@ -14,6 +16,7 @@ from scripts.install_portable import (
     activate,
     atomic_json,
     identifier,
+    install,
     installation_lock,
     launch,
     read_json,
@@ -21,9 +24,105 @@ from scripts.install_portable import (
     require_atomic_archive_publication,
     require_independent,
     sha,
+    verified_bundle_snapshot,
     verify_bundle,
     verify_content_identity,
 )
+
+
+def _synthetic_bundle(tmp_path):
+    bundle = tmp_path / "release"
+    bundle.mkdir()
+    payload = b"reviewed immutable wheel bytes"
+    (bundle / "package.whl").write_bytes(payload)
+    atomic_json(
+        bundle / "release.json",
+        {
+            "schema_version": "strath-portable-release-v1",
+            "python": "3.13",
+            "release_id": "synthetic-verified",
+            "v2_source_commit": V2_SOURCE_COMMIT,
+            "v2_source_digest": V2_SOURCE_DIGEST,
+            "files": {
+                "package.whl": {
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                    "bytes": len(payload),
+                    "roles": ["app", "runtime"],
+                }
+            },
+        },
+    )
+    return bundle, payload
+
+
+def test_verified_private_snapshot_survives_source_replacement(tmp_path):
+    bundle, payload = _synthetic_bundle(tmp_path)
+    home = tmp_path / "installation"
+    previous = os.umask(0)
+    try:
+        with verified_bundle_snapshot(home, bundle) as (snapshot, manifest):
+            (bundle / "package.whl").write_bytes(b"attacker replacement")
+            assert (snapshot / "package.whl").read_bytes() == payload
+            assert snapshot.stat().st_mode & 0o777 == 0o700
+            assert (snapshot / "package.whl").stat().st_mode & 0o777 == 0o600
+            assert verify_bundle(snapshot) == manifest
+        assert not snapshot.exists()
+    finally:
+        os.umask(previous)
+
+
+@pytest.mark.parametrize("replacement", ["contents", "symlink"])
+def test_replacement_after_initial_verification_never_reaches_uv(tmp_path, monkeypatch, replacement):
+    from scripts import install_portable
+
+    bundle, _ = _synthetic_bundle(tmp_path)
+    verify = install_portable.verify_bundle
+    victim = tmp_path / "victim"
+    victim.write_bytes(b"unrelated private bytes")
+
+    def racing_verify(path):
+        manifest = verify(path)
+        target = path / "package.whl"
+        if replacement == "symlink":
+            target.unlink()
+            target.symlink_to(victim)
+        else:
+            target.write_bytes(b"substituted executable bytes")
+        return manifest
+
+    monkeypatch.setattr(install_portable, "verify_bundle", racing_verify)
+    monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: pytest.fail("unverified bytes reached uv"))
+    with pytest.raises((ValueError, OSError)):
+        install(tmp_path / "installation", bundle, tmp_path / "workbook", tmp_path / "backup", "uv", stage_only=True)
+    assert not (tmp_path / "installation/profiles").exists()
+    assert not list((tmp_path / "installation").glob(".verified-bundle-*"))
+    assert victim.read_bytes() == b"unrelated private bytes"
+
+
+def test_shared_installation_home_is_rejected_without_chmod(tmp_path):
+    bundle, _ = _synthetic_bundle(tmp_path)
+    home = tmp_path / "shared"
+    home.mkdir()
+    home.chmod(0o777)
+    with pytest.raises(PermissionError, match="owner-controlled"):
+        with verified_bundle_snapshot(home, bundle):
+            pytest.fail("peer-writable staging accepted")
+    assert home.stat().st_mode & 0o777 == 0o777
+    assert list(home.iterdir()) == []
+
+
+def test_installation_lock_does_not_follow_existing_symlink(tmp_path):
+    home = tmp_path / "installation"
+    home.mkdir(mode=0o700)
+    victim = tmp_path / "victim"
+    victim.write_bytes(b"unchanged")
+    before = victim.stat().st_mode
+    (home / ".profile.lock").symlink_to(victim)
+    with pytest.raises(OSError):
+        with installation_lock(home):
+            pytest.fail("symlink lock accepted")
+    assert victim.read_bytes() == b"unchanged"
+    assert victim.stat().st_mode == before
 
 
 def test_profile_archive_uses_local_inventory_for_large_saved_file(tmp_path):
@@ -190,9 +289,11 @@ def test_profile_switch_and_rollback_preserve_keys_saved_scope_and_archive(tmp_p
         if encrypted:
             import io
 
-            from scripts.recovery_security import verify_file
+            from scripts.recovery_security import inspect_file
 
-            verify_file(archive_path, home / "recovery-encryption-policy.json")
+            inspection = inspect_file(archive_path, home / "recovery-encryption-policy.json")
+            assert inspection["verification_scope"] == "integrity_only"
+            assert inspection["origin_authenticated"] is False
             assert archive_path.name.endswith(".tar.gz.gpg")
             assert not list(backup.glob("*.tar.gz"))
             raw = subprocess.run(command + ["--decrypt", str(archive_path)], check=True, capture_output=True).stdout
@@ -371,3 +472,87 @@ def test_encrypted_portable_profile_keeps_retro_flags_out_of_managed_cli(tmp_pat
         == 0
     )
     assert received == [(Path("/explicit/component/python"), ["capabilities", "--json"])]
+
+
+@pytest.mark.parametrize("kind", ["shared", "symlink"])
+def test_install_refuses_unsafe_profiles_parent_before_uv(tmp_path, monkeypatch, kind):
+    bundle, _ = _synthetic_bundle(tmp_path)
+    home = tmp_path / "installation"
+    home.mkdir(mode=0o755)
+    profiles = home / "profiles"
+    victim = tmp_path / "unrelated"
+    victim.mkdir(mode=0o700)
+    retained = victim / "retained-profile"
+    retained.write_bytes(b"unchanged original competition")
+    if kind == "shared":
+        profiles.mkdir(mode=0o777)
+        profiles.chmod(0o777)
+    else:
+        profiles.symlink_to(victim, target_is_directory=True)
+    workbook = tmp_path / "workbook.xlsx"
+    workbook.write_bytes(b"synthetic workbook")
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: pytest.fail("unsafe profile reached uv"))
+    with pytest.raises(PermissionError, match="owner-controlled"):
+        install(home, bundle, workbook, tmp_path / "not-mounted", "uv", stage_only=True)
+    assert retained.read_bytes() == b"unchanged original competition"
+    assert not (profiles / "synthetic-verified").exists()
+    assert not (home / "active.json").exists()
+    if kind == "shared":
+        assert profiles.stat().st_mode & 0o777 == 0o777
+    else:
+        assert profiles.is_symlink()
+
+
+def test_install_provisions_private_profiles_parent_before_uv_with_umask_zero(tmp_path, monkeypatch):
+    bundle, _ = _synthetic_bundle(tmp_path)
+    home = tmp_path / "installation"
+    home.mkdir(mode=0o755)
+    workbook = tmp_path / "workbook.xlsx"
+    workbook.write_bytes(b"synthetic workbook")
+    called = []
+
+    def inspect_before_uv(*_args, **_kwargs):
+        called.append(True)
+        assert (home / "profiles").stat().st_mode & 0o777 == 0o700
+        assert (home / "profiles/synthetic-verified").stat().st_mode & 0o777 == 0o700
+        raise RuntimeError("stop the synthetic installer after checking its private destination")
+
+    monkeypatch.setattr(subprocess, "run", inspect_before_uv)
+    previous = os.umask(0)
+    try:
+        with pytest.raises(RuntimeError, match="synthetic installer"):
+            install(home, bundle, workbook, tmp_path / "not-mounted", "uv", stage_only=True)
+    finally:
+        os.umask(previous)
+    assert called == [True]
+    assert home.stat().st_mode & 0o777 == 0o755
+    assert not (home / "active.json").exists()
+
+
+def test_existing_safe_profile_is_read_without_permission_or_data_changes(tmp_path):
+    from scripts.install_portable import profile
+
+    root = tmp_path / "profiles/retained"
+    root.mkdir(parents=True, mode=0o700)
+    (tmp_path / "profiles").chmod(0o755)
+    data = {"release_id": "retained", "state": "verified", "original": "source identity"}
+    atomic_json(root / "profile.json", data)
+    before = (root.stat().st_mode, (tmp_path / "profiles").stat().st_mode)
+    assert profile(tmp_path, "retained") == data
+    assert before == (root.stat().st_mode, (tmp_path / "profiles").stat().st_mode)
+    (tmp_path / "profiles").chmod(0o777)
+    with pytest.raises(PermissionError, match="owner-controlled"):
+        profile(tmp_path, "retained")
+    assert read_json(root / "profile.json") == data
+
+
+def test_cli_preserves_home_alias_evidence_before_locking(tmp_path, monkeypatch):
+    from scripts import install_portable
+
+    target = tmp_path / "actual-home"
+    target.mkdir(mode=0o700)
+    alias = tmp_path / "home-alias"
+    alias.symlink_to(target, target_is_directory=True)
+    monkeypatch.setattr(install_portable.sys, "argv", ["install_portable.py", "--home", str(alias), "list"])
+    assert install_portable.main() == 2
+    assert list(target.iterdir()) == []

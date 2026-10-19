@@ -1,5 +1,15 @@
 # Changelog
 
+## [7.4.5] - 2026-10-19
+
+- Authenticate complete saved competition bytes against private installation evidence; preserve unbound historical files for reviewed recovery with their retained profile.
+- Require current sheet-bound judge approval for multi-event V2 schedules, official exports and results, including later rounds.
+- Install only from private verified wheel/model snapshots; reject linked or shared installation ancestry without changing existing permissions.
+- Preserve literal spreadsheet identifiers, publish workbooks through exclusive private temporary files, and validate canonical managed-event links.
+- Separate recovery integrity inspection from verification against independent content identities; bound encrypted bytes, plaintext expansion and GPG execution.
+- Pair new installations with reviewed STRATHMARK 3.0.0rc13 while preserving old profiles, handicap mathematics, Formula and trained model bytes.
+
+
 ## [7.4.4] - 2026-10-19
 
 - Store roster/result text literally in XLSX; escape bracket HTML and filter terminal controls.

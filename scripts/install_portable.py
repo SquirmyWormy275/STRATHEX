@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tarfile
@@ -24,8 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-V2_SOURCE_COMMIT = "5408939a9eeb40c9c03f47a28c0ddb181ff99894"
-V2_SOURCE_DIGEST = "20fc54bea46bdfcb8d47a2b3746aedf4710bfc6b75e92aa905ce49434393f8df"
+V2_SOURCE_COMMIT = "f064d67abe4baf7672239a14796c0bdc4f8c2071"
+V2_SOURCE_DIGEST = "b6e315d90a6248c6eda8fd3b3727a3272dc212f4d71484665ba4d2f8ba7c9e0b"
 
 
 def require_independent(home, backup, workbook):
@@ -141,9 +142,15 @@ def verify_content_identity(selected, *, allow_missing_model=False):
 
 
 def read_json(path):
-    if path.stat().st_size > 1_000_000:
-        raise ValueError("installation manifest exceeds 1 MB")
-    return json.loads(path.read_text())
+    descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        status = os.fstat(stream.fileno())
+        if not stat.S_ISREG(status.st_mode) or status.st_size > 1_000_000:
+            raise ValueError("installation manifest must be a regular file no larger than 1 MB")
+        contents = stream.read(1_000_001)
+        if len(contents) > 1_000_000:
+            raise ValueError("installation manifest exceeds 1 MB")
+        return json.loads(contents)
 
 
 def sha(path):
@@ -175,14 +182,38 @@ def atomic_json(path, value):
 
 @contextlib.contextmanager
 def installation_lock(home):
-    home.mkdir(parents=True, exist_ok=True, mode=0o700)
-    with (home / ".profile.lock").open("a+b") as stream:
-        os.chmod(stream.name, 0o600)
+    home = prepare_installation_home(home)
+    descriptor = os.open(home / ".profile.lock", os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "r+b") as stream:
+        status = os.fstat(stream.fileno())
+        if not stat.S_ISREG(status.st_mode) or status.st_uid != os.geteuid() or status.st_nlink != 1:
+            raise PermissionError("installation lock must be an owner-controlled regular file")
+        os.fchmod(stream.fileno(), 0o600)
         try:
             fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
             raise ValueError("close the running STRATH application before switching profiles") from exc
         yield
+
+
+def prepare_installation_home(home, *, create=True):
+    """Protect staging and profile names without changing shared directory modes."""
+    home = Path(home).expanduser().absolute()
+    for directory in reversed((home, *home.parents)):
+        try:
+            status = directory.lstat()
+        except FileNotFoundError:
+            if not create:
+                raise
+            directory.mkdir(mode=0o700)
+            status = directory.lstat()
+        if (
+            not stat.S_ISDIR(status.st_mode)
+            or status.st_uid not in (0, os.geteuid())
+            or (status.st_mode & 0o022 and (directory == home or not status.st_mode & stat.S_ISVTX))
+        ):
+            raise PermissionError("installation home and its ancestors must be owner-controlled directories")
+    return home
 
 
 def identifier(value):
@@ -192,7 +223,8 @@ def identifier(value):
 
 
 def profile(home, release):
-    return read_json(home / "profiles" / identifier(release) / "profile.json")
+    root = prepare_installation_home(home / "profiles" / identifier(release), create=False)
+    return read_json(root / "profile.json")
 
 
 def recovery_archive(home, backup, workbook):
@@ -232,7 +264,7 @@ def recovery_archive(home, backup, workbook):
     # Adopted profiles can keep their original paths. Their authority and saved
     # competitions must be preserved just as completely as new managed profiles.
     for descriptor in sorted(home.glob("profiles/*/profile.json")):
-        saved = read_json(descriptor)
+        saved = profile(home, descriptor.parent.name)
         prefix = "retained-profiles/" + identifier(saved["release_id"])
         for key in ("data_dir", "runtime_root"):
             root = Path(saved[key])
@@ -313,7 +345,13 @@ def verify_bundle(bundle):
         raise ValueError("invalid release file count")
     for name, item in manifest["files"].items():
         relative = Path(name)
-        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+        if (
+            relative.is_absolute()
+            or ".." in relative.parts
+            or not relative.parts
+            or relative.as_posix() != name
+            or name == "release.json"
+        ):
             raise ValueError("release path escapes its bundle")
         path = bundle / relative
         if any(parent.is_symlink() for parent in (path, *path.parents) if parent != bundle.parent):
@@ -331,8 +369,7 @@ def verify_bundle(bundle):
             or not set(item["roles"]) <= {"app", "runtime", "model", "formula", "bootstrap"}
         ):
             raise ValueError("invalid release file identity")
-        if path.stat().st_size != item["bytes"] or sha(path) != item["sha256"]:
-            raise ValueError(f"release file checksum mismatch: {name}")
+        _snapshot_bundle_file(bundle, relative, None, item)
     for role in ("app", "runtime"):
         wheels = [name for name, item in manifest["files"].items() if role in item["roles"]]
         if not wheels or any(not name.endswith(".whl") for name in wheels):
@@ -340,17 +377,72 @@ def verify_bundle(bundle):
     return manifest
 
 
-def install(home, bundle, workbook, backup, uv, *, stage_only=False):
+def _snapshot_bundle_file(bundle, relative, destination, identity):
+    """Copy and hash the same open source descriptor into exclusive private storage."""
+    directory_fd = os.open(bundle, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        for component in relative.parts[:-1]:
+            next_fd = os.open(component, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = next_fd
+        descriptor = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
+    finally:
+        os.close(directory_fd)
+    with os.fdopen(descriptor, "rb") as source:
+        status = os.fstat(source.fileno())
+        if not stat.S_ISREG(status.st_mode) or status.st_size != identity["bytes"]:
+            raise ValueError("release file changed before private staging")
+        if destination is not None:
+            destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            output_fd = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+            target = os.fdopen(output_fd, "wb")
+        else:
+            target = contextlib.nullcontext(None)
+        with target as output:
+            remaining = identity["bytes"]
+            digest = hashlib.sha256()
+            while remaining:
+                chunk = source.read(min(1024 * 1024, remaining))
+                if not chunk:
+                    raise ValueError("release file changed during private staging")
+                if output is not None:
+                    output.write(chunk)
+                digest.update(chunk)
+                remaining -= len(chunk)
+            if source.read(1) or digest.hexdigest() != identity["sha256"]:
+                raise ValueError("release file checksum changed during private staging")
+
+
+@contextlib.contextmanager
+def verified_bundle_snapshot(home, bundle):
+    """Only privately staged, verified bytes may reach an installer or model copy."""
+    home = prepare_installation_home(home)
     bundle = bundle.resolve(strict=True)
     manifest = verify_bundle(bundle)
+    with tempfile.TemporaryDirectory(prefix=".verified-bundle-", dir=home) as name:
+        snapshot = Path(name)
+        for relative, identity in manifest["files"].items():
+            _snapshot_bundle_file(bundle, Path(relative), snapshot / relative, identity)
+        atomic_json(snapshot / "release.json", manifest)
+        yield snapshot, manifest
+
+
+def install(home, bundle, workbook, backup, uv, *, stage_only=False):
+    home = prepare_installation_home(home)
+    with verified_bundle_snapshot(home, bundle) as (snapshot, manifest):
+        return _install_verified(home, snapshot, manifest, workbook, backup, uv, stage_only=stage_only)
+
+
+def _install_verified(home, bundle, manifest, workbook, backup, uv, *, stage_only=False):
     release = identifier(manifest["release_id"])
     workbook = workbook.resolve(strict=True)
     backup = backup.expanduser().absolute()
     if not stage_only or backup.exists():
         backup = backup.resolve(strict=True)
         require_independent(home, backup, workbook)
-    root = home / "profiles" / release
-    root.mkdir(parents=True, exist_ok=False, mode=0o700)
+    profiles = prepare_installation_home(home / "profiles")
+    root = profiles / release
+    root.mkdir(exist_ok=False, mode=0o700)
     try:
         for role in ("app", "runtime"):
             env = root / role
@@ -578,7 +670,7 @@ def main():
         command.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
-        home = args.home.resolve()
+        home = args.home.expanduser().absolute()
         with installation_lock(home):
             if args.operation == "install":
                 if not args.uv:
@@ -596,7 +688,9 @@ def main():
                     json.dumps(
                         {
                             "active": read_json(home / "active.json") if (home / "active.json").exists() else None,
-                            "profiles": [read_json(path) for path in sorted(home.glob("profiles/*/profile.json"))],
+                            "profiles": [
+                                profile(home, path.parent.name) for path in sorted(home.glob("profiles/*/profile.json"))
+                            ],
                         },
                         indent=2,
                     )

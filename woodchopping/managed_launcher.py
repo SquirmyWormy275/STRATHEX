@@ -3,6 +3,8 @@
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from strathmark.events.contracts import identifier
+
 
 def workspace_url(base, event_id):
     parsed = urlsplit(base)
@@ -20,8 +22,10 @@ def workspace_url(base, event_id):
         )
     if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
         raise ValueError("Remote workspaces require HTTPS.")
-    if not event_id or len(event_id) > 224 or any(c.isspace() for c in event_id):
-        raise ValueError("An existing persistent module event identity is required.")
+    try:
+        identifier(event_id)
+    except ValueError as exc:
+        raise ValueError("An existing persistent module event identity is required.") from exc
     return base.rstrip("/") + "/events/" + quote(event_id, safe="")
 
 

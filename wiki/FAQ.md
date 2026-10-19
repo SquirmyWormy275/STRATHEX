@@ -9,14 +9,14 @@ operation locks it. See [Engine selection](Choosing-the-Prediction-Engine).
 ## Can V3 run a full competition?
 
 Yes, with the separately configured Linux competition runtime: new profiles use
-STRATHEX 7.4.4 and STRATHMARK 3.0.0rc12, labeled `LINUX READY`. The runtime also
+STRATHEX 7.4.5 and STRATHMARK 3.0.0rc13, labeled `LINUX READY`. The runtime also
 needs its reviewed model, signing authority and independent backups. Older numeric
 previews cannot issue or settle. Windows compatibility checks do not establish
 Windows V7 production qualification.
 
-## Will installing 7.4.4 upgrade a saved competition?
+## Will installing 7.4.5 upgrade a saved competition?
 
-No. Existing 7.4.2/rc7 profiles and other saved competitions keep their original
+No. Existing 7.4.4/rc12 and 7.4.2/rc7 profiles and other saved competitions keep their original
 runtime and recorded source identity. Preserve their interpreter, model, keys,
 data and backups, and resume through the original profile. New profiles have
 separate authority and saved-data directories. The portable installer's
@@ -25,7 +25,7 @@ selected. Activation and rollback follow the documented backup checks and never
 change a saved competition's locked engine choice. See
 [Backups and recovery](Backups-and-Recovery).
 
-## Why can Windows reject my data directory?
+## Why can my data directory be rejected?
 
 Authority storage must be private to your account. A new dedicated data directory
 is provisioned privately; an existing nonempty directory is checked without
@@ -95,3 +95,13 @@ still review the field and apply the governing rules. See [Fairness](Monte-Carlo
 
 V7 moved numerical prediction to STRATHMARK 2's dated-history core and joint mark
 optimizer. The old local XGBoost/LLM selector and QAA scaling are historical.
+
+
+## Why is an older save no longer accepted by the new installation?
+
+7.4.5 requires the full saved bytes to match a record held in the original private
+authority database. JSON cannot assert its own completed rounds, results or approvals.
+Historical, copied, edited or unbound saves stop and remain unchanged. Keep the complete
+original installation and backups; resume its retained profile where compatible or
+independently review recovery. The new version does not automatically enroll old JSON
+or promote a rolling backup. See [Backups and recovery](Backups-and-Recovery).

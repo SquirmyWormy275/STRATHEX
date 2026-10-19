@@ -1,5 +1,7 @@
 # Security Cloud repairs — 2026-10-19
 
+This page records the initial 7.4.4 repairs. See the [7.4.5 follow-up](SECURITY_CLOUD_FOLLOWUP_2026-10-19.md) for current save-authentication and recovery requirements; historical compatibility statements below describe the initial release.
+
 The eight STRATHEX findings against `bcfe4e50e1449b2585a037215c79f5a7e955e9da`
 are addressed at their output, transport and workflow boundaries. Numeric models,
 engine selection and handicap mathematics are unchanged. Release 7.4.4 also adopts

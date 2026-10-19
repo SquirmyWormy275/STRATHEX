@@ -10,6 +10,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 from openpyxl import Workbook, load_workbook
 
 import woodchopping.data.excel_io as excel_io
@@ -53,6 +54,9 @@ class RecordingStore:
     def record_result(self, **row) -> bool:
         self.rows.append(row)
         return True
+
+
+pytestmark = pytest.mark.usefixtures("local_save_authority")
 
 
 def _competitors(names: list[str]) -> pd.DataFrame:
@@ -461,7 +465,7 @@ def test_bracket_with_byes_resumes_to_champion_without_result_writes(tmp_path):
     assert state["runner_up"] is not None
     assert state["completed_matches"] == state["total_matches"]
     assert not list(tmp_path.glob("*.xlsx"))
-    assert not list(tmp_path.glob("*.db"))
+    assert {path.name for path in tmp_path.glob("*.db")} == {"local-save-authority.db"}
 
 
 def test_tournament_children_inherit_one_root_selection_across_replay(tmp_path):

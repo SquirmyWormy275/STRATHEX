@@ -4,17 +4,19 @@ The original UI modules wrote JSON directly over the active save file. An
 interrupted write could therefore destroy the only recoverable tournament
 state. This module preserves the existing public functions and messages while
 adding same-directory temporary files, fsync, validation, atomic replacement,
-a rolling last-known-good backup, and automatic backup recovery.
+a rolling last-known-good backup, and installation-held save authentication.
+Historical, modified, missing or corrupt saves require deliberate recovery; their
+files and backups are preserved without automatic activation.
 """
 
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib
 import json
 import math
 import os
-import shutil
 import tempfile
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional
@@ -88,13 +90,6 @@ def _fsync_directory(directory: Path) -> None:
         os.close(fd)
 
 
-def _read_valid_json(path: Path, validator: JsonValidator) -> Any:
-    with path.open("r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    validator(payload)
-    return payload
-
-
 def _write_temp_file(directory: Path, prefix: str, text: str) -> Path:
     fd, temp_name = tempfile.mkstemp(prefix=prefix, suffix=".tmp", dir=directory)
     temp_path = Path(temp_name)
@@ -109,87 +104,63 @@ def _write_temp_file(directory: Path, prefix: str, text: str) -> Path:
     return temp_path
 
 
-def _copy_file_atomically(source: Path, destination: Path) -> None:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(
-        prefix=destination.name + ".",
-        suffix=".tmp",
-        dir=destination.parent,
-    )
-    temp_path = Path(temp_name)
-    try:
-        with source.open("rb") as input_handle, os.fdopen(fd, "wb") as output_handle:
-            shutil.copyfileobj(input_handle, output_handle)
-            output_handle.flush()
-            os.fsync(output_handle.fileno())
-        os.replace(temp_path, destination)
-        _fsync_directory(destination.parent)
-    except Exception:
-        temp_path.unlink(missing_ok=True)
-        raise
+_UNTRUSTED_SAVE_MESSAGE = (
+    "Saved competition is not authenticated by this installation, or its bytes changed. "
+    "The file and backup are retained unchanged; neither has been activated. "
+    "Use the original retained installation profile where compatible, or independently "
+    "review and recover the competition. This version does not automatically promote historical saves."
+)
 
 
-def _atomic_write_json(
-    payload: Any,
-    filename: str,
-    validator: JsonValidator,
-) -> None:
-    path = Path(filename)
+def _save_store(authority_store):
+    store = _configured_authority_store(authority_store)
+    if store is None:
+        raise ValueError("A private local authority store is required to authenticate competition saves.")
+    return store
+
+
+def _atomic_write_json(payload: Any, filename: str, validator: JsonValidator, *, authority_store: Any) -> None:
+    path = Path(filename).absolute()
+    current_digest, _ = authority_store.save_payload_digests(path)
+    previous = None
+    if path.exists():
+        previous = path.read_bytes()
+        if current_digest is None or hashlib.sha256(previous).hexdigest() != current_digest:
+            raise ValueError(_UNTRUSTED_SAVE_MESSAGE)
+    elif current_digest is not None:
+        raise ValueError(_UNTRUSTED_SAVE_MESSAGE)
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    text = json.dumps(
-        payload,
-        indent=2,
-        ensure_ascii=False,
-        default=_json_default,
-    )
-    parsed = json.loads(text)
-    validator(parsed)
-
+    text = json.dumps(payload, indent=2, ensure_ascii=False, default=_json_default)
+    validator(json.loads(text))
     temp_path = _write_temp_file(path.parent, path.name + ".", text)
-    backup = _backup_path(path)
-    previous_was_valid = False
-
     try:
-        if path.exists():
+        if previous is not None:
+            # Use the exact authenticated snapshot, never reopen a shared pathname.
+            backup_temp = _write_temp_file(path.parent, path.name + ".backup.", previous.decode("utf-8"))
             try:
-                _read_valid_json(path, validator)
-                previous_was_valid = True
-            except (OSError, ValueError, TypeError, json.JSONDecodeError):
-                previous_was_valid = False
-
-            if previous_was_valid:
-                _copy_file_atomically(path, backup)
-
+                os.replace(backup_temp, _backup_path(path))
+            finally:
+                backup_temp.unlink(missing_ok=True)
         os.replace(temp_path, path)
         _fsync_directory(path.parent)
-
-        try:
-            _read_valid_json(path, validator)
-        except Exception:
-            if previous_was_valid and backup.exists():
-                _copy_file_atomically(backup, path)
-            raise
+        authority_store.bind_save_payload(
+            path, hashlib.sha256(text.encode("utf-8")).hexdigest(), previous_digest=current_digest
+        )
     finally:
         temp_path.unlink(missing_ok=True)
 
 
-def _load_with_recovery(filename: str, validator: JsonValidator) -> Any:
-    path = Path(filename)
-    backup = _backup_path(path)
-
-    try:
-        return _read_valid_json(path, validator)
-    except FileNotFoundError as primary_error:
-        if not backup.exists():
-            raise primary_error
-    except (OSError, ValueError, TypeError, json.JSONDecodeError) as primary_error:
-        if not backup.exists():
-            raise primary_error
-
-    payload = _read_valid_json(backup, validator)
-    _copy_file_atomically(backup, path)
-    print(f"[WARN] Recovered tournament state from backup: {backup}")
+def _load_with_recovery(filename: str, validator: JsonValidator, *, authority_store: Any) -> Any:
+    path = Path(filename).absolute()
+    current_digest, _ = authority_store.save_payload_digests(path)
+    if not path.exists() and _backup_path(path).exists():
+        raise ValueError(_UNTRUSTED_SAVE_MESSAGE)
+    raw = path.read_bytes()
+    if current_digest is None or hashlib.sha256(raw).hexdigest() != current_digest:
+        raise ValueError(_UNTRUSTED_SAVE_MESSAGE)
+    # Parse the authenticated bytes themselves; no second path-based read occurs.
+    payload = json.loads(raw.decode("utf-8"))
+    validator(payload)
     return payload
 
 
@@ -252,6 +223,11 @@ def _validate_regular_round(round_object: dict[str, Any], context: str) -> None:
             f"{context} round 'actual_results'",
             _is_numeric_time,
         )
+
+    competitors = set(round_object["competitors"])
+    for field in ("advancers", "finish_order", "actual_results"):
+        if not set(round_object.get(field, ())).issubset(competitors):
+            raise ValueError(f"{context} round '{field}' names a competitor outside this field")
 
 
 def _validate_bracket_match(match: Any, context: str) -> None:
@@ -490,6 +466,7 @@ def save_tournament_state(
 ) -> bool:
     """Atomically save single-event state and report whether it persisted."""
     try:
+        authority_store = _save_store(authority_store)
         payload = _serialize_single_state(tournament_state)
         if "prediction_authority_ref" in payload:
             authority_store = _configured_authority_store(authority_store)
@@ -499,7 +476,7 @@ def save_tournament_state(
 
             reference = AuthorityReference.from_json(payload["prediction_authority_ref"])
             authority_store.bind_save_path(reference, filename)
-        _atomic_write_json(payload, filename, _validate_single_state)
+        _atomic_write_json(payload, filename, _validate_single_state, authority_store=authority_store)
         print(f"Tournament state saved to {filename}")
         return True
     except Exception as error:
@@ -512,9 +489,10 @@ def load_tournament_state(
     *,
     authority_store: Any = None,
 ) -> Optional[Dict[str, Any]]:
-    """Load single-event state, recovering the last valid backup when needed."""
+    """Load only the exact current save authenticated by the local authority store."""
     try:
-        payload = _load_with_recovery(filename, _validate_single_state)
+        authority_store = _save_store(authority_store)
+        payload = _load_with_recovery(filename, _validate_single_state, authority_store=authority_store)
         state = _deserialize_single_state(payload)
         from woodchopping.ui.prediction_context import (
             AuthorityReference,
@@ -559,6 +537,7 @@ def save_multi_event_tournament(
 ) -> bool:
     """Atomically save multi-event state and report whether it persisted."""
     try:
+        authority_store = _save_store(authority_store)
         payload = _serialize_multi_state(tournament_state)
         if "prediction_authority_ref" in payload:
             authority_store = _configured_authority_store(authority_store)
@@ -568,7 +547,7 @@ def save_multi_event_tournament(
 
             reference = AuthorityReference.from_json(payload["prediction_authority_ref"])
             authority_store.bind_save_path(reference, filename)
-        _atomic_write_json(payload, filename, _validate_multi_state)
+        _atomic_write_json(payload, filename, _validate_multi_state, authority_store=authority_store)
         print(f"\n[OK] Tournament state saved to {filename}")
         return True
     except Exception as error:
@@ -581,9 +560,10 @@ def load_multi_event_tournament(
     *,
     authority_store: Any = None,
 ) -> Optional[Dict[str, Any]]:
-    """Load multi-event state, recovering the last valid backup when needed."""
+    """Load only the exact current save authenticated by the local authority store."""
     try:
-        payload = _load_with_recovery(filename, _validate_multi_state)
+        authority_store = _save_store(authority_store)
+        payload = _load_with_recovery(filename, _validate_multi_state, authority_store=authority_store)
         tournament_state = _deserialize_multi_state(payload)
         from woodchopping.ui.prediction_context import (
             AuthorityReference,

@@ -10,7 +10,11 @@ and recalculation.
 
 ## Calculate and schedule
 
-With V2, calculate each event's handicap field, review it and generate heats.
+With V2, calculate each event's handicap field, review and approve its complete
+sheet, then generate heats. Approval binds the field, wood, stands, cutoff and
+selected authority. Edits and new later-round calculations require fresh approval.
+Day schedules, official exports and result entry stop when that approval is missing
+or no longer matches.
 With Linux V3, obtain seeding times first, create exact heats and stands, then
 calculate, approve and separately issue each field. Championship marks stay at 3.
 
@@ -30,7 +34,9 @@ blocked until calculation succeeds and the schedule is regenerated.
 
 Excel is the canonical result record. The separate ResultStore write retains the
 tournament date and stable competition ID. JSON saves preserve the day and use
-validation, atomic replacement and rolling backups.
+full-byte installation authentication, validation, atomic replacement and rolling
+backups. Historical or changed saves stop for recovery review; backups are retained
+without automatic promotion.
 
 V2 retains its original date cutoff and excludes same-day results. Linux V3 keeps
 one round's evidence frozen, then learns from valid settled completions in later

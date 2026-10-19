@@ -47,9 +47,11 @@ writes are separate; a ResultStore failure does not undo Excel.
 
 ## A save file is malformed
 
-The loader validates the primary and can recover a valid `.bak`. If both are invalid,
-keep both and restore a known-good backup. For V3, recover its authority and command
-records as well as the JSON save.
+From 7.4.5, the loader compares the complete save bytes to the private installation's
+record. A changed, unbound, missing or historical save stops without activating its
+`.bak`. Preserve both files and the authority database. Resume the original retained
+profile where compatible, or independently review the complete recovery set. Do not
+rewrite the JSON or clear the store to invent trust. See [Recovery](Backups-and-Recovery).
 
 ## V2 HTTP mode fails
 

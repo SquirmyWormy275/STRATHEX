@@ -20,7 +20,7 @@ dependencies = [
     # License compatibility: STRATHEX is MIT and Apache 2.0 is a compatible permissive license.
     # The security release retains V2 numerics and its 2.0.0 API contract.
     # Keep the reviewed immutable source exercised by direct/HTTP parity tests.
-    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@5408939a9eeb40c9c03f47a28c0ddb181ff99894",
+    "strathmark @ git+https://github.com/SquirmyWormy275/STRATHMARK.git@f064d67abe4baf7672239a14796c0bdc4f8c2071",
 ]
 
 [project.scripts]
