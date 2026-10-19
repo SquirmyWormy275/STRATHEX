@@ -5,11 +5,53 @@ from __future__ import annotations
 import math
 import os
 import shutil
+import stat
 from datetime import datetime, timezone
 from hashlib import sha256
 from pathlib import Path
+from uuid import uuid4
 
 from openpyxl import load_workbook
+
+
+def _save_workbook(workbook, path, original_status):
+    """Publish only the exclusively created file we saved and synced."""
+    from strathmark.private_storage import open_private_exclusive, verify_authority_parent
+
+    verify_authority_parent(path)
+    temporary = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
+    descriptor = open_private_exclusive(temporary)
+    try:
+        with os.fdopen(descriptor, "w+b") as stream:
+            workbook.save(stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+            saved = os.fstat(stream.fileno())
+            staged = temporary.lstat()
+            if (
+                not stat.S_ISREG(staged.st_mode)
+                or staged.st_nlink != 1
+                or (staged.st_dev, staged.st_ino) != (saved.st_dev, saved.st_ino)
+            ):
+                raise RuntimeError("workbook staging file changed; export stopped")
+            verify_authority_parent(path)
+            current = path.lstat()
+            if (current.st_dev, current.st_ino, current.st_size, current.st_mtime_ns) != (
+                original_status.st_dev,
+                original_status.st_ino,
+                original_status.st_size,
+                original_status.st_mtime_ns,
+            ):
+                raise RuntimeError("workbook changed during export; retry against the current workbook")
+        os.replace(temporary, path)
+        if os.name == "posix":
+            directory = os.open(path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def collect_results(round_object, *, input_fn=input):
@@ -102,10 +144,13 @@ def refresh_result_projections(round_object):
 
 def export_results(round_object, event, root_state, *, supersedes_settlement_id=None):
     """Append the signed settlement once, atomically, preserving the prior workbook."""
-    from config import paths
-    from woodchopping.data.excel_io import detect_results_sheet
+    from strathmark.private_storage import verify_authority_parent
 
-    path = Path(paths.EXCEL_FILE)
+    from config import paths
+    from woodchopping.data.excel_io import append_literal_row, detect_results_sheet
+
+    path = verify_authority_parent(Path(paths.EXCEL_FILE))
+    original_status = path.lstat()
     receipt_id = round_object["handicap_results"][0]["receipt_id"]
     settlement_id = round_object["v3_settlement_id"]
     backup_folder = (
@@ -186,12 +231,8 @@ def export_results(round_object, event, root_state, *, supersedes_settlement_id=
                 if result["raw_time_ms"] is not None
                 else None,
             }
-            sheet.append([values.get(header) for header in headers])
-        temporary = path.with_name(path.name + ".v3-next.xlsx")
-        workbook.save(temporary)
-        with temporary.open("rb+") as stream:
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
+            append_literal_row(sheet, [values.get(header) for header in headers])
+        _save_workbook(workbook, path, original_status)
     finally:
         workbook.close()
     print("Signed V3 outcomes saved to the workbook. Nonfinishes and penalties remain outside raw-time history.")

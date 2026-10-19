@@ -1,6 +1,9 @@
 """New shared clients must leave retro startup and saved authority alone."""
 
+from urllib.parse import quote, urlsplit
+
 import pytest
+from strathmark.events.contracts import identifier
 
 from woodchopping.managed_launcher import workspace_url
 
@@ -19,3 +22,18 @@ def test_workspace_deep_link_is_not_an_authorization_token():
     ):
         with pytest.raises(ValueError):
             workspace_url(bad, "event")
+
+
+@pytest.mark.parametrize("event_id", [".", "..", "", "a\x00b", "a\nb", "a b", "%2e%2e", "a\\b", None, 123])
+def test_workspace_rejects_non_component_identities(event_id):
+    with pytest.raises(ValueError):
+        workspace_url("https://example.invalid", event_id)
+
+
+@pytest.mark.parametrize("event_id", ["synthetic:show:event", "event-1.2_3", "a/../b", "a/", "x" * 224])
+def test_workspace_preserves_component_identity_as_one_encoded_segment(event_id):
+    assert identifier(event_id) == event_id
+    path = urlsplit(workspace_url("https://example.invalid", event_id)).path
+    assert path == "/events/" + quote(event_id, safe="")
+    assert len(path.split("/")) == 3
+    assert path.split("/")[-1] not in {".", ".."}
