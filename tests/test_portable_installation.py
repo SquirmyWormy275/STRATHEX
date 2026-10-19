@@ -523,6 +523,7 @@ def test_install_provisions_private_profiles_parent_before_uv_with_umask_zero(tm
     bundle, _ = _synthetic_bundle(tmp_path)
     home = tmp_path / "installation"
     home.mkdir(mode=0o755)
+    home.chmod(0o755)
     workbook = tmp_path / "workbook.xlsx"
     workbook.write_bytes(b"synthetic workbook")
     called = []

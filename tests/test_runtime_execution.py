@@ -153,12 +153,13 @@ def test_shared_base_library_is_checked_before_guarded_spawn(runtime, tmp_path, 
 
 @pytest.mark.skipif(os.name != "nt", reason="Native Windows directory ACE semantics")
 def test_ancestor_create_child_right_is_distinct_from_importable_directory_write(tmp_path):
-    from woodchopping.runtime_execution import _trusted
+    from woodchopping.runtime_execution import _resolved, _trusted
 
     ancestor = tmp_path / "ancestor"
     private_directory(ancestor)
     environment = {key: value for key, value in os.environ.items() if key.upper() != "PSMODULEPATH"}
     environment["CI_ANCESTOR_PATH"] = str(ancestor)
+    environment["CI_ACCESS_RIGHT"] = "CreateDirectories"
     command = r"""
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -166,7 +167,7 @@ $path = $env:CI_ANCESTOR_PATH
 $acl = Get-Acl -LiteralPath $path
 $sid = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-11')
 $rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
-    $sid, [System.Security.AccessControl.FileSystemRights]::CreateDirectories,
+    $sid, [System.Security.AccessControl.FileSystemRights]$env:CI_ACCESS_RIGHT,
     [System.Security.AccessControl.AccessControlType]::Allow)
 $acl.AddAccessRule($rule)
 Set-Acl -LiteralPath $path -AclObject $acl
@@ -177,3 +178,14 @@ Set-Acl -LiteralPath $path -AclObject $acl
     _trusted(ancestor, directory=True, ancestor=True)
     with pytest.raises(PermissionError, match="replaceable"):
         _trusted(ancestor, directory=True)
+    # A final regular file is a tool input, never a directory ancestor. It must
+    # pass the real Windows file API and still reject another account's writes.
+    final = ancestor / "runtime.py"
+    final.write_text("reviewed = True\n")
+    assert _resolved(final, {}) == final
+    environment.update(CI_ANCESTOR_PATH=str(final), CI_ACCESS_RIGHT="WriteData")
+    subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], check=True, env=environment
+    )
+    with pytest.raises(PermissionError, match="replaceable"):
+        _resolved(final, {})

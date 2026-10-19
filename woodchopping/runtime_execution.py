@@ -28,7 +28,7 @@ def _trusted(path, *, directory=False, symlink=False, ancestor=False):
 
         # This read-only check accepts owner/admin/system installation files,
         # and rejects peer modification without changing their DACLs.
-        if ancestor:
+        if ancestor and directory:
             # An ancestor's create-child right does not modify an existing
             # protected child. Actual importable directories below stay strict.
             _windows().verify_ancestors(path / ".runtime-child-check")
