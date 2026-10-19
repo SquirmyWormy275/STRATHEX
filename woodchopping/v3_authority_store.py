@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from strathmark.private_storage import private_file
+
 
 @dataclass(frozen=True, slots=True)
 class V3CommandRecord:
@@ -42,8 +44,7 @@ class V3CommandStore:
     """SQLite authority for pending, acknowledged, and ambiguous V3 commands."""
 
     def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = Path(private_file(path))
         with self._connect() as connection:
             connection.execute("""CREATE TABLE IF NOT EXISTS v3_commands (
                     command_key TEXT PRIMARY KEY,
@@ -58,6 +59,7 @@ class V3CommandStore:
                 )""")
 
     def _connect(self) -> sqlite3.Connection:
+        private_file(self.path)
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode = WAL")
