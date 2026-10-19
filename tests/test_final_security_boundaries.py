@@ -162,6 +162,17 @@ def test_local_unissued_results_block_before_collection(tmp_path):
     )
 
 
+def test_unselected_durable_scope_cannot_authorize_official_use(tmp_path):
+    from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
+
+    store = PredictionAuthorityStore(tmp_path / "authority.sqlite3")
+    scope = store.create_scope(owner_kind="tournament")
+    state = {}
+    attach_authority_reference(state, scope.reference)
+    with pytest.raises(ValueError, match="Select and review"):
+        require_official_eligibility(state, authority_store=store)
+
+
 def test_oversized_untrusted_save_rejected_before_read_or_json(tmp_path, monkeypatch):
     path = tmp_path / "large.json"
     with path.open("wb") as stream:
