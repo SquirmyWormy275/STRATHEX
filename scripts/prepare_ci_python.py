@@ -43,10 +43,20 @@ def copy_installation(source, private_root):
     return target
 
 
+def private_shell_environment(private_root):
+    """Carry the private creation mask into later independent Linux CI steps."""
+    startup = private_root / "ci-shell.sh"
+    startup.write_text("umask 077\n", encoding="utf-8")
+    startup.chmod(0o600)
+    return startup
+
+
 def main():
     if os.environ.get("GITHUB_ACTIONS") != "true":
         raise RuntimeError("This provisioning helper is only for disposable GitHub CI runners")
-    os.umask(0o077)
+    incoming_mask = os.umask(0o077)
+    if sys.platform == "linux":
+        print(f"Runner shell creation mask was {incoming_mask:03o}; private CI steps require 077.")
     source = Path(sys.base_prefix)
     private_root = Path.home() / (".strathex-ci-python-" + uuid4().hex)
     private_root.mkdir(mode=0o700)
@@ -88,6 +98,7 @@ def main():
         stream.write("STRATHEX_CI_ENV_ROOT=" + environments.as_posix() + "\n")
         if sys.platform == "linux":
             stream.write("LD_LIBRARY_PATH=" + str(target / "lib") + "\nLD_PRELOAD=\n")
+            stream.write("BASH_ENV=" + str(private_shell_environment(private_root)) + "\n")
     print("Prepared separate private Python 3.13 for disposable CI environments.")
 
 

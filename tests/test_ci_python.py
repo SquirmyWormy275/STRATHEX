@@ -2,10 +2,11 @@
 
 import os
 import stat
+import subprocess
 
 import pytest
 
-from scripts.prepare_ci_python import copy_installation
+from scripts.prepare_ci_python import copy_installation, private_shell_environment
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX modes; native CI exercises Windows ownership")
@@ -36,3 +37,21 @@ def test_copy_tightens_only_disposable_installation_and_preserves_executability(
     assert stat.S_IMODE(source.stat().st_mode) == 0o777
     assert stat.S_IMODE(binary.stat().st_mode) == 0o777
     assert stat.S_IMODE(library.stat().st_mode) == 0o666
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Independent Linux CI shell creation mask")
+def test_later_workflow_shell_preserves_private_package_creation(tmp_path):
+    startup = private_shell_environment(tmp_path)
+    environment = dict(os.environ, BASH_ENV=str(startup))
+    previous = os.umask(0o002)
+    try:
+        subprocess.run(
+            ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", "mkdir installed; touch installed/module.py"],
+            cwd=tmp_path,
+            env=environment,
+            check=True,
+        )
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE((tmp_path / "installed").stat().st_mode) == 0o700
+    assert stat.S_IMODE((tmp_path / "installed/module.py").stat().st_mode) == 0o600
