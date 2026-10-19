@@ -9,14 +9,14 @@ operation locks it. See [Engine selection](Choosing-the-Prediction-Engine).
 ## Can V3 run a full competition?
 
 Yes, with the separately configured Linux competition runtime: new profiles use
-STRATHEX 7.4.5 and STRATHMARK 3.0.0rc13, labeled `LINUX READY`. The runtime also
+STRATHEX 7.4.6 and STRATHMARK 3.0.0rc14, labeled `LINUX READY`. The runtime also
 needs its reviewed model, signing authority and independent backups. Older numeric
 previews cannot issue or settle. Windows compatibility checks do not establish
 Windows V7 production qualification.
 
-## Will installing 7.4.5 upgrade a saved competition?
+## Will installing 7.4.6 upgrade a saved competition?
 
-No. Existing 7.4.4/rc12 and 7.4.2/rc7 profiles and other saved competitions keep their original
+No. Existing 7.4.5/rc13, 7.4.4/rc12 and 7.4.2/rc7 profiles and other saved competitions keep their original
 runtime and recorded source identity. Preserve their interpreter, model, keys,
 data and backups, and resume through the original profile. New profiles have
 separate authority and saved-data directories. The portable installer's
@@ -99,7 +99,7 @@ optimizer. The old local XGBoost/LLM selector and QAA scaling are historical.
 
 ## Why is an older save no longer accepted by the new installation?
 
-7.4.5 requires the full saved bytes to match a record held in the original private
+7.4.6 requires the full saved bytes to match a record held in the original private
 authority database. JSON cannot assert its own completed rounds, results or approvals.
 Historical, copied, edited or unbound saves stop and remain unchanged. Keep the complete
 original installation and backups; resume its retained profile where compatible or

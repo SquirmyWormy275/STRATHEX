@@ -8,7 +8,7 @@ from strathmark.events.contracts import identifier
 def workspace_url(base, event_id):
     parsed = urlsplit(base)
     if (
-        parsed.scheme not in {"http", "https"}
+        parsed.scheme != "https"
         or not parsed.hostname
         or parsed.username
         or parsed.password
@@ -17,10 +17,8 @@ def workspace_url(base, event_id):
         or parsed.fragment
     ):
         raise ValueError(
-            "Workspace origin must be an HTTPS origin or local loopback origin without credentials, paths, queries or fragments."
+            "Workspace origin must use HTTPS without credentials, paths, queries or fragments, including loopback."
         )
-    if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
-        raise ValueError("Remote workspaces require HTTPS.")
     try:
         identifier(event_id)
     except ValueError as exc:

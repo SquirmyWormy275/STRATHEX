@@ -19,7 +19,7 @@ its selected engine and original installation.
 | `REHEARSAL` | Development service. Does not establish Windows production eligibility. |
 
 V2 is the established local engine on Linux and Windows. New full Linux V3 profiles
-use STRATHMARK 3.0.0rc13 with STRATHEX 7.4.5, a trained model, signing key and
+use STRATHMARK 3.0.0rc14 with STRATHEX 7.4.6, a trained model, signing key and
 independent backups. Installing this package pair does not configure or activate
 a local profile. Use the
 [Linux setup guide](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md).
@@ -50,7 +50,7 @@ are not copied from a previous heat.
 ## Resuming saved work
 
 Keep the original source, trained model, authority key and runtime. Existing
-7.4.4/rc12 and 7.4.2/rc7 profiles retain their exact original installations; the rc13 pair is for new
+7.4.5/rc13, 7.4.4/rc12 and 7.4.2/rc7 profiles retain their exact original installations; the rc13 pair is for new
 profiles. The adapter accepts only its explicitly reviewed implementations, and a saved
 scope still requires its original recorded identity. Resume the original profile instead
 of replacing its runtime, switching engines or creating a new key. See

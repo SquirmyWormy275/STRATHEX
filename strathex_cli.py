@@ -113,7 +113,7 @@ def main() -> None:
         if args.local_v3_runtime_root is not None:
             os.environ["STRATHEX_V3_LOCAL_RUNTIME_ROOT"] = str(args.local_v3_runtime_root.expanduser().absolute())
     if args.workbook is not None:
-        workbook = args.workbook.expanduser().resolve()
+        workbook = args.workbook.expanduser().absolute()
         if not workbook.is_file():
             parser.error(f"workbook does not exist: {workbook}")
         os.environ["STRATHEX_WORKBOOK"] = str(workbook)

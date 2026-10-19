@@ -23,6 +23,9 @@ from typing import Any, Callable, Dict, Optional
 
 import numpy as np
 import pandas as pd
+from strathmark.input_limits import read_bounded_file
+
+MAX_SAVE_BYTES = 16 * 1024 * 1024
 
 JsonValidator = Callable[[Any], None]
 
@@ -124,13 +127,15 @@ def _atomic_write_json(payload: Any, filename: str, validator: JsonValidator, *,
     current_digest, _ = authority_store.save_payload_digests(path)
     previous = None
     if path.exists():
-        previous = path.read_bytes()
+        previous = read_bounded_file(path, MAX_SAVE_BYTES)
         if current_digest is None or hashlib.sha256(previous).hexdigest() != current_digest:
             raise ValueError(_UNTRUSTED_SAVE_MESSAGE)
     elif current_digest is not None:
         raise ValueError(_UNTRUSTED_SAVE_MESSAGE)
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(payload, indent=2, ensure_ascii=False, default=_json_default)
+    if len(text.encode("utf-8")) > MAX_SAVE_BYTES:
+        raise ValueError("Competition save exceeds its byte budget")
     validator(json.loads(text))
     temp_path = _write_temp_file(path.parent, path.name + ".", text)
     try:
@@ -155,7 +160,7 @@ def _load_with_recovery(filename: str, validator: JsonValidator, *, authority_st
     current_digest, _ = authority_store.save_payload_digests(path)
     if not path.exists() and _backup_path(path).exists():
         raise ValueError(_UNTRUSTED_SAVE_MESSAGE)
-    raw = path.read_bytes()
+    raw = read_bounded_file(path, MAX_SAVE_BYTES)
     if current_digest is None or hashlib.sha256(raw).hexdigest() != current_digest:
         raise ValueError(_UNTRUSTED_SAVE_MESSAGE)
     # Parse the authenticated bytes themselves; no second path-based read occurs.

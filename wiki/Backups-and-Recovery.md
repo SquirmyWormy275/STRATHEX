@@ -29,7 +29,7 @@ block a saved competition. Preserve older installation profiles when upgrading.
 4. If a V3 command's outcome is uncertain, use its saved command ID and the exact
    retry/recovery action. Do not submit a replacement command with a new identity.
 
-From 7.4.5, loading requires the exact save bytes recorded in the private installation
+From 7.4.6, loading requires the exact save bytes recorded in the private installation
 authority store. An edited, missing, historical or unbound save stops; a `.bak` is
 preserved for reviewed recovery and is never automatically promoted. Keep both copies
 and the original private database. Resume a historical competition through its original

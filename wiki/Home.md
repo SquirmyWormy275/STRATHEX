@@ -26,11 +26,11 @@ They preserve the retro application and saved competition authority.
 ## What works today?
 
 **V2** runs locally on Linux and Windows. New **Linux V3** profiles pair STRATHEX
-7.4.5 with STRATHMARK 3.0.0rc13 and support review, issue, results, recovery and
+7.4.6 with STRATHMARK 3.0.0rc14 and support review, issue, results, recovery and
 later-round learning. They require a separately configured runtime, trained model,
 signing authority and independent backups.
 
-Existing 7.4.4/rc12 and 7.4.2/rc7 profiles keep their original runtime and saved competition
+Existing 7.4.5/rc13, 7.4.4/rc12 and 7.4.2/rc7 profiles keep their original runtime and saved competition
 identity. Select a new profile through the documented installer workflow; saved
 work is never migrated in place. Read the [engine selection guide](Choosing-the-Prediction-Engine) and
 [backup guidance](Backups-and-Recovery) before upgrading.

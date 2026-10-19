@@ -217,7 +217,7 @@ def test_public_append_wrapper_blocks_legacy_partial_recovery(
 
     assert _digest(path) == before
     assert _sheet_names(path) == {"wood", "competitor", "results"}
-    assert "Refusing to create a replacement workbook" in capsys.readouterr().out
+    assert "simulated transient workbook load failure" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("missing_sheet", ["wood", "Competitor", "Results"])

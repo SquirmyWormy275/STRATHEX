@@ -47,7 +47,7 @@ writes are separate; a ResultStore failure does not undo Excel.
 
 ## A save file is malformed
 
-From 7.4.5, the loader compares the complete save bytes to the private installation's
+From 7.4.6, the loader compares the complete save bytes to the private installation's
 record. A changed, unbound, missing or historical save stops without activating its
 `.bak`. Preserve both files and the authority database. Resume the original retained
 profile where compatible, or independently review the complete recovery set. Do not

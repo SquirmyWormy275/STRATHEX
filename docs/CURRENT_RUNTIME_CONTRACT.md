@@ -1,6 +1,6 @@
 # Current Runtime Contract
 
-**Applies to:** STRATHEX 7.4.5
+**Applies to:** STRATHEX 7.4.6
 **Prediction authority:** the competition-root selection persisted by STRATHEX; V2 remains the production baseline and V3 remains opt-in under exact readiness evidence
 
 ## Competition authority
@@ -11,15 +11,15 @@ The choice locks before the first numeric operation. Neither engine may call the
 
 ## Supported release profiles
 
-STRATHEX 7.4.5 uses the reviewed STRATHMARK 3.0.0rc13 security source for new
+STRATHEX 7.4.6 uses the reviewed STRATHMARK 3.0.0rc14 security source for new
 installations. The package still supplies the established V2 numerical engine
 and its frozen `2.0.0` calculation contract. Package installation never selects
 an engine on behalf of a competition.
 
 | Profile | Runtime boundary |
 | --- | --- |
-| New local Linux competition | STRATHEX 7.4.5 with the separately installed reviewed STRATHMARK 3.0.0rc13 runtime, exact model and persistent installation key. |
-| Retained rc12/7.4.4 or rc7/7.4.2 competition | Original application, interpreter, source, model, key and saved authority. Keep the complete original profile available for compatible resumption. |
+| New local Linux competition | STRATHEX 7.4.6 with the separately installed reviewed STRATHMARK 3.0.0rc14 runtime, exact model and persistent installation key. |
+| Retained rc13/7.4.5, rc12/7.4.4 or rc7/7.4.2 competition | Original application, interpreter, source, model, key and saved authority. Keep the complete original profile available for compatible resumption. |
 | Retained numeric preview or V7 service rehearsal | Its separately frozen source and contract. The new Linux pair does not replace either profile. |
 
 The [Linux adapter](../woodchopping/strathmark_v3_linux.py) lists the exact reviewed
@@ -31,7 +31,7 @@ separately and activate them deliberately after backup and installed-workflow
 verification; see [portable installation and rollback](PORTABLE_INSTALLATION.md).
 
 Native Windows compatibility coverage does not grant Windows V7 production
-eligibility or provision a CNG identity. STRATHMARK rc13's operational V3 SQLite
+eligibility or provision a CNG identity. STRATHMARK rc14's operational V3 SQLite
 event authority also requires a separately provisioned independent witness; see
 [authority trust](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/AUTHORITY_TRUST.md).
 The Linux profile uses its separate signed local lifecycle. Installing this
@@ -63,7 +63,7 @@ V2 and the full V7 field contract include predicted time, legal mark, method, co
 
 ## Transport
 
-The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. New profiles use the reviewed rc13 implementation listed in the [Linux adapter](../woodchopping/strathmark_v3_linux.py). Retained rc7 profiles keep source `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84` and implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. Each profile binds the code, package version, Formula, ML, and persistent installation key into its source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
+The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. New profiles use the reviewed rc14 implementation listed in the [Linux adapter](../woodchopping/strathmark_v3_linux.py). Retained rc7 profiles keep source `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84` and implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. Each profile binds the code, package version, Formula, ML, and persistent installation key into its source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
 
 The explicit Linux V3 numeric profile runs a separate Python 3.13 subprocess with
 verified trained ML, Formula, distribution pooling, and the V3 optimizer. Its

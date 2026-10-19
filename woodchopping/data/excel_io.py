@@ -1,7 +1,6 @@
 """Excel I/O functions for loading and saving woodchopping competition data."""
 
 import os
-import shutil
 
 # Import config
 import sys
@@ -9,7 +8,10 @@ from datetime import date, datetime
 from typing import Dict, Optional, Tuple
 
 import pandas as pd
-from openpyxl import Workbook, load_workbook
+from openpyxl import Workbook
+from strathmark.input_limits import bounded_workbook
+
+from woodchopping.data.workbook_access import load_workbook, save_workbook
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from config import paths
@@ -49,7 +51,7 @@ def append_literal_row(sheet, values) -> None:
 def _resolve_sheet_name(excel_path: str, desired_name: str) -> str:
     """Return the exact sheet name matching desired_name (case-insensitive)."""
     try:
-        with pd.ExcelFile(excel_path) as xl:
+        with pd.ExcelFile(bounded_workbook(excel_path)) as xl:
             for sheet in xl.sheet_names:
                 if sheet.strip().lower() == desired_name.strip().lower():
                     return sheet
@@ -82,7 +84,12 @@ def ensure_workbook(excel_path: Optional[str] = None) -> str:
 
     seed = os.path.join(os.path.dirname(os.path.abspath(path)), _CANONICAL_SEED_FILENAME)
     if os.path.exists(seed):
-        shutil.copyfile(seed, path)
+        restored = load_workbook(seed)
+        del restored._source_status
+        try:
+            save_workbook(restored, path)
+        finally:
+            restored.close()
         print(f"'{os.path.basename(path)}' was missing - restored full schema from '{_CANONICAL_SEED_FILENAME}'.")
         return path
 
@@ -94,7 +101,7 @@ def ensure_workbook(excel_path: Optional[str] = None) -> str:
     wb.create_sheet(paths.WOOD_SHEET).append(WOOD_HEADERS)
     wb.create_sheet(paths.COMPETITOR_SHEET).append(COMPETITOR_HEADERS)
     detect_results_sheet(wb)  # single source of truth for Results headers
-    wb.save(path)
+    save_workbook(wb, path)
     wb.close()
     print(
         f"'{os.path.basename(path)}' and '{_CANONICAL_SEED_FILENAME}' both missing - "
@@ -119,7 +126,7 @@ def get_competitor_id_name_mapping() -> Tuple[Dict[str, str], Dict[str, str]]:
     """
     try:
         sheet_name = _resolve_sheet_name(paths.EXCEL_FILE, paths.COMPETITOR_SHEET)
-        df = pd.read_excel(paths.EXCEL_FILE, sheet_name=sheet_name)
+        df = pd.read_excel(bounded_workbook(paths.EXCEL_FILE), sheet_name=sheet_name)
 
         if df.empty:
             return {}, {}
@@ -152,7 +159,7 @@ def load_competitors_df() -> pd.DataFrame:
     """
     try:
         sheet_name = _resolve_sheet_name(paths.EXCEL_FILE, paths.COMPETITOR_SHEET)
-        df = pd.read_excel(paths.EXCEL_FILE, sheet_name=sheet_name)
+        df = pd.read_excel(bounded_workbook(paths.EXCEL_FILE), sheet_name=sheet_name)
 
         # Standardize column names
         column_mapping = {
@@ -198,7 +205,7 @@ def load_wood_data() -> pd.DataFrame:
     """
     try:
         sheet_name = _resolve_sheet_name(paths.EXCEL_FILE, paths.WOOD_SHEET)
-        df = pd.read_excel(paths.EXCEL_FILE, sheet_name=sheet_name)
+        df = pd.read_excel(bounded_workbook(paths.EXCEL_FILE), sheet_name=sheet_name)
         # Drop unnamed columns from Excel artifacts
         df = df.loc[:, [c for c in df.columns if not str(c).startswith("Unnamed")]].copy()
         df.columns = [str(c).strip() for c in df.columns]
@@ -244,7 +251,7 @@ def get_species_name_from_code(species_code: str) -> str:
 
     try:
         sheet_name = _resolve_sheet_name(paths.EXCEL_FILE, paths.WOOD_SHEET)
-        wood_df = pd.read_excel(paths.EXCEL_FILE, sheet_name=sheet_name)
+        wood_df = pd.read_excel(bounded_workbook(paths.EXCEL_FILE), sheet_name=sheet_name)
 
         if "speciesID" in wood_df.columns and "species" in wood_df.columns:
             # Build cache for all species
@@ -279,7 +286,7 @@ def load_results_df() -> pd.DataFrame:
     try:
         # Read raw results
         sheet_name = _resolve_sheet_name(paths.EXCEL_FILE, paths.RESULTS_SHEET)
-        df = pd.read_excel(paths.EXCEL_FILE, sheet_name=sheet_name)
+        df = pd.read_excel(bounded_workbook(paths.EXCEL_FILE), sheet_name=sheet_name)
 
         if df.empty:
             print("No results found in Excel.")
@@ -445,7 +452,7 @@ def save_time_to_results(
 
         append_literal_row(ws, [competitor_id, event, time, size, species, quality, heat_id, timestamp])
 
-        wb.save(paths.EXCEL_FILE)
+        save_workbook(wb, paths.EXCEL_FILE)
         wb.close()
 
     except Exception as e:
@@ -476,6 +483,53 @@ def _result_store_context(
     return competition_id, result_date
 
 
+def _bound_competitor_ids(tournament_state, round_object, heat_assignment_df, names, live_mapping):
+    """Retain reviewed field identities; a later workbook edit cannot rebind a name."""
+    state = tournament_state or {}
+    field = state
+    for event in state.get("events", []):
+        if any(item is round_object or item == round_object for item in event.get("rounds", [])):
+            field = event
+            break
+    frame = field.get("all_competitors_df")
+    if frame is None:
+        frame = heat_assignment_df
+    expected = {}
+    if frame is not None and hasattr(frame, "iterrows"):
+        for _, row in frame.iterrows():
+            name = str(row.get("competitor_name", row.get("Name", ""))).strip().lower()
+            identity = row.get("competitor_id", row.get("CompetitorID"))
+            if name and identity is not None and not pd.isna(identity) and str(identity).strip():
+                expected[name] = str(identity).strip()
+    for row in (round_object or {}).get("handicap_results", []):
+        name = str(row.get("name", "")).strip().lower()
+        identity = row.get("local_competitor_id", row.get("competitor_id"))
+        if name and identity:
+            if name in expected and expected[name] != str(identity):
+                raise ValueError("Reviewed field contains conflicting competitor identities")
+            expected[name] = str(identity)
+    bound = {}
+    for name in names:
+        key = str(name).strip().lower()
+        identity = expected.get(key)
+        if identity is None:
+            if field.get("mark_approval") or state.get("prediction_authority_ref"):
+                raise ValueError("Reviewed competitor identity is missing; reload and review the field")
+            identity = live_mapping.get(key)
+        if not identity or live_mapping.get(key) != identity:
+            raise ValueError("Workbook competitor identities changed; reload and review the field before recording")
+        bound[key] = identity
+    return bound
+
+
+def _workbook_name_mapping(workbook):
+    sheet = next(item for item in workbook if item.title.strip().lower() == paths.COMPETITOR_SHEET.lower())
+    values = list(sheet.values)
+    frame = pd.DataFrame(values[1:], columns=values[0])
+    names = _display_names(frame["Name"], frame["CompetitorID"])
+    return {str(name).strip().lower(): str(identity).strip() for name, identity in zip(names, frame["CompetitorID"])}
+
+
 def append_results_to_excel(
     heat_assignment_df, wood_selection, round_object=None, tournament_state=None, event_name=None
 ):
@@ -495,6 +549,10 @@ def append_results_to_excel(
         bool: True when a valid placement was recorded (and any requested Excel
         write succeeded); False when validation or the canonical write failed.
     """
+    from woodchopping.data.workbook_guard import _restore_round_state, _snapshot_round_state
+
+    round_snapshot = _snapshot_round_state(round_object)
+
     # Determine if using new tournament system or legacy single-heat system
     if round_object is not None:
         # NEW TOURNAMENT SYSTEM
@@ -543,6 +601,13 @@ def append_results_to_excel(
 
     # Get ID/name mapping
     _, name_to_id = get_competitor_id_name_mapping()
+    try:
+        name_to_id = _bound_competitor_ids(
+            tournament_state, round_object, heat_assignment_df, competitors_list, name_to_id
+        )
+    except ValueError as error:
+        print(f"[BLOCKED] {error}")
+        return False
 
     rows_to_write = []
     times_collected = {}
@@ -690,7 +755,7 @@ def append_results_to_excel(
     timestamp = datetime.now().isoformat(timespec="seconds")
 
     for name, time_val in times_collected.items():
-        competitor_id = name_to_id.get(str(name).strip().lower(), name)
+        competitor_id = name_to_id[str(name).strip().lower()]
 
         # Include Quality and HeatID columns
         rows_to_write.append([competitor_id, event_code, time_val, size_mm, species, quality, heat_id, timestamp])
@@ -710,12 +775,12 @@ def append_results_to_excel(
 
     try:
         # Load or create workbook
-        try:
-            wb = load_workbook(paths.EXCEL_FILE)
-        except Exception:
-            wb = Workbook()
-            if "Sheet" in wb.sheetnames and paths.RESULTS_SHEET not in wb.sheetnames:
-                wb.remove(wb["Sheet"])
+        ensure_workbook(paths.EXCEL_FILE)
+        wb = load_workbook(paths.EXCEL_FILE)
+        live_mapping = _workbook_name_mapping(wb)
+        if any(live_mapping.get(name) != identity for name, identity in name_to_id.items()):
+            wb.close()
+            raise ValueError("Workbook competitor identities changed during result entry; nothing was written")
 
         ws = detect_results_sheet(wb)
 
@@ -738,7 +803,7 @@ def append_results_to_excel(
         for r in rows_to_write:
             append_literal_row(ws, r)
 
-        wb.save(paths.EXCEL_FILE)
+        save_workbook(wb, paths.EXCEL_FILE)
         wb.close()
         print("Results appended to Excel successfully.")
 
@@ -790,5 +855,6 @@ def append_results_to_excel(
         return True
 
     except Exception as e:
+        _restore_round_state(round_object, round_snapshot)
         print(f"Error appending results: {e}")
         return False

@@ -17,6 +17,10 @@ def require_official_eligibility(root_state, *, authority_store=None):
     receipt = authority_store.resolve(AuthorityReference.from_json(root_state["prediction_authority_ref"]))
     if receipt.engine == "v3" and receipt.contract_identity in LOCAL_V3_PREVIEW_CONTRACTS:
         raise ValueError("V3 numeric previews cannot be exported or recorded as official schedules or results")
+    if receipt.engine == "v3" and receipt.mode != "local":
+        raise ValueError(
+            "V3 rehearsal cannot produce official schedules or results; select an eligible competition profile."
+        )
 
     if receipt.engine == "v2":
         from woodchopping.ui.workflow_integrity import require_approved_marks

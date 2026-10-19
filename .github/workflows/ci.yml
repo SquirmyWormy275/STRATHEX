@@ -97,7 +97,7 @@ jobs:
         run: python -m build
 
       - name: Start and exit installed app outside checkout
-        run: python scripts/smoke_installed_app.py --wheel dist/strathex-7.4.5-py3-none-any.whl --sdist dist/strathex-7.4.5.tar.gz
+        run: python scripts/smoke_installed_app.py --wheel dist/strathex-7.4.6-py3-none-any.whl --sdist dist/strathex-7.4.6.tar.gz
 
   v3_pair:
     name: Installed V3 pair (${{ matrix.os }} / Python 3.13)
@@ -137,7 +137,7 @@ jobs:
           python scripts/smoke_v3_pair.py
           --service-checkout .tmp/service-source
           --service-source 8a1d40aa5645715f9ab876d0517b64c36602a77e
-          --consumer-wheel .tmp/consumer-dist/strathex-7.4.5-py3-none-any.whl
+          --consumer-wheel .tmp/consumer-dist/strathex-7.4.6-py3-none-any.whl
           --service-wheel .tmp/service-dist/strathmark-3.0.0rc3-py3-none-any.whl
           --output .tmp/installed-v3-pair.json
           --with-local-numerics
@@ -176,7 +176,7 @@ jobs:
             consumer=.tmp/linux-consumer/bin/python
             producer=.tmp/linux-producer/bin/python
           fi
-          "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.4.5-py3-none-any.whl
+          "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.4.6-py3-none-any.whl
           "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc13-py3-none-any.whl[v3-candidate]"
 
       - name: Prepare isolated storage paths
@@ -217,7 +217,7 @@ jobs:
           python -m build --wheel
           python -m venv .tmp/managed-runtime
           .tmp/managed-runtime/bin/python -m pip install -r requirements-managed-runtime.txt
-          python scripts/verify_managed_client.py --wheel dist/strathex-7.4.5-py3-none-any.whl --managed-python .tmp/managed-runtime/bin/python
+          python scripts/verify_managed_client.py --wheel dist/strathex-7.4.6-py3-none-any.whl --managed-python .tmp/managed-runtime/bin/python
 
   required:
     name: Required CI

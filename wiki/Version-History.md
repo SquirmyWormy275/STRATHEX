@@ -5,6 +5,21 @@ This page records how the application changed; older limitations apply to those
 versions. Full dated notes remain in the
 [repository](https://github.com/SquirmyWormy275/STRATHEX/tree/main/docs).
 
+## 7.4.6
+
+Rehearsal profiles cannot write official results or export official schedules.
+Reviewed competitor IDs must still match the workbook when results are recorded.
+Workbook imports and saves have finite limits, all workbook writers use protected
+atomic publication, and printable schedules escape invisible controls while
+preserving the original names in competition records.
+
+Portable installs require the manifest identity from a separately protected build
+record. The trusted installer pins its recovery helper; selected Python profiles
+are checked before each execution. Browser workspaces require HTTPS even on
+loopback. New profiles pair with STRATHMARK 3.0.0rc14; all earlier complete profiles
+remain available for their saved competitions. See the
+[release notes](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/RELEASE_v7.4.6.md).
+
 ## 7.4.5
 
 Binds complete save bytes to private installation evidence and extends sheet-bound

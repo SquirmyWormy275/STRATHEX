@@ -15,7 +15,7 @@ strathex --managed-cli-python /path/to/managed/bin/python --managed capabilities
 strathex --managed-cli-python /path/to/managed/bin/python --managed event status \
   --database /private/events.sqlite3 --show synthetic:missoula \
   --event-id synthetic:missoula:underhand
-strathex --managed-workspace-url http://127.0.0.1:8789 \
+strathex --managed-workspace-url https://127.0.0.1:8789 \
   --managed-event-id synthetic:missoula:underhand
 ```
 
@@ -23,7 +23,7 @@ The first two commands run the same installed STRATHMARK application operations
 used by Missoula and the shared GUI. They do not enter legacy startup or open an
 operator workbook. Runtime failure is visible and never triggers another engine.
 The workspace link carries an event identity, never a service token. Sign in
-there with the configured scoped operator account. Remote origins require HTTPS;
+there with the configured scoped operator account. All origins, including loopback, require HTTPS with a trusted server certificate;
 credential-bearing, path-bearing or token-bearing launch origins are refused.
 Switch mutating interfaces only through deliberate editor handover. Read-only
 views can coexist and stale writes conflict.

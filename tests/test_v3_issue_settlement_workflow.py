@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from woodchopping.ui.multi_event_ui import (
+    _settle_v3_recorded_round,
     acknowledge_v3_issued_marks,
     record_and_settle_v3_round,
     record_and_settle_v3_single_event,
@@ -16,7 +17,25 @@ from woodchopping.ui.multi_event_ui import (
 from woodchopping.ui.prediction_context import PredictionAuthorityStore, attach_authority_reference
 
 
-def _v3_state(tmp_path):
+def _v3_state(tmp_path, *, local=False):
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from woodchopping.strathmark_v3_linux import LINUX_CONTRACT_DIGEST, digest
+
+    public = base64.b64encode(
+        ec.generate_private_key(ec.SECP256R1())
+        .public_key()
+        .public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    ).decode()
+    trust = {
+        "key_id": "integrity-key:linux-" + digest({"public_key": public}),
+        "key_class": "linux_installation",
+        "provider": "linux_owner_private_p256_sha256",
+        "public_key_der_b64": public,
+    }
     store = PredictionAuthorityStore(tmp_path / "authority.db")
     created = store.create_scope(owner_kind="tournament", scope_id="tournament:show")
     selected = store.select_engine(
@@ -25,9 +44,10 @@ def _v3_state(tmp_path):
         actor="actor:judge-one",
         selected_at="2026-08-27T16:00:00.000Z",
         reason_code="judge_selection",
-        mode="rehearsal",
-        contract_identity="contract:v3",
-        source_identity="c" * 40,
+        mode="local" if local else "rehearsal",
+        contract_identity=LINUX_CONTRACT_DIGEST if local else "contract:v3",
+        source_identity="c" * (64 if local else 40),
+        pre_field_signer_trust=trust if local else None,
     )
     locked = store.lock(
         selected.reference,
@@ -338,7 +358,7 @@ def test_ambiguous_approval_reentry_finishes_local_evidence_and_issue_once(tmp_p
     assert "v3_pending_approval_decision" not in state
 
 
-def test_recorded_unsettled_round_retries_without_duplicate_excel_write(tmp_path):
+def test_recorded_rehearsal_settlement_retries_without_canonical_write(tmp_path):
     state, store = _v3_state(tmp_path)
     rows = _field_rows()
     round_object = {
@@ -371,31 +391,23 @@ def test_recorded_unsettled_round_retries_without_duplicate_excel_write(tmp_path
 
     adapter = Adapter()
 
-    def write_once():
-        writes.append("excel")
-        return True
-
-    assert not record_and_settle_v3_round(
+    assert not _settle_v3_recorded_round(
         state,
-        event,
         round_object,
-        write_action=write_once,
         authority_store=store,
         v3_adapter=adapter,
     )
-    assert round_object["canonical_results_recorded"] is True
+    assert not round_object.get("canonical_results_recorded")
     assert round_object["v3_settlement_status"] == "recorded_unsettled"
 
-    assert record_and_settle_v3_round(
+    assert _settle_v3_recorded_round(
         state,
-        event,
         round_object,
-        write_action=write_once,
         authority_store=store,
         v3_adapter=adapter,
     )
 
-    assert writes == ["excel"]
+    assert writes == []
     assert round_object["v3_settlement_status"] == "settled"
     payload = adapter.payloads[-1]
     assert adapter.payloads[0] == adapter.payloads[1]
@@ -450,16 +462,14 @@ def test_ambiguous_settlement_uses_exact_recovery_without_v2_or_rewrite(tmp_path
             return {"status": "recovered"}
 
     adapter = Adapter()
-    assert record_and_settle_v3_round(
+    assert _settle_v3_recorded_round(
         state,
-        {},
         round_object,
-        write_action=lambda: writes.append("excel") or True,
         authority_store=store,
         v3_adapter=adapter,
         input_fn=lambda _prompt: "r",
     )
-    assert writes == ["excel"]
+    assert writes == []
     assert adapter.recovered == [("strathex-settle-one", "tournament:show")]
 
 
@@ -495,7 +505,7 @@ def test_v2_recording_is_unchanged_and_does_not_call_v3(tmp_path):
     assert writes == ["excel"]
 
 
-def test_single_event_v3_settlement_uses_root_authority_and_write_once_retry(tmp_path):
+def test_single_event_rehearsal_never_writes_official_results(tmp_path):
     from woodchopping.strathmark_v3_client import V3ClientError
 
     store = PredictionAuthorityStore(tmp_path / "authority.db")
@@ -553,7 +563,7 @@ def test_single_event_v3_settlement_uses_root_authority_and_write_once_retry(tmp
         authority_store=store,
         v3_adapter=adapter,
     )
-    assert record_and_settle_v3_single_event(
+    assert not record_and_settle_v3_single_event(
         state,
         round_object,
         write_action=writer,
@@ -561,9 +571,9 @@ def test_single_event_v3_settlement_uses_root_authority_and_write_once_retry(tmp
         v3_adapter=adapter,
     )
 
-    assert writes == ["excel"]
-    assert adapter.payloads[0] == adapter.payloads[1]
-    assert round_object["v3_settlement_status"] == "settled"
+    assert writes == []
+    assert adapter.payloads == []
+    assert not round_object.get("canonical_results_recorded")
 
 
 def test_single_event_v2_recording_remains_direct(tmp_path):
@@ -604,7 +614,7 @@ def test_linux_settlement_requires_checkpoint_and_recovers_confirmed_input_after
 
     from woodchopping.ui import linux_results
 
-    state, store = _v3_state(tmp_path)
+    state, store = _v3_state(tmp_path, local=True)
     rows = _field_rows()
     for index, row in enumerate(rows, 1):
         row["local_competitor_id"] = f"SYN{index}"
