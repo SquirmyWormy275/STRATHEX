@@ -5,6 +5,10 @@ installation, workbook and recovery boundaries. New installations pair with
 STRATHMARK 3.0.0rc13; handicap mathematics, V2's calculation contract, Formula,
 trained model and deliberate per-competition engine selection remain unchanged.
 
+The app pins the [exact reviewed rc13 source](https://github.com/SquirmyWormy275/STRATHMARK/commit/f064d67abe4baf7672239a14796c0bdc4f8c2071).
+Publication requires that commit to remain in merged main with the same source
+tree; the installed engine must also match its reviewed implementation digest.
+
 - Complete save bytes must match private installation-held evidence. Historical,
   changed or unbound saves and rolling backups stop for recovery review without
   automatic activation or rewriting.

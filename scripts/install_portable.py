@@ -25,8 +25,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-V2_SOURCE_COMMIT = "5408939a9eeb40c9c03f47a28c0ddb181ff99894"
-V2_SOURCE_DIGEST = "20fc54bea46bdfcb8d47a2b3746aedf4710bfc6b75e92aa905ce49434393f8df"
+V2_SOURCE_COMMIT = "f064d67abe4baf7672239a14796c0bdc4f8c2071"
+V2_SOURCE_DIGEST = "b6e315d90a6248c6eda8fd3b3727a3272dc212f4d71484665ba4d2f8ba7c9e0b"
 
 
 def require_independent(home, backup, workbook):
