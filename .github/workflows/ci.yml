@@ -182,14 +182,14 @@ jobs:
           python -m pip install build
           python -m build --wheel --outdir .tmp/linux-consumer-dist
           python -m build .tmp/linux-service-source --wheel --outdir .tmp/linux-service-dist
-          python -m venv .tmp/linux-consumer
-          python -m venv .tmp/linux-producer
+          python -m venv "$STRATHEX_CI_ENV_ROOT/linux-consumer"
+          python -m venv "$STRATHEX_CI_ENV_ROOT/linux-producer"
           if [ "$RUNNER_OS" = "Windows" ]; then
-            consumer=.tmp/linux-consumer/Scripts/python.exe
-            producer=.tmp/linux-producer/Scripts/python.exe
+            consumer="$STRATHEX_CI_ENV_ROOT/linux-consumer/Scripts/python.exe"
+            producer="$STRATHEX_CI_ENV_ROOT/linux-producer/Scripts/python.exe"
           else
-            consumer=.tmp/linux-consumer/bin/python
-            producer=.tmp/linux-producer/bin/python
+            consumer="$STRATHEX_CI_ENV_ROOT/linux-consumer/bin/python"
+            producer="$STRATHEX_CI_ENV_ROOT/linux-producer/bin/python"
           fi
           "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.4.6-py3-none-any.whl
           "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc13-py3-none-any.whl[v3-candidate]"
@@ -198,9 +198,9 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            producer=.tmp/linux-producer/Scripts/python.exe
+            producer="$STRATHEX_CI_ENV_ROOT/linux-producer/Scripts/python.exe"
           else
-            producer=.tmp/linux-producer/bin/python
+            producer="$STRATHEX_CI_ENV_ROOT/linux-producer/bin/python"
           fi
           "$producer" -m scripts.prepare_ci_storage --provision-authority
 
@@ -208,11 +208,11 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
-            consumer=.tmp/linux-consumer/Scripts/python.exe
-            producer=.tmp/linux-producer/Scripts/python.exe
+            consumer="$STRATHEX_CI_ENV_ROOT/linux-consumer/Scripts/python.exe"
+            producer="$STRATHEX_CI_ENV_ROOT/linux-producer/Scripts/python.exe"
           else
-            consumer=.tmp/linux-consumer/bin/python
-            producer=.tmp/linux-producer/bin/python
+            consumer="$STRATHEX_CI_ENV_ROOT/linux-consumer/bin/python"
+            producer="$STRATHEX_CI_ENV_ROOT/linux-producer/bin/python"
           fi
           "$producer" -I -m strathmark.v3.factory.synthetic_fixture --output "$STRATHMARK_CI_TEMP/linux-synthetic-model"
           "$consumer" scripts/smoke_linux_competition.py --v3-python "$producer" --ml-bundle "$STRATHMARK_CI_TEMP/linux-synthetic-model/ml-bundle" --output "$STRATHMARK_CI_TEMP/linux-competition-smoke"
@@ -233,9 +233,9 @@ jobs:
         run: |
           python -m pip install build
           python -m build --wheel
-          python -m venv .tmp/managed-runtime
-          .tmp/managed-runtime/bin/python -m pip install -r requirements-managed-runtime.txt
-          python scripts/verify_managed_client.py --wheel dist/strathex-7.4.6-py3-none-any.whl --managed-python .tmp/managed-runtime/bin/python
+          python -m venv "$STRATHEX_CI_ENV_ROOT/managed-runtime"
+          "$STRATHEX_CI_ENV_ROOT/managed-runtime/bin/python" -m pip install -r requirements-managed-runtime.txt
+          python scripts/verify_managed_client.py --wheel dist/strathex-7.4.6-py3-none-any.whl --managed-python "$STRATHEX_CI_ENV_ROOT/managed-runtime/bin/python"
 
   required:
     name: Required CI

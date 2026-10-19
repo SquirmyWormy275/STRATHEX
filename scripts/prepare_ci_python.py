@@ -44,8 +44,11 @@ def main():
         stream.write(str(executable.parent) + "\n")
         if os.name == "nt":
             stream.write(str(target / "Scripts") + "\n")
+    environments = target / "environments"
+    environments.mkdir(mode=0o700)
     with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as stream:
-        stream.write("STRATHEX_CI_PYTHON=" + str(executable) + "\n")
+        stream.write("STRATHEX_CI_PYTHON=" + executable.as_posix() + "\n")
+        stream.write("STRATHEX_CI_ENV_ROOT=" + environments.as_posix() + "\n")
     print("Prepared separate private Python 3.13 for disposable CI environments.")
 
 
