@@ -1,7 +1,10 @@
+import gzip
 import hashlib
+import io
 import json
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import threading
@@ -9,11 +12,13 @@ from pathlib import Path
 
 import pytest
 
+from scripts import recovery_security
 from scripts.recovery_security import (
     encrypt_file,
     load_policy,
     plaintext_sha,
     tar_digests,
+    tar_stream_digests,
     verify_file,
 )
 
@@ -82,6 +87,13 @@ def test_native_encrypt_decrypt_and_complete_member_readback(gpg_archive):
     assert tar_digests(destination, policy) == {
         "installation/synthetic-key.txt": hashlib.sha256(b"synthetic signing-key bytes; no production data").hexdigest()
     }
+    assert tar_digests(
+        destination,
+        policy,
+        expected_sizes={"installation/synthetic-key.txt": len(b"synthetic signing-key bytes; no production data")},
+    ) == tar_digests(destination, policy)
+    with pytest.raises(ValueError, match="trusted inventory"):
+        tar_digests(destination, policy, expected_sizes={"installation/synthetic-key.txt": 1})
     assert destination.stat().st_mode & 0o077 == 0
 
 
@@ -142,3 +154,155 @@ def test_tar_failure_closes_gpg_and_feeder(gpg_archive, tmp_path):
     with pytest.raises(ValueError, match="unsafe members"):
         tar_digests(destination, policy)
     assert not [t for t in threading.enumerate() if t.name == "strath-gpg-input"]
+
+
+def archive_bytes(entries):
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        for name, content, kind in entries:
+            member = tarfile.TarInfo(name)
+            member.type = kind
+            member.size = len(content)
+            if kind in (tarfile.SYMTYPE, tarfile.LNKTYPE):
+                member.linkname = "../outside"
+            archive.addfile(member, io.BytesIO(content))
+    return output.getvalue()
+
+
+def test_bounded_reader_preserves_unicode_and_long_pax_names():
+    name = "installation/" + "saved-competition-" * 10 + "é.json"
+    contents = b"synthetic retained evidence"
+    compressed = archive_bytes([(name, contents, tarfile.REGTYPE)])
+    expected = {name: hashlib.sha256(contents).hexdigest()}
+    assert tar_stream_digests(io.BytesIO(compressed)) == expected
+    assert tar_stream_digests(io.BytesIO(compressed), expected_sizes={name: len(contents)}) == expected
+
+
+def test_declared_member_limit_rejected_before_missing_payload_is_read():
+    member = tarfile.TarInfo("oversized")
+    member.size = recovery_security.MAX_MEMBER_BYTES + 1
+    compressed = gzip.compress(member.tobuf() + b"\0" * 1024)
+    with pytest.raises(ValueError, match="member budget"):
+        tar_stream_digests(io.BytesIO(compressed))
+
+
+def test_default_member_count_includes_directories():
+    compressed = archive_bytes(
+        [(f"directory-{i}", b"", tarfile.DIRTYPE) for i in range(recovery_security.MAX_ARCHIVE_MEMBERS + 1)]
+    )
+    with pytest.raises(ValueError, match="member budget"):
+        tar_stream_digests(io.BytesIO(compressed))
+
+
+def test_expansion_bomb_and_trailing_expansion_are_bounded(monkeypatch):
+    monkeypatch.setattr(recovery_security, "MAX_EXPANDED_BYTES", 65536)
+    compressed = archive_bytes([("large", b"\0" * 100000, tarfile.REGTYPE)])
+    with pytest.raises(ValueError, match="expanded-byte budget"):
+        tar_stream_digests(io.BytesIO(compressed))
+    valid = archive_bytes([("small", b"small", tarfile.REGTYPE)])
+    # A second gzip member after tar's end blocks must consume the same budget.
+    with pytest.raises(ValueError, match="expanded-byte budget"):
+        tar_stream_digests(io.BytesIO(valid + gzip.compress(b"\0" * 100000)))
+
+
+@pytest.mark.parametrize("kind", [tarfile.XHDTYPE, tarfile.XGLTYPE, tarfile.GNUTYPE_LONGNAME])
+def test_metadata_size_is_bounded_even_for_large_trusted_inventory(kind):
+    member = tarfile.TarInfo("metadata")
+    member.type = kind
+    member.size = recovery_security.MAX_TAR_METADATA_BYTES + 1
+    compressed = gzip.compress(member.tobuf() + b"\0" * 1024)
+    with pytest.raises(ValueError, match="metadata budget"):
+        tar_stream_digests(io.BytesIO(compressed), expected_sizes={"huge": 21 * 1024**3})
+
+
+def test_chained_metadata_and_sparse_block_maps_are_refused():
+    longname = tarfile.TarInfo("longname")
+    longname.type = tarfile.GNUTYPE_LONGNAME
+    longname.size = 5
+    chain = (longname.tobuf() + b"name\0" + b"\0" * 507) * 9
+    with pytest.raises(ValueError, match="metadata budget"):
+        tar_stream_digests(io.BytesIO(gzip.compress(chain)), expected_sizes={"name": 21 * 1024**3})
+    output = io.BytesIO()
+    with tarfile.open(fileobj=output, mode="w:gz") as archive:
+        sparse = tarfile.TarInfo("sparse")
+        sparse.pax_headers = {"GNU.sparse.major": "1", "GNU.sparse.minor": "0"}
+        sparse.size = 100
+        archive.addfile(sparse, io.BytesIO(b"999999999999999999999\n" + b"\0" * 79))
+    with pytest.raises(ValueError, match="sparse file"):
+        tar_stream_digests(io.BytesIO(output.getvalue()), expected_sizes={"sparse": 21 * 1024**3})
+
+
+@pytest.mark.parametrize(
+    "entries, inventory, error",
+    [
+        ([("unexpected", b"a", tarfile.REGTYPE)], {"expected": 1}, "trusted inventory"),
+        ([("expected", b"ab", tarfile.REGTYPE)], {"expected": 1}, "trusted inventory"),
+        ([("expected", b"a", tarfile.REGTYPE)], {"expected": 1, "missing": 0}, "trusted inventory"),
+        ([("expected", b"", tarfile.DIRTYPE)], {"expected": 0}, "trusted inventory"),
+        ([("same", b"a", tarfile.REGTYPE)] * 2, {"same": 1, "missing": 0}, "repeats a member"),
+        ([("../outside", b"", tarfile.REGTYPE)], {"expected": 0}, "unsafe members"),
+        ([("/absolute", b"", tarfile.REGTYPE)], {"expected": 0}, "unsafe members"),
+        ([("C:/absolute", b"", tarfile.REGTYPE)], {"expected": 0}, "unsafe members"),
+        ([("linked", b"", tarfile.SYMTYPE)], {"linked": 0}, "unsafe members"),
+        ([("linked", b"", tarfile.LNKTYPE)], {"linked": 0}, "unsafe members"),
+    ],
+)
+def test_exact_local_inventory_rejects_changed_archive(entries, inventory, error):
+    with pytest.raises(ValueError, match=error):
+        tar_stream_digests(io.BytesIO(archive_bytes(entries)), expected_sizes=inventory)
+
+
+def test_trusted_inventory_allows_larger_legitimate_snapshot(monkeypatch):
+    monkeypatch.setattr(recovery_security, "MAX_MEMBER_BYTES", 32)
+    monkeypatch.setattr(recovery_security, "MAX_EXPANDED_BYTES", 32768)
+    monkeypatch.setattr(recovery_security, "MAX_ARCHIVE_MEMBERS", 1)
+    entries = [(f"saved-{i}", b"evidence" * 10000, tarfile.REGTYPE) for i in range(2)]
+    compressed = archive_bytes(entries)
+    with pytest.raises(ValueError, match="member budget"):
+        tar_stream_digests(io.BytesIO(compressed))
+    assert tar_stream_digests(
+        io.BytesIO(compressed), expected_sizes={name: len(data) for name, data, _ in entries}
+    ) == {name: hashlib.sha256(data).hexdigest() for name, data, _ in entries}
+
+
+@pytest.mark.parametrize("inventory", [{"../outside": 1}, {"safe": -1}, {"safe": True}])
+def test_unusable_caller_inventory_fails_before_stream_read(inventory):
+    with pytest.raises(ValueError, match="invalid trusted recovery inventory"):
+        tar_stream_digests(io.BytesIO(b"not an archive"), expected_sizes=inventory)
+
+
+@pytest.mark.parametrize("inventory", [None, {"safe": 0}, {"safe": 100 * 1024**3}])
+def test_archive_deadline_is_finite_even_with_large_local_inventory(monkeypatch, inventory):
+    now = iter([0, recovery_security.MAX_INVENTORY_DEADLINE_SECONDS + 1])
+    monkeypatch.setattr(recovery_security.time, "monotonic", lambda: next(now))
+    with pytest.raises(ValueError, match="deadline expired"):
+        tar_stream_digests(io.BytesIO(archive_bytes([("safe", b"", tarfile.REGTYPE)])), expected_sizes=inventory)
+
+
+def test_truncated_gzip_is_refused_after_tar_end_blocks():
+    compressed = archive_bytes([("safe", b"data", tarfile.REGTYPE)])
+    with pytest.raises(EOFError):
+        tar_stream_digests(io.BytesIO(compressed[:-4]))
+
+
+def test_encrypted_readback_uses_same_bounds_and_preserves_archive(gpg_archive):
+    source, destination, policy = gpg_archive
+    member = tarfile.TarInfo("oversized")
+    member.size = recovery_security.MAX_MEMBER_BYTES + 1
+    original = gzip.compress(member.tobuf() + b"\0" * 1024)
+    source.write_bytes(original)
+    encrypt_file(source, destination, policy)
+    encrypted = destination.read_bytes()
+    with pytest.raises(ValueError, match="member budget"):
+        tar_digests(destination, policy)
+    assert source.read_bytes() == original
+    assert destination.read_bytes() == encrypted
+    assert not [t for t in threading.enumerate() if t.name == "strath-gpg-input"]
+
+
+def test_helper_runs_without_installed_packages():
+    subprocess.run(
+        [sys.executable, "-I", "-S", str(Path(recovery_security.__file__)), "--help"],
+        check=True,
+        capture_output=True,
+    )

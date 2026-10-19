@@ -16,6 +16,10 @@ Formula, trained model and per-competition V2/V3 choice are unchanged.
 - New Linux competition profiles verify the reviewed source and implementation
   pair. Existing saved competitions keep their original runtime, model, keys
   and evidence.
+- The standalone recovery companion checks archive size, expansion, metadata and
+  processing limits. Profile-switch backups use an exact local file inventory
+  to preserve large snapshots through bounded plaintext or encrypted readback.
+  Both bootstrap scripts must come from the same release.
 
 See [the security repair details](SECURITY_CLOUD_2026-10-19.md) for changed operator
 requirements, [the runtime contract](CURRENT_RUNTIME_CONTRACT.md) for supported
