@@ -19,6 +19,14 @@ from woodchopping.v3_authority_store import V3CommandStore
 LINUX_PROTOCOL = "strathmark.v3-linux-competition.v1"
 FROZEN_LINUX_SOURCE_COMMIT = "e5c3f2de6a316dc4a38aed05e4fc4092893a7c84"
 FROZEN_LINUX_IMPLEMENTATION_DIGEST = "29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7"
+# New installations use the security source; retained rc7 profiles keep their
+# original interpreter, source, model and installation signing identity.
+LINUX_SECURITY_SOURCE_COMMIT = "5408939a9eeb40c9c03f47a28c0ddb181ff99894"
+LINUX_SECURITY_IMPLEMENTATION_DIGEST = "20fc54bea46bdfcb8d47a2b3746aedf4710bfc6b75e92aa905ce49434393f8df"
+REVIEWED_LINUX_IMPLEMENTATIONS = {
+    FROZEN_LINUX_IMPLEMENTATION_DIGEST: (FROZEN_LINUX_SOURCE_COMMIT, "3.0.0rc7"),
+    LINUX_SECURITY_IMPLEMENTATION_DIGEST: (LINUX_SECURITY_SOURCE_COMMIT, "3.0.0rc12"),
+}
 # Frozen separately from the Windows V7 service and the earlier preview profile.
 LINUX_CONTRACT_DIGEST = "162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e"
 
@@ -90,8 +98,11 @@ class LinuxV3Competition:
 
     @staticmethod
     def _validate_identity(identity):
+        source = identity.get("source_digest")
+        reviewed = REVIEWED_LINUX_IMPLEMENTATIONS.get(source) if isinstance(source, str) else None
         if (
-            identity.get("source_digest") != FROZEN_LINUX_IMPLEMENTATION_DIGEST
+            reviewed is None
+            or identity.get("package_version") != reviewed[1]
             or identity.get("protocol") != LINUX_PROTOCOL
             or identity.get("contract_digest") != LINUX_CONTRACT_DIGEST
             or identity.get("purpose") != "competition_lifecycle"

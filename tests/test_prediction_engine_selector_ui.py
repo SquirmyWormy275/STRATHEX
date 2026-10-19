@@ -45,9 +45,42 @@ def test_selector_has_no_default_and_records_deliberate_v2_choice(authority_stor
     assert receipt.reason_code == "known_baseline"
     assert receipt.reason_note == "Trusted baseline for this event"
     assert receipt.contract_identity == "strathmark-v2/2.0.0"
-    assert receipt.source_identity == "strathmark:a231ad65fe82317516cc82a282761d73adb0c0e3"
+    assert receipt.source_identity == "strathmark:5408939a9eeb40c9c03f47a28c0ddb181ff99894"
     assert set(state) == {"prediction_authority_ref"}
     assert "No engine is selected by default" in capsys.readouterr().out
+
+
+def test_security_upgrade_preserves_saved_v2_source_and_selection(authority_store, monkeypatch):
+    from woodchopping.engine_selection import PredictionExecutionContext
+
+    retained_source = "strathmark:a231ad65fe82317516cc82a282761d73adb0c0e3"
+    created = authority_store.create_scope(owner_kind="single_event", scope_id="retained:v2")
+    selected = authority_store.select_engine(
+        created.reference,
+        engine="v2",
+        actor="judge-7",
+        selected_at="2026-08-27T08:30:00Z",
+        reason_code="known_baseline",
+        mode="production",
+        contract_identity="strathmark-v2/2.0.0",
+        source_identity=retained_source,
+    )
+    locked = authority_store.lock(
+        selected.reference,
+        boundary="first_authoritative_numeric_action",
+        locked_at="2026-08-27T08:31:00Z",
+    )
+    state = {}
+    attach_authority_reference(state, locked.reference)
+    monkeypatch.setattr(multi_event_ui, "_V2_SOURCE_IDENTITY", "strathmark:" + "f" * 40)
+
+    resolved = multi_event_ui.resolve_prediction_engine(state, authority_store)
+    context = PredictionExecutionContext.from_receipt(resolved)
+
+    assert resolved.reference == locked.reference
+    assert context.selected_engine == "v2"
+    assert context.contract_identity == "strathmark-v2/2.0.0"
+    assert context.source_identity == retained_source
 
 
 def test_selector_rejects_reason_that_cannot_enter_strathmark_contract(authority_store, monkeypatch, capsys):

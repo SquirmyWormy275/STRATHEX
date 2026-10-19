@@ -156,7 +156,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: SquirmyWormy275/STRATHMARK
-          ref: e5c3f2de6a316dc4a38aed05e4fc4092893a7c84
+          ref: 5408939a9eeb40c9c03f47a28c0ddb181ff99894
           path: .tmp/linux-service-source
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -177,7 +177,7 @@ jobs:
             producer=.tmp/linux-producer/bin/python
           fi
           "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.4.4-py3-none-any.whl
-          "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc7-py3-none-any.whl[v3-candidate]"
+          "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc12-py3-none-any.whl[v3-candidate]"
 
       - name: Prepare isolated storage paths
         shell: bash
