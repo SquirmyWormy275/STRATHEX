@@ -196,13 +196,15 @@ def installation_lock(home):
         yield
 
 
-def prepare_installation_home(home):
+def prepare_installation_home(home, *, create=True):
     """Protect staging and profile names without changing shared directory modes."""
     home = Path(home).expanduser().absolute()
     for directory in reversed((home, *home.parents)):
         try:
             status = directory.lstat()
         except FileNotFoundError:
+            if not create:
+                raise
             directory.mkdir(mode=0o700)
             status = directory.lstat()
         if (
@@ -221,7 +223,8 @@ def identifier(value):
 
 
 def profile(home, release):
-    return read_json(home / "profiles" / identifier(release) / "profile.json")
+    root = prepare_installation_home(home / "profiles" / identifier(release), create=False)
+    return read_json(root / "profile.json")
 
 
 def recovery_archive(home, backup, workbook):
@@ -261,7 +264,7 @@ def recovery_archive(home, backup, workbook):
     # Adopted profiles can keep their original paths. Their authority and saved
     # competitions must be preserved just as completely as new managed profiles.
     for descriptor in sorted(home.glob("profiles/*/profile.json")):
-        saved = read_json(descriptor)
+        saved = profile(home, descriptor.parent.name)
         prefix = "retained-profiles/" + identifier(saved["release_id"])
         for key in ("data_dir", "runtime_root"):
             root = Path(saved[key])
@@ -437,8 +440,9 @@ def _install_verified(home, bundle, manifest, workbook, backup, uv, *, stage_onl
     if not stage_only or backup.exists():
         backup = backup.resolve(strict=True)
         require_independent(home, backup, workbook)
-    root = home / "profiles" / release
-    root.mkdir(parents=True, exist_ok=False, mode=0o700)
+    profiles = prepare_installation_home(home / "profiles")
+    root = profiles / release
+    root.mkdir(exist_ok=False, mode=0o700)
     try:
         for role in ("app", "runtime"):
             env = root / role
@@ -666,7 +670,7 @@ def main():
         command.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
-        home = args.home.resolve()
+        home = args.home.expanduser().absolute()
         with installation_lock(home):
             if args.operation == "install":
                 if not args.uv:
@@ -684,7 +688,9 @@ def main():
                     json.dumps(
                         {
                             "active": read_json(home / "active.json") if (home / "active.json").exists() else None,
-                            "profiles": [read_json(path) for path in sorted(home.glob("profiles/*/profile.json"))],
+                            "profiles": [
+                                profile(home, path.parent.name) for path in sorted(home.glob("profiles/*/profile.json"))
+                            ],
                         },
                         indent=2,
                     )

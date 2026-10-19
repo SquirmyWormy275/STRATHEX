@@ -289,9 +289,11 @@ def test_profile_switch_and_rollback_preserve_keys_saved_scope_and_archive(tmp_p
         if encrypted:
             import io
 
-            from scripts.recovery_security import verify_file
+            from scripts.recovery_security import inspect_file
 
-            verify_file(archive_path, home / "recovery-encryption-policy.json")
+            inspection = inspect_file(archive_path, home / "recovery-encryption-policy.json")
+            assert inspection["verification_scope"] == "integrity_only"
+            assert inspection["origin_authenticated"] is False
             assert archive_path.name.endswith(".tar.gz.gpg")
             assert not list(backup.glob("*.tar.gz"))
             raw = subprocess.run(command + ["--decrypt", str(archive_path)], check=True, capture_output=True).stdout
@@ -470,3 +472,87 @@ def test_encrypted_portable_profile_keeps_retro_flags_out_of_managed_cli(tmp_pat
         == 0
     )
     assert received == [(Path("/explicit/component/python"), ["capabilities", "--json"])]
+
+
+@pytest.mark.parametrize("kind", ["shared", "symlink"])
+def test_install_refuses_unsafe_profiles_parent_before_uv(tmp_path, monkeypatch, kind):
+    bundle, _ = _synthetic_bundle(tmp_path)
+    home = tmp_path / "installation"
+    home.mkdir(mode=0o755)
+    profiles = home / "profiles"
+    victim = tmp_path / "unrelated"
+    victim.mkdir(mode=0o700)
+    retained = victim / "retained-profile"
+    retained.write_bytes(b"unchanged original competition")
+    if kind == "shared":
+        profiles.mkdir(mode=0o777)
+        profiles.chmod(0o777)
+    else:
+        profiles.symlink_to(victim, target_is_directory=True)
+    workbook = tmp_path / "workbook.xlsx"
+    workbook.write_bytes(b"synthetic workbook")
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: pytest.fail("unsafe profile reached uv"))
+    with pytest.raises(PermissionError, match="owner-controlled"):
+        install(home, bundle, workbook, tmp_path / "not-mounted", "uv", stage_only=True)
+    assert retained.read_bytes() == b"unchanged original competition"
+    assert not (profiles / "synthetic-verified").exists()
+    assert not (home / "active.json").exists()
+    if kind == "shared":
+        assert profiles.stat().st_mode & 0o777 == 0o777
+    else:
+        assert profiles.is_symlink()
+
+
+def test_install_provisions_private_profiles_parent_before_uv_with_umask_zero(tmp_path, monkeypatch):
+    bundle, _ = _synthetic_bundle(tmp_path)
+    home = tmp_path / "installation"
+    home.mkdir(mode=0o755)
+    workbook = tmp_path / "workbook.xlsx"
+    workbook.write_bytes(b"synthetic workbook")
+    called = []
+
+    def inspect_before_uv(*_args, **_kwargs):
+        called.append(True)
+        assert (home / "profiles").stat().st_mode & 0o777 == 0o700
+        assert (home / "profiles/synthetic-verified").stat().st_mode & 0o777 == 0o700
+        raise RuntimeError("stop the synthetic installer after checking its private destination")
+
+    monkeypatch.setattr(subprocess, "run", inspect_before_uv)
+    previous = os.umask(0)
+    try:
+        with pytest.raises(RuntimeError, match="synthetic installer"):
+            install(home, bundle, workbook, tmp_path / "not-mounted", "uv", stage_only=True)
+    finally:
+        os.umask(previous)
+    assert called == [True]
+    assert home.stat().st_mode & 0o777 == 0o755
+    assert not (home / "active.json").exists()
+
+
+def test_existing_safe_profile_is_read_without_permission_or_data_changes(tmp_path):
+    from scripts.install_portable import profile
+
+    root = tmp_path / "profiles/retained"
+    root.mkdir(parents=True, mode=0o700)
+    (tmp_path / "profiles").chmod(0o755)
+    data = {"release_id": "retained", "state": "verified", "original": "source identity"}
+    atomic_json(root / "profile.json", data)
+    before = (root.stat().st_mode, (tmp_path / "profiles").stat().st_mode)
+    assert profile(tmp_path, "retained") == data
+    assert before == (root.stat().st_mode, (tmp_path / "profiles").stat().st_mode)
+    (tmp_path / "profiles").chmod(0o777)
+    with pytest.raises(PermissionError, match="owner-controlled"):
+        profile(tmp_path, "retained")
+    assert read_json(root / "profile.json") == data
+
+
+def test_cli_preserves_home_alias_evidence_before_locking(tmp_path, monkeypatch):
+    from scripts import install_portable
+
+    target = tmp_path / "actual-home"
+    target.mkdir(mode=0o700)
+    alias = tmp_path / "home-alias"
+    alias.symlink_to(target, target_is_directory=True)
+    monkeypatch.setattr(install_portable.sys, "argv", ["install_portable.py", "--home", str(alias), "list"])
+    assert install_portable.main() == 2
+    assert list(target.iterdir()) == []
