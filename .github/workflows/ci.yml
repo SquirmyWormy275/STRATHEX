@@ -58,14 +58,17 @@ jobs:
       - name: Install package and dev dependencies
         run: pip install -e ".[dev,api-test]"
 
+      - name: Prepare isolated storage paths
+        run: python -m scripts.prepare_ci_storage --provision-authority
+
       - name: Run pytest (skip Ollama-dependent tests)
         env:
           STRATHMARK_TEST_DB: "1"
-          STRATHMARK_DB_PATH: ${{ runner.temp }}/strathex-v2.sqlite3
-          STRATHMARK_V3_DB_PATH: ${{ runner.temp }}/strathex-v3.sqlite3
-          STRATHEX_PREDICTION_AUTHORITY_DB: ${{ runner.temp }}/strathex-authority.sqlite3
-          STRATHEX_V3_COMMAND_DB: ${{ runner.temp }}/strathex-commands.sqlite3
-        run: pytest tests/ -v --tb=short -m "not ollama" --cov=woodchopping --cov-report=term-missing --basetemp=${{ runner.temp }}/strathex-pytest -p no:cacheprovider
+          STRATHMARK_DB_PATH: ${{ env.STRATHMARK_CI_TEMP }}/strathex-v2.sqlite3
+          STRATHMARK_V3_DB_PATH: ${{ env.STRATHMARK_CI_TEMP }}/strathex-v3.sqlite3
+          STRATHEX_PREDICTION_AUTHORITY_DB: ${{ env.STRATHMARK_CI_TEMP }}/strathex-authority.sqlite3
+          STRATHEX_V3_COMMAND_DB: ${{ env.STRATHMARK_CI_TEMP }}/strathex-commands.sqlite3
+        run: pytest tests/ -v --tb=short -m "not ollama" --cov=woodchopping --cov-report=term-missing --basetemp=${{ env.STRATHMARK_CI_TEMP }}/strathex-pytest -p no:cacheprovider
 
   build:
     name: Installed app (${{ matrix.os }} / Python 3.13)
@@ -86,6 +89,9 @@ jobs:
 
       - name: Install build
         run: pip install build openpyxl
+
+      - name: Prepare isolated storage paths
+        run: python -m scripts.prepare_ci_storage
 
       - name: Build distribution
         run: python -m build
@@ -122,6 +128,9 @@ jobs:
           python -m pip install build
           python -m build --outdir .tmp/consumer-dist
           python -m build .tmp/service-source --outdir .tmp/service-dist
+
+      - name: Prepare isolated storage paths
+        run: python -m scripts.prepare_ci_storage
 
       - name: Exercise installed client and service over loopback
         run: >-
@@ -169,8 +178,29 @@ jobs:
           fi
           "$consumer" -m pip install .tmp/linux-consumer-dist/strathex-7.4.4-py3-none-any.whl
           "$producer" -m pip install -r .tmp/linux-service-source/requirements/v3-release.lock ".tmp/linux-service-dist/strathmark-3.0.0rc7-py3-none-any.whl[v3-candidate]"
-          "$producer" -I -m strathmark.v3.factory.synthetic_fixture --output .tmp/linux-synthetic-model
-          "$consumer" scripts/smoke_linux_competition.py --v3-python "$producer" --ml-bundle .tmp/linux-synthetic-model/ml-bundle --output .tmp/linux-competition-smoke
+
+      - name: Prepare isolated storage paths
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            producer=.tmp/linux-producer/Scripts/python.exe
+          else
+            producer=.tmp/linux-producer/bin/python
+          fi
+          "$producer" -m scripts.prepare_ci_storage --provision-authority
+
+      - name: Exercise the installed local competition runtime
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            consumer=.tmp/linux-consumer/Scripts/python.exe
+            producer=.tmp/linux-producer/Scripts/python.exe
+          else
+            consumer=.tmp/linux-consumer/bin/python
+            producer=.tmp/linux-producer/bin/python
+          fi
+          "$producer" -I -m strathmark.v3.factory.synthetic_fixture --output "$STRATHMARK_CI_TEMP/linux-synthetic-model"
+          "$consumer" scripts/smoke_linux_competition.py --v3-python "$producer" --ml-bundle "$STRATHMARK_CI_TEMP/linux-synthetic-model/ml-bundle" --output "$STRATHMARK_CI_TEMP/linux-competition-smoke"
 
   managed_client:
     name: Installed managed client (Python 3.13)
