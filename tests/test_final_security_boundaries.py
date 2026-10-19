@@ -135,6 +135,13 @@ def test_rehearsal_cannot_export_or_write_official_results(tmp_path, monkeypatch
     )
     assert not field.get("canonical_results_recorded")
     assert not list(tmp_path.glob("*schedule*.txt"))
+    from woodchopping.ui import handicap_ui, multi_event_ui
+
+    monkeypatch.setattr(multi_event_ui, "_prediction_authority_store", store)
+    monkeypatch.setattr("builtins.input", lambda *_: pytest.fail("rehearsal reached legacy result input"))
+    monkeypatch.setattr("woodchopping.data.store_registry.get_store", lambda: pytest.fail("ResultStore changed"))
+    for writer in (excel_io.append_results_to_excel, handicap_ui.append_results_to_excel):
+        assert not writer(None, {"event": "UH"}, field, state)
 
 
 def test_local_unissued_results_block_before_collection(tmp_path):

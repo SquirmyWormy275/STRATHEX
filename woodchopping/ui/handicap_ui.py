@@ -662,6 +662,14 @@ def append_results_to_excel(
     from woodchopping.data.workbook_guard import _restore_round_state, _snapshot_round_state
 
     round_snapshot = _snapshot_round_state(round_object)
+    if tournament_state is not None and "prediction_authority_ref" in tournament_state:
+        from woodchopping.ui.official_eligibility import require_official_eligibility
+
+        try:
+            require_official_eligibility(tournament_state)
+        except ValueError as error:
+            print(f"[BLOCKED] {error}")
+            return False
 
     # Determine if using new tournament system or legacy single-heat system
     if round_object is not None:
