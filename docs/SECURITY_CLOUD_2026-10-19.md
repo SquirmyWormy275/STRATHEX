@@ -75,3 +75,5 @@ sheets, issued/result preservation, and a real TLS listener proving that an
 untrusted certificate cannot receive the V3 bearer. Release checks use synthetic
 workbooks and isolated databases, with no production deployment or operator-data
 migration.
+
+The initial-heat regeneration command also rejects any started or completed round. It cannot overwrite existing official results after a prior approval.

@@ -99,7 +99,7 @@ def main():
             json.dumps(
                 {
                     "status": "PASS",
-                    "consumer": "installed STRATHEX 7.4.3",
+                    "consumer": "installed STRATHEX 7.4.4",
                     "producer_contract": capabilities["schema_version"],
                     "checks": ["supplied configuration", "persistent resume", "scope refusal", "no workbook startup"],
                     "official_use": False,

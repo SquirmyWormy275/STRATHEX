@@ -129,6 +129,7 @@ from woodchopping.ui.workflow_integrity import (
     approve_marks,
     bind_calculation,
     prepare_field_change,
+    protect_evidence,
     require_approved_marks,
 )
 
@@ -1316,6 +1317,12 @@ def single_event_menu():
 
             # Check if heats already exist
             if tournament_state.get("rounds"):
+                try:
+                    protect_evidence(tournament_state)
+                except ValueError as error:
+                    print(f"\n[BLOCKED] {error}")
+                    input("\nPress Enter to return to menu...")
+                    continue
                 print("\n" + "=" * 70)
                 print("  [WARN] WARNING: HEATS ALREADY EXIST")
                 print("=" * 70)

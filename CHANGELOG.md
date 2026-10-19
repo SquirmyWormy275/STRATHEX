@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — Security Cloud repairs (2026-10-19)
+## [7.4.4] - 2026-10-19
 
 - Store roster/result text literally in XLSX; escape bracket HTML and filter terminal controls.
 - Require verified HTTPS for V2/V7 HTTP and an independent V7 signer trust anchor.

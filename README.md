@@ -14,6 +14,14 @@ days, results, saves and Excel exports.
 cutting times and handicap marks. STRATHEX gives judges the workflow to review
 those marks and run the competition.
 
+## Security maintenance
+
+STRATHEX 7.4.4 protects exported text and preserves competition evidence when
+setup changes. Single-event V2 marks need approval before official use. HTTP
+connections require verified HTTPS; the V7 rehearsal also needs an independently
+provisioned signer identity. See the [security update and migration notes](docs/SECURITY_CLOUD_2026-10-19.md)
+before upgrading. Keep the original runtime and backups for saved V3 competitions.
+
 ## Start here
 
 You need **Python 3.13**, a UTF-8 terminal and a competition workbook with the
@@ -59,7 +67,7 @@ stops the selected workflow instead of switching engines.
 | **V3 — NUMERIC PREVIEW ONLY** | Older preview installation. Proposed times and marks; no official issue or settlement. |
 | **V3 — REHEARSAL** | Development service. Windows production qualification is incomplete. |
 
-The current Linux competition pair is **STRATHEX 7.4.3 + STRATHMARK 3.0.0rc7**.
+The retained Linux competition pair is **STRATHEX 7.4.3 + STRATHMARK 3.0.0rc7**.
 Follow the [Linux V3 setup guide](docs/V3_LINUX_COMPETITION.md) for its separate
 Python environment, trained model, signing key and independent backup directory.
 The Linux LLM council is unavailable, so fields require explicit degraded or

@@ -22,6 +22,7 @@ from woodchopping.ui.workflow_integrity import (
     field_context_digest,
     new_event_id,
     prepare_field_change,
+    protect_evidence,
     require_approved_marks,
     require_removable_event,
 )
@@ -264,7 +265,8 @@ def test_deleting_unused_draft_does_not_renumber_ids(monkeypatch):
     assert new_event_id() not in {"event_1", "event_2", "event_3"}
 
 
-def test_single_event_menu_blocks_direct_heat_generation_without_approval():
+@pytest.mark.parametrize("recorded", [False, True])
+def test_single_event_menu_blocks_unapproved_or_recorded_heat_replacement(recorded):
     # Execute only the function: importing MainProgram opens the operator workbook.
     path = Path(__file__).resolve().parents[1] / "MainProgramV5_2.py"
     function = next(
@@ -277,6 +279,9 @@ def test_single_event_menu_blocks_direct_heat_generation_without_approval():
 
     def select(state, **_):
         state.update(_state())
+        if recorded:
+            approve_marks(state, "JD", "2026-10-18T12:00:00Z")
+            state["rounds"] = [{"status": "completed", "results": {"Alice": 40}}]
 
     namespace = {
         "pd": pd,
@@ -292,8 +297,13 @@ def test_single_event_menu_blocks_direct_heat_generation_without_approval():
         "get_competitor_status_display": lambda _: "competitors",
         "resolve_prediction_engine": lambda *_: SimpleNamespace(engine="v2"),
         "require_approved_marks": require_approved_marks,
+        "protect_evidence": protect_evidence,
     }
     exec(compile(ast.Module(body=[function], type_ignores=[]), str(path), "exec"), namespace)
     namespace["single_event_menu"]()
-    assert any("approve" in line for line in output)
-    assert namespace["tournament_state"]["rounds"] == []
+    if recorded:
+        assert any("cannot be replaced" in line for line in output)
+        assert namespace["tournament_state"]["rounds"] == [{"status": "completed", "results": {"Alice": 40}}]
+    else:
+        assert any("approve" in line for line in output)
+        assert namespace["tournament_state"]["rounds"] == []
