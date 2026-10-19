@@ -157,7 +157,9 @@ jobs:
   linux_competition:
     name: Installed Linux competition (${{ matrix.os }} / Python 3.13)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    # All 37 commands take a fresh runtime check; slower Windows hosts measured
+    # 46–57 seconds per check. Keep each command's own shorter deadline intact.
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 45 || 30 }}
     strategy:
       fail-fast: false
       matrix:

@@ -38,13 +38,15 @@ The Linux profile uses its separate signed local lifecycle. Installing this
 release neither supplies the witness nor migrates an existing Linux profile.
 
 Selected-runtime verification has a measured Windows performance limitation.
-The hosted Windows rehearsal checked roughly 13,700 runtime inputs in 49–51 seconds
-before each command. These fresh ownership, permission and identity checks are
-intentional; later commands do not reuse a previous command's security result.
+Hosted Windows rehearsals checked roughly 13,300–13,700 runtime inputs before
+each command; a slower runner measured 46–57 seconds per check. These fresh
+ownership, permission and identity checks are intentional; later commands do not
+reuse a previous command's security result.
 The complete synthetic numerical rehearsal performs 13 such checks and has a
-15-minute Windows scenario budget, while each command retains its own shorter
-limit. This hosted measurement does not describe Linux performance or establish
-Windows V7 qualification.
+15-minute Windows scenario budget. The complete competition workflow performs
+37 checks and has a 45-minute Windows CI job allowance; its Linux allowance
+remains 30 minutes. Every command retains its own shorter limit. These hosted
+measurements do not describe Linux performance or establish Windows V7 qualification.
 
 ## Ownership
 

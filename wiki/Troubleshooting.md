@@ -35,11 +35,14 @@ key. Do not create a replacement command or edit ledgers. See [Recovery](Backups
 ## A selected runtime takes time to start on Windows
 
 Before a command starts, STRATHEX checks the selected runtime's ownership,
-permissions and installed identity again. In the hosted Windows rehearsal,
-checking roughly 13,700 inputs took 49–51 seconds per command. Repeated checks are
-intentional; do not disable them or broaden directory permissions to speed up
+permissions and installed identity again. Hosted Windows rehearsals checked
+roughly 13,300–13,700 inputs per command; a slower runner measured 46–57 seconds
+per check. Repeated checks are intentional; do not disable them or broaden
+directory permissions to speed up
 startup. The complete synthetic numerical rehearsal performs 13 checks and allows
-15 minutes on Windows, while individual command limits stay unchanged.
+15 minutes on Windows. The complete competition workflow performs 37 checks and
+has a 45-minute Windows CI job allowance, while Linux keeps 30 minutes and
+individual command limits stay unchanged.
 
 This is a measured Windows performance limitation, not a Linux timing estimate or
 Windows V7 production qualification. The separate qualification requirements still
