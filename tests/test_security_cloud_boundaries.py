@@ -271,7 +271,7 @@ def test_single_event_menu_blocks_unapproved_or_recorded_heat_replacement(record
     path = Path(__file__).resolve().parents[1] / "MainProgramV5_2.py"
     function = next(
         node
-        for node in ast.parse(path.read_text()).body
+        for node in ast.parse(path.read_text(encoding="utf-8")).body
         if isinstance(node, ast.FunctionDef) and node.name == "single_event_menu"
     )
     output = []
