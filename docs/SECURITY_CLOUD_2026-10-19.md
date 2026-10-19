@@ -2,7 +2,10 @@
 
 The eight STRATHEX findings against `bcfe4e50e1449b2585a037215c79f5a7e955e9da`
 are addressed at their output, transport and workflow boundaries. Numeric models,
-engine selection, source pins and handicap mathematics are unchanged.
+engine selection and handicap mathematics are unchanged. Release 7.4.4 also adopts
+the reviewed STRATHMARK 3.0.0rc12 security source for new installations. Existing
+source-bound competitions retain their original runtime, model, signing identity
+and saved evidence; see [the runtime contract](CURRENT_RUNTIME_CONTRACT.md).
 
 ## Workbook and display boundaries
 
@@ -33,7 +36,8 @@ The frozen V7 contract signs pre-field receipts but does not provide a signature
 on every lifecycle dictionary. Lifecycle responses are authenticated by the verified
 TLS channel; they are not newly claimed to be independently signed artifacts.
 Changing that persisted-artifact property requires a coordinated future contract.
-V7 remains rehearsal-only; the separate Linux subprocess V3 profile is unchanged.
+V7 remains rehearsal-only. The separate Linux subprocess lifecycle keeps its
+protocol, with reviewed rc12 source identities supported for new profiles.
 
 The installed V7 synthetic pair script provisions an ephemeral certificate and
 signer digest through local fixture setup before starting the network listener.
@@ -73,7 +77,6 @@ Regression coverage includes formula-leading and Unicode roster values, all brac
 HTML contexts, terminal controls, stable event references, unapproved/stale mark
 sheets, issued/result preservation, and a real TLS listener proving that an
 untrusted certificate cannot receive the V3 bearer. Release checks use synthetic
-workbooks and isolated databases, with no production deployment or operator-data
-migration.
+workbooks and isolated databases without modifying operator data.
 
 The initial-heat regeneration command also rejects any started or completed round. It cannot overwrite existing official results after a prior approval.
