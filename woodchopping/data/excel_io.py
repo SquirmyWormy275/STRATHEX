@@ -38,6 +38,14 @@ WOOD_HEADERS = [
 ]
 
 
+def append_literal_row(sheet, values) -> None:
+    """Write workbook data as values; roster and result text is never a formula."""
+    sheet.append(values)
+    for cell in sheet[sheet.max_row]:
+        if isinstance(cell.value, str):
+            cell.data_type = "s"
+
+
 def _resolve_sheet_name(excel_path: str, desired_name: str) -> str:
     """Return the exact sheet name matching desired_name (case-insensitive)."""
     try:
@@ -435,7 +443,7 @@ def save_time_to_results(
         wb = load_workbook(paths.EXCEL_FILE)
         ws = detect_results_sheet(wb)
 
-        ws.append([competitor_id, event, time, size, species, quality, heat_id, timestamp])
+        append_literal_row(ws, [competitor_id, event, time, size, species, quality, heat_id, timestamp])
 
         wb.save(paths.EXCEL_FILE)
         wb.close()
@@ -728,7 +736,7 @@ def append_results_to_excel(
 
         # Append rows
         for r in rows_to_write:
-            ws.append(r)
+            append_literal_row(ws, r)
 
         wb.save(paths.EXCEL_FILE)
         wb.close()

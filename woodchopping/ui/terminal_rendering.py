@@ -18,7 +18,12 @@ from typing import TextIO
 
 APPROVED_BOX_CHARACTERS = frozenset("╔╗╚╝╠╣║═")
 _ZERO_WIDTH_CHARACTERS = frozenset({"\u200b", "\u200c", "\u200d", "\ufeff", "\ufe0e", "\ufe0f"})
-_ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+_ANSI_ESCAPE_RE = re.compile(
+    r"(?:\x1b[\]PX^_]|[\x90\x98\x9d\x9e\x9f]).*?(?:\x07|\x1b\\|\x9c|$)"
+    r"|(?:\x1b\[|\x9b)[0-?]*[ -/]*[@-~]"
+    r"|\x1b[ -/]*[@-~]",
+    re.DOTALL,
+)
 _SLOT_LINE_RE = re.compile(r"^\s*\[\s*(.*?)\s*\]\s+\[\s*(.*?)\s*\]\s+\[\s*(.*?)\s*\]\s*$")
 _ASCII_BOX_BORDER_RE = re.compile(r"^\+([=\-])+\+$")
 
@@ -73,7 +78,7 @@ def sanitize_text(value: object) -> str:
 
     output: list[str] = []
     for character in text:
-        if character in _ZERO_WIDTH_CHARACTERS:
+        if character in _ZERO_WIDTH_CHARACTERS or unicodedata.category(character) in {"Cc", "Cf"}:
             continue
         replacement = _SYMBOL_REPLACEMENTS.get(character)
         if replacement is not None:
@@ -271,10 +276,9 @@ class TerminalOutput:
             if match is None:
                 break
             line = self._buffer[: match.start()]
-            separator = match.group(0)
             self._buffer = self._buffer[match.end() :]
             self._stream.write(normalize_terminal_line(line, width=self._width))
-            self._stream.write(separator)
+            self._stream.write("\n")
 
         return len(incoming)
 
@@ -298,6 +302,9 @@ def install_terminal_output(
 ) -> bool:
     """Install the output proxy once for an interactive STRATHEX session."""
     if isinstance(sys.stdout, TerminalOutput):
+        if include_stderr and not isinstance(sys.stderr, TerminalOutput):
+            sys.stderr = TerminalOutput(sys.stderr, width=width)
+            return True
         return False
     if not force and not sys.stdout.isatty():
         return False

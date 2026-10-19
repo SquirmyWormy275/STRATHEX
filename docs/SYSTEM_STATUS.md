@@ -29,7 +29,7 @@
 - Excel and ResultStore are not transactionally atomic together.
 - Public HTTP calculation is stateless and unauthenticated.
 - V2 PredictionLedger trusted routes remain separate; V3-selected scopes use signed V3 lifecycle receipts.
-- Remote HTTP requires HTTPS; loopback HTTP is for the demo.
+- HTTP calculations require verified HTTPS even on loopback; direct Python is the default V2 transport.
 - Simulation remains local and is not transport-parity with the capped REST simulation endpoint.
 - Undated and same-day results are excluded by the v2 prior-only contract.
 - Wood quality and same-tournament times do not change v2 numerics.

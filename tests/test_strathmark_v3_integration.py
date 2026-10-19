@@ -203,7 +203,8 @@ def _expected_selection_digest():
 def _client(tmp_path, responses, *, clock=None):
     transport = _Transport(responses)
     client = V3HttpClient(
-        base_url="http://127.0.0.1:8787",
+        base_url="https://127.0.0.1:8787",
+        signer_identity_digest=_pre_field_signer_trust()["identity_digest"],
         credential_provider=lambda: "smv3.test.secret",
         command_store=V3CommandStore(tmp_path / "v3-commands.db"),
         transport=transport,
@@ -268,7 +269,8 @@ def test_module_readiness_supports_u6_preselection_without_locked_context(tmp_pa
         ]
     )
     environment = {
-        "STRATHMARK_V3_BASE_URL": "http://127.0.0.1:8787",
+        "STRATHMARK_V3_SIGNER_IDENTITY_DIGEST": _pre_field_signer_trust()["identity_digest"],
+        "STRATHMARK_V3_BASE_URL": "https://127.0.0.1:8787",
         "STRATHMARK_V3_CREDENTIAL_ENV": "TEST_STRATHMARK_V3_SECRET",
         "TEST_STRATHMARK_V3_SECRET": "smv3.runtime.secret",
         "STRATHMARK_V3_CONTRACT_DIGEST": FROZEN_V3_CONTRACT_DIGEST,
@@ -372,14 +374,16 @@ def test_preselection_readiness_rejects_missing_signer_trust(tmp_path):
     [
         {},
         {
-            "STRATHMARK_V3_BASE_URL": "http://127.0.0.1:8787",
+            "STRATHMARK_V3_SIGNER_IDENTITY_DIGEST": _pre_field_signer_trust()["identity_digest"],
+            "STRATHMARK_V3_BASE_URL": "https://127.0.0.1:8787",
             "STRATHMARK_V3_CREDENTIAL_ENV": "MISSING_SECRET",
             "STRATHMARK_V3_CONTRACT_DIGEST": FROZEN_V3_CONTRACT_DIGEST,
             "STRATHMARK_V3_SOURCE_COMMIT": FROZEN_V3_SOURCE_COMMIT,
             "STRATHEX_V3_COMMAND_DB": "commands.db",
         },
         {
-            "STRATHMARK_V3_BASE_URL": "http://127.0.0.1:8787",
+            "STRATHMARK_V3_SIGNER_IDENTITY_DIGEST": _pre_field_signer_trust()["identity_digest"],
+            "STRATHMARK_V3_BASE_URL": "https://127.0.0.1:8787",
             "STRATHMARK_V3_CREDENTIAL_ENV": "TEST_SECRET",
             "TEST_SECRET": "secret",
             "STRATHMARK_V3_CONTRACT_DIGEST": "0" * 64,
@@ -400,7 +404,8 @@ def test_module_readiness_fails_closed_for_absent_or_untrusted_runtime_config(
 
 def test_module_readiness_does_not_accept_a_raw_credential_setting(tmp_path):
     environment = {
-        "STRATHMARK_V3_BASE_URL": "http://127.0.0.1:8787",
+        "STRATHMARK_V3_SIGNER_IDENTITY_DIGEST": _pre_field_signer_trust()["identity_digest"],
+        "STRATHMARK_V3_BASE_URL": "https://127.0.0.1:8787",
         "STRATHMARK_V3_CREDENTIAL": "raw-secrets-are-forbidden",
         "STRATHMARK_V3_CONTRACT_DIGEST": FROZEN_V3_CONTRACT_DIGEST,
         "STRATHMARK_V3_SOURCE_COMMIT": FROZEN_V3_SOURCE_COMMIT,
@@ -423,6 +428,7 @@ def test_wrong_pin_and_non_loopback_http_fail_before_transport(tmp_path):
     with pytest.raises(ValueError, match="loopback"):
         V3HttpClient(
             base_url="http://example.com:8787",
+            signer_identity_digest=_pre_field_signer_trust()["identity_digest"],
             credential_provider=lambda: "secret",
             command_store=V3CommandStore(tmp_path / "other.db"),
         )
@@ -433,7 +439,8 @@ def test_path_bearing_loopback_base_url_fails_before_credential_use(tmp_path):
 
     with pytest.raises(ValueError, match="origin"):
         V3HttpClient(
-            base_url="http://127.0.0.1:8787/untrusted-prefix",
+            base_url="https://127.0.0.1:8787/untrusted-prefix",
+            signer_identity_digest=_pre_field_signer_trust()["identity_digest"],
             credential_provider=lambda: credential_calls.append(True) or "secret",
             command_store=V3CommandStore(tmp_path / "path.db"),
         )
@@ -571,7 +578,8 @@ def test_recovery_survives_client_restart_with_reconstructed_authority(tmp_path)
     database = tmp_path / "v3-commands.db"
     first_transport = _Transport([requests.ConnectionError("uncertain")])
     first = V3HttpClient(
-        base_url="http://localhost:8787",
+        base_url="https://localhost:8787",
+        signer_identity_digest=_pre_field_signer_trust()["identity_digest"],
         credential_provider=lambda: "first-credential",
         command_store=V3CommandStore(database),
         transport=first_transport,
@@ -599,7 +607,8 @@ def test_recovery_survives_client_restart_with_reconstructed_authority(tmp_path)
         ]
     )
     second = V3HttpClient(
-        base_url="http://localhost:8787",
+        base_url="https://localhost:8787",
+        signer_identity_digest=_pre_field_signer_trust()["identity_digest"],
         credential_provider=lambda: "rotated-credential",
         command_store=V3CommandStore(database),
         transport=second_transport,
@@ -1525,3 +1534,118 @@ def test_definitive_rejection_is_not_retried_or_fallen_back(tmp_path):
     with pytest.raises(V3ClientError, match="previously rejected"):
         client.close_round(_context(), payload)
     assert len(transport.calls) == 1
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:8787", "http://localhost:8787", "http://[::1]:8787"])
+def test_cleartext_listener_never_receives_v3_credential(tmp_path, url):
+    credential_calls = []
+    transport = _Transport([])
+    with pytest.raises(ValueError, match="HTTPS"):
+        V3HttpClient(
+            base_url=url,
+            credential_provider=lambda: credential_calls.append(True) or "secret",
+            command_store=V3CommandStore(tmp_path / "commands.db"),
+            transport=transport,
+            signer_identity_digest=_pre_field_signer_trust()["identity_digest"],
+        )
+    assert credential_calls == [] and transport.calls == []
+
+
+def test_unprovisioned_signer_never_contacts_listener(tmp_path):
+    transport = _Transport([])
+    with pytest.raises(ValueError, match="independently provisioned"):
+        V3HttpClient(
+            base_url="https://127.0.0.1:8787",
+            credential_provider=lambda: "secret",
+            command_store=V3CommandStore(tmp_path / "commands.db"),
+            transport=transport,
+        )
+    assert transport.calls == []
+
+
+def test_valid_but_unpinned_signer_is_ineligible(tmp_path):
+    body = {
+        "schema_version": "strathmark-v3-status-response-v1",
+        "service": "ready",
+        "v3_readiness": "candidate",
+        "production_authority": "v2",
+        "consumer_contract_digest": FROZEN_V3_CONTRACT_DIGEST,
+        "consumer_contract_version": FROZEN_V3_CONTRACT_VERSION,
+        "source_commit": FROZEN_V3_SOURCE_COMMIT,
+        "pre_field_signer_trust": _pre_field_signer_trust(),
+    }
+    transport = _Transport([_Response(200, body)])
+    client = V3HttpClient(
+        base_url="https://127.0.0.1:8787",
+        credential_provider=lambda: "secret",
+        command_store=V3CommandStore(tmp_path / "commands.db"),
+        transport=transport,
+        signer_identity_digest="f" * 64,
+    )
+    assert client.preselection_readiness().state == "ineligible"
+    assert transport.calls[0][2]["verify"] is True
+    with pytest.raises(V3ClientError, match="trust"):
+        client.close_scope(_context(), {})
+    assert len(transport.calls) == 1
+
+
+def test_real_tls_rejects_impostor_before_releasing_bearer(tmp_path):
+    import ssl
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from scripts.smoke_v3_pair import synthetic_tls_certificate
+
+    certificate, key = synthetic_tls_certificate(tmp_path)
+    received_headers = []
+    body = {
+        "schema_version": "strathmark-v3-status-response-v1",
+        "service": "ready",
+        "v3_readiness": "candidate",
+        "production_authority": "v2",
+        "consumer_contract_digest": FROZEN_V3_CONTRACT_DIGEST,
+        "consumer_contract_version": FROZEN_V3_CONTRACT_VERSION,
+        "source_commit": FROZEN_V3_SOURCE_COMMIT,
+        "pre_field_signer_trust": _pre_field_signer_trust(),
+    }
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            received_headers.append(dict(self.headers))
+            encoded = json.dumps(body).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, *_):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certificate, key)
+    server.socket = context.wrap_socket(server.socket, server_side=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = V3HttpClient(
+            base_url=f"https://127.0.0.1:{server.server_port}",
+            credential_provider=lambda: "private-bearer",
+            command_store=V3CommandStore(tmp_path / "commands.db"),
+            signer_identity_digest=_pre_field_signer_trust()["identity_digest"],
+        )
+        assert client.preselection_readiness().state == "status_check_failed"
+        assert received_headers == []
+        trusted = V3HttpClient(
+            base_url=client.base_url,
+            credential_provider=lambda: "private-bearer",
+            command_store=client.command_store,
+            ca_bundle=str(certificate),
+            signer_identity_digest=_pre_field_signer_trust()["identity_digest"],
+        )
+        assert trusted.preselection_readiness().state == "rehearsal_ready"
+        assert received_headers[0]["Authorization"] == "Bearer private-bearer"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)

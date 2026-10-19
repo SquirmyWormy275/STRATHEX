@@ -15,6 +15,7 @@ import math
 import os
 import webbrowser
 from datetime import datetime
+from html import escape
 from typing import Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -1654,17 +1655,18 @@ def generate_bracket_html_structure(bracket_state: Dict) -> str:
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{bracket_state["event_name"]} - Tournament Bracket</title>
+    <title>{escape(str(bracket_state["event_name"]))} - Tournament Bracket</title>
     <style>{css}</style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>{bracket_state["event_name"]}</h1>
+            <h1>{escape(str(bracket_state["event_name"]))}</h1>
             <p class="subtitle">Head-to-Head Championship Bracket</p>
-            <p class="info">Wood: {wood_info}</p>
-            <p class="stats">Competitors: {bracket_state["num_competitors"]} | Rounds: {bracket_state["total_rounds"]} | Matches Completed: {bracket_state["completed_matches"]}/{bracket_state["total_matches"]}</p>
+            <p class="info">Wood: {escape(wood_info)}</p>
+            <p class="stats">Competitors: {escape(str(bracket_state["num_competitors"]))} | Rounds: {escape(str(bracket_state["total_rounds"]))} | Matches Completed: {escape(str(bracket_state["completed_matches"]))}/{escape(str(bracket_state["total_matches"]))}</p>
         </header>
 
         <div class="bracket-container">
@@ -1897,7 +1899,7 @@ def generate_bracket_rounds_html(rounds: List[Dict]) -> str:
     for round_obj in rounds:
         round_html = f"""
         <div class="round">
-            <div class="round-header">{round_obj["round_name"]}</div>
+            <div class="round-header">{escape(str(round_obj["round_name"]))}</div>
             {generate_matches_html(round_obj["matches"])}
         </div>
         """
@@ -1911,7 +1913,9 @@ def generate_matches_html(matches: List[Dict]) -> str:
     matches_html = ""
 
     for match in matches:
-        status_class = match["status"]
+        status_class = (
+            match["status"] if match["status"] in {"completed", "in_progress", "pending", "bye"} else "pending"
+        )
         status_text = {
             "completed": "[OK] Complete",
             "in_progress": "? Active",
@@ -1950,12 +1954,14 @@ def generate_matches_html(matches: List[Dict]) -> str:
         result_html = ""
         if match["winner"]:
             advances_text = f"Advances to {match['advances_to']}" if match.get("advances_to") else "CHAMPION!"
-            result_html = f'<div class="match-result">Winner: {match["winner"]} -> {advances_text}</div>'
+            result_html = (
+                f'<div class="match-result">Winner: {escape(str(match["winner"]))} -> {escape(advances_text)}</div>'
+            )
 
         match_html = f"""
         <div class="match {status_class}">
             <div class="match-header">
-                <span class="match-id">{match["match_id"]}</span>
+                <span class="match-id">{escape(str(match["match_id"]))}</span>
                 <span class="match-status">{status_text}</span>
             </div>
             {comp1_html}
@@ -1981,7 +1987,7 @@ def generate_competitor_html(
     winner_class = "winner" if is_winner else ""
     winner_mark = '<span class="winner-indicator">[OK]</span>' if is_winner else ""
 
-    seed_html = f'<span class="seed">({seed})</span>' if seed else ""
+    seed_html = f'<span class="seed">({escape(str(seed))})</span>' if seed else ""
     time_html = f'<span class="time">{time:.1f}s</span>' if time else ""
     pos_html = (
         f'<span class="time">[{"1st" if finish_pos == 1 else "2nd" if finish_pos == 2 else ""}]</span>'
@@ -1991,7 +1997,7 @@ def generate_competitor_html(
 
     return f"""
     <div class="competitor {winner_class}">
-        <span class="comp-name">{seed_html}{name}</span>
+        <span class="comp-name">{seed_html}{escape(str(name))}</span>
         {time_html}
         {pos_html}
         {winner_mark}

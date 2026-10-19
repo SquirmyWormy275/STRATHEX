@@ -10,6 +10,8 @@ This module handles day-of scratches and withdrawals:
 from datetime import datetime
 from typing import Dict
 
+from woodchopping.ui.workflow_integrity import prepare_field_change
+
 
 def manage_tournament_scratches(tournament_state: Dict) -> Dict:
     """Main scratch management interface for multi-event tournaments.
@@ -209,6 +211,14 @@ def mark_competitor_scratched(tournament_state: Dict) -> Dict:
             confirm = input("\nConfirm scratch? (yes/no): ").strip().lower()
 
             if confirm in ["yes", "y"]:
+                affected = [
+                    event for event in tournament_state.get("events", []) if event["event_id"] in events_entered
+                ]
+                if not prepare_field_change(
+                    {"events": affected}, reason="Competitor scratch", root_state=tournament_state
+                ):
+                    return tournament_state
+
                 # Mark as scratched
                 selected_comp["status"] = "scratched"
                 selected_comp["scratch_reason"] = reason
@@ -240,6 +250,12 @@ def mark_competitor_scratched(tournament_state: Dict) -> Dict:
                         if comp_name in event.get("all_competitors", []):
                             event["all_competitors"].remove(comp_name)
                             affected_events.append(event["event_name"])
+
+                        frame = event.get("all_competitors_df")
+                        if frame is not None and not frame.empty:
+                            event["all_competitors_df"] = frame[
+                                frame["competitor_name"].isin(event["all_competitors"])
+                            ].copy()
 
                         # Update competitor_status
                         if "competitor_status" in event:
@@ -368,6 +384,16 @@ def restore_scratched_competitor(tournament_state: Dict) -> Dict:
             confirm = input(f"\nRestore {comp_name} to active status? (y/n): ").strip().lower()
 
             if confirm == "y":
+                affected = [
+                    event
+                    for event in tournament_state.get("events", [])
+                    if event["event_id"] in selected_comp.get("events_entered", [])
+                ]
+                if not prepare_field_change(
+                    {"events": affected}, reason="Competitor restoration", root_state=tournament_state
+                ):
+                    return tournament_state
+
                 # Restore status
                 selected_comp["status"] = "active"
 
@@ -384,6 +410,12 @@ def restore_scratched_competitor(tournament_state: Dict) -> Dict:
                         if comp_name not in event.get("all_competitors", []):
                             event["all_competitors"].append(comp_name)
                             restored_events.append(event["event_name"])
+
+                        roster_frame = tournament_state.get("competitor_roster_df")
+                        if roster_frame is not None:
+                            event["all_competitors_df"] = roster_frame[
+                                roster_frame["competitor_name"].isin(event["all_competitors"])
+                            ].copy()
 
                         # Update competitor_status
                         if "competitor_status" in event:

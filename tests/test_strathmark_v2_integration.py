@@ -273,13 +273,15 @@ def test_http_transport_sends_one_stateless_field_request_with_identity_and_cuto
         def json(self):
             return self._payload
 
-    def fake_get(url, timeout, allow_redirects, stream):
+    def fake_get(url, timeout, allow_redirects, stream, verify):
+        assert verify is True
         assert allow_redirects is False
         assert stream is True
         calls.append(("GET", url, None, timeout))
         return FakeResponse(_openapi_document())
 
-    def fake_post(url, json, timeout, allow_redirects, stream):
+    def fake_post(url, json, timeout, allow_redirects, stream, verify):
+        assert verify is True
         assert allow_redirects is False
         assert stream is True
         calls.append(("POST", url, json, timeout))
@@ -300,11 +302,11 @@ def test_http_transport_sends_one_stateless_field_request_with_identity_and_cuto
         _history_df(),
         prediction_as_of=PREDICTION_AS_OF,
         transport="http",
-        api_url="http://127.0.0.1:8000",
+        api_url="https://127.0.0.1:8000",
     )
 
     assert [call[0] for call in calls] == ["GET", "POST"]
-    assert calls[0][1] == "http://127.0.0.1:8000/openapi.json"
+    assert calls[0][1] == "https://127.0.0.1:8000/openapi.json"
     request_payload = calls[1][2]
     assert request_payload["prediction_as_of"] == "2026-08-18"
     assert request_payload["competitors"][0]["competitor_id"] == "C001"
@@ -325,7 +327,7 @@ def test_http_transport_rejects_version_mismatch_without_calculating(monkeypatch
         def json(self):
             return _openapi_document("1.9.0")
 
-    monkeypatch.setattr(adapter.requests, "get", lambda url, timeout, allow_redirects, stream: FakeResponse())
+    monkeypatch.setattr(adapter.requests, "get", lambda url, timeout, allow_redirects, stream, verify: FakeResponse())
     monkeypatch.setattr(adapter.requests, "post", lambda *args, **kwargs: pytest.fail("must fail before calculation"))
 
     records = adapter.build_competitor_records(["Alice Axe"], _history_df())
@@ -337,7 +339,7 @@ def test_http_transport_rejects_version_mismatch_without_calculating(monkeypatch
             _history_df(),
             prediction_as_of=PREDICTION_AS_OF,
             transport="http",
-            api_url="http://localhost:8000",
+            api_url="https://localhost:8000",
         )
 
 
@@ -393,14 +395,14 @@ def test_transports_reject_missing_or_mismatched_evidence_cutoff(monkeypatch, tr
     monkeypatch.setattr(
         adapter.requests,
         "get",
-        lambda url, timeout, allow_redirects, stream: FakeResponse(_openapi_document()),
+        lambda url, timeout, allow_redirects, stream, verify: FakeResponse(_openapi_document()),
     )
     payload = _http_mark_payload()
     payload["evidence_cutoff"] = returned_cutoff.isoformat() if returned_cutoff is not None else None
     monkeypatch.setattr(
         adapter.requests,
         "post",
-        lambda url, json, timeout, allow_redirects, stream: FakeResponse([payload]),
+        lambda url, json, timeout, allow_redirects, stream, verify: FakeResponse([payload]),
     )
     records = adapter.build_competitor_records(
         ["Alice Axe"],
@@ -417,7 +419,7 @@ def test_transports_reject_missing_or_mismatched_evidence_cutoff(monkeypatch, tr
             _history_df(),
             prediction_as_of=PREDICTION_AS_OF,
             transport=transport,
-            api_url="http://localhost:8000",
+            api_url="https://localhost:8000",
         )
 
 
@@ -552,7 +554,7 @@ def test_transports_bind_manual_results_to_requested_operator_override(monkeypat
     monkeypatch.setattr(
         adapter.requests,
         "get",
-        lambda url, timeout, allow_redirects, stream: FakeResponse(_openapi_document()),
+        lambda url, timeout, allow_redirects, stream, verify: FakeResponse(_openapi_document()),
     )
     payload = _http_mark_payload()
     if scenario in {"unexpected", "altered"}:
@@ -568,7 +570,7 @@ def test_transports_bind_manual_results_to_requested_operator_override(monkeypat
     monkeypatch.setattr(
         adapter.requests,
         "post",
-        lambda url, json, timeout, allow_redirects, stream: FakeResponse([payload]),
+        lambda url, json, timeout, allow_redirects, stream, verify: FakeResponse([payload]),
     )
 
     with pytest.raises(RuntimeError, match=message):
@@ -579,7 +581,7 @@ def test_transports_bind_manual_results_to_requested_operator_override(monkeypat
             _history_df(),
             prediction_as_of=PREDICTION_AS_OF,
             transport=transport,
-            api_url="http://localhost:8000",
+            api_url="https://localhost:8000",
         )
 
 
@@ -601,12 +603,12 @@ def test_http_transport_rejects_result_for_unrequested_identity(monkeypatch):
     monkeypatch.setattr(
         adapter.requests,
         "get",
-        lambda url, timeout, allow_redirects, stream: FakeResponse(_openapi_document()),
+        lambda url, timeout, allow_redirects, stream, verify: FakeResponse(_openapi_document()),
     )
     monkeypatch.setattr(
         adapter.requests,
         "post",
-        lambda url, json, timeout, allow_redirects, stream: FakeResponse([payload]),
+        lambda url, json, timeout, allow_redirects, stream, verify: FakeResponse([payload]),
     )
     records = adapter.build_competitor_records(
         ["Alice Axe"],
@@ -622,7 +624,7 @@ def test_http_transport_rejects_result_for_unrequested_identity(monkeypatch):
             _history_df(),
             prediction_as_of=PREDICTION_AS_OF,
             transport="http",
-            api_url="http://localhost:8000",
+            api_url="https://localhost:8000",
         )
 
 
@@ -732,7 +734,7 @@ def test_http_transport_rejects_redirect_before_sending_field(monkeypatch):
     monkeypatch.setattr(
         adapter.requests,
         "get",
-        lambda url, timeout, allow_redirects, stream: RedirectResponse(),
+        lambda url, timeout, allow_redirects, stream, verify: RedirectResponse(),
     )
     monkeypatch.setattr(adapter.requests, "post", lambda *args, **kwargs: pytest.fail("must not POST"))
     records = adapter.build_competitor_records(["Alice Axe"], _history_df())
@@ -763,7 +765,7 @@ def test_http_transport_rejects_oversized_contract_response(monkeypatch):
     monkeypatch.setattr(
         adapter.requests,
         "get",
-        lambda url, timeout, allow_redirects, stream: OversizedResponse(),
+        lambda url, timeout, allow_redirects, stream, verify: OversizedResponse(),
     )
     monkeypatch.setattr(adapter.requests, "post", lambda *args, **kwargs: pytest.fail("must not POST"))
     records = adapter.build_competitor_records(["Alice Axe"], _history_df())
@@ -793,7 +795,7 @@ def test_http_transport_rejects_same_version_server_without_calculate_contract(m
     monkeypatch.setattr(
         adapter.requests,
         "get",
-        lambda url, timeout, allow_redirects, stream: FakeResponse(),
+        lambda url, timeout, allow_redirects, stream, verify: FakeResponse(),
     )
     monkeypatch.setattr(adapter.requests, "post", lambda *args, **kwargs: pytest.fail("must not POST"))
     records = adapter.build_competitor_records(["Alice Axe"], _history_df())
@@ -1062,13 +1064,13 @@ def test_real_python_and_http_transports_have_fixed_cutoff_parity(monkeypatch, r
     client = TestClient(app)
     request.addfinalizer(client.close)
 
-    def app_get(url, timeout, allow_redirects, stream):
+    def app_get(url, timeout, allow_redirects, stream, verify):
         del timeout, allow_redirects, stream
-        return client.get(url.removeprefix("http://localhost:8000"))
+        return client.get(url.removeprefix("https://localhost:8000"))
 
-    def app_post(url, json, timeout, allow_redirects, stream):
+    def app_post(url, json, timeout, allow_redirects, stream, verify):
         del timeout, allow_redirects, stream
-        return client.post(url.removeprefix("http://localhost:8000"), json=json)
+        return client.post(url.removeprefix("https://localhost:8000"), json=json)
 
     records = adapter.build_competitor_records(
         ["Alice Axe", "Bob Block"],
@@ -1095,7 +1097,7 @@ def test_real_python_and_http_transports_have_fixed_cutoff_parity(monkeypatch, r
         _history_df(),
         prediction_as_of=PREDICTION_AS_OF,
         transport="http",
-        api_url="http://localhost:8000",
+        api_url="https://localhost:8000",
     )
 
     assert [{key: value for key, value in row.items() if key != "transport"} for row in remote] == [
@@ -1105,3 +1107,12 @@ def test_real_python_and_http_transports_have_fixed_cutoff_parity(monkeypatch, r
     assert manual["method_key"] == "manual"
     assert manual["model_version"] is None
     assert manual["calibration_version"] is None
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:8000", "http://localhost:8000", "http://[::1]:8000"])
+def test_loopback_plaintext_is_rejected_before_v2_request(monkeypatch, url):
+    calls = []
+    monkeypatch.setattr(adapter.requests, "get", lambda *args, **kwargs: calls.append(args))
+    with pytest.raises(ValueError, match="verified HTTPS"):
+        adapter._calculate_over_http([], None, "SB", PREDICTION_AS_OF, url)
+    assert calls == []

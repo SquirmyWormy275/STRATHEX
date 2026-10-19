@@ -63,7 +63,7 @@ def test_terminal_output_normalizes_carriage_return_animation_frames():
     output.flush()
 
     rendered, separator = target.getvalue()[:-1], target.getvalue()[-1]
-    assert separator == "\r"
+    assert separator == "\n"
     assert display_width(rendered) == 70
 
 

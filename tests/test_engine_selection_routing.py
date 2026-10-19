@@ -203,7 +203,8 @@ def test_real_v3_client_is_a_router_adapter_without_v2_fallback(tmp_path, monkey
         source_identity=FROZEN_V3_SOURCE_COMMIT,
     )
     client = V3HttpClient(
-        base_url="http://127.0.0.1:8787",
+        base_url="https://127.0.0.1:8787",
+        signer_identity_digest="a" * 64,
         credential_provider=lambda: "credential",
         command_store=V3CommandStore(tmp_path / "commands.db"),
     )

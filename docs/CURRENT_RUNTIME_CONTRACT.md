@@ -49,10 +49,10 @@ weights, and bootstrap dependence are disclosed; no accuracy qualification is cl
 
 - `python` is the default: direct in-process `HandicapCalculator.calculate()`, offline-capable.
 - `http` is explicit: one stateless `POST /calculate` per common-wood field after validating the audited `/openapi.json` 2.0.0 request/response shape.
-- The V3 V7 profile uses a separate authenticated loopback-only HTTP client pinned to one reviewed V3 consumer-contract digest and source commit. Its credentials are referenced through an environment-variable name or OS keyring and are never persisted.
+- The V3 V7 profile uses a separate authenticated loopback-only HTTPS client pinned to one reviewed V3 consumer-contract digest and source commit. Its credentials are referenced through an environment-variable name or OS keyring and are never persisted.
 - Credential rotation and revocation are installation-administration operations, not judge or competition-root actions. The judge client deliberately does not persist the one-time credential returned by `/v3/credentials/rotate`; it resolves its configured environment/keyring reference for every request, so an administrator can rotate the service credential out of band without rewriting tournament state. The authenticated deployment procedure must store the replacement before revoking the prior digest.
 - HTTP mode never falls back to Python.
-- Loopback HTTP is allowed. Remote API URLs require HTTPS. Redirects and URLs containing credentials, paths, queries, or fragments are rejected. OpenAPI and calculation response bodies are bounded to 4 MiB.
+- All HTTP transports require verified HTTPS, including loopback. The V7 client also requires an independently provisioned signer identity digest; see [security boundary repairs](SECURITY_CLOUD_2026-10-19.md). Redirects and URLs containing credentials, paths, queries, or fragments are rejected. OpenAPI and calculation response bodies are bounded to 4 MiB.
 - The HTTP calculation endpoint does not read ResultStore and does not write PredictionLedger.
 
 Both V2 transports enforce the public API's 64-competitor field-size and value bounds before calculation. A malformed or incomplete result aborts the complete field. Championship scenarios group competitors that share target wood and history context; distinct target wood or curated peak windows require separate calls. The simulator fixes the cutoff, requires one consistent engine/model/calibration bundle, and aborts rather than mixing snapshots or producing a partial field.
@@ -82,3 +82,5 @@ A STRATHEX release is acceptable only when:
 5. maintained docs, dated solution labels, and versioned wiki source describe this contract;
 6. published wikis are synced and verified separately;
 7. no test touches the production workbook or ResultStore.
+
+Single-event V2 official use requires judge approval bound to the current context and full mark sheet. Setup changes invalidate draft calculations and schedules; issued or recorded fields are retained through correction/recovery. Event identities remain immutable across display reordering and removal of unreferenced drafts.
