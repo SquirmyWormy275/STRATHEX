@@ -10,7 +10,6 @@ from datetime import datetime
 from uuid import uuid4
 
 import pandas as pd
-from openpyxl import load_workbook
 
 from config import paths
 from woodchopping.data import (
@@ -19,6 +18,7 @@ from woodchopping.data import (
     save_time_to_results,
 )
 from woodchopping.data.excel_io import append_literal_row
+from woodchopping.data.workbook_access import load_workbook, save_workbook
 
 # File/sheet names from config
 COMPETITOR_FILE = paths.EXCEL_FILE
@@ -160,7 +160,7 @@ def _add_competitor_to_workbook(name: str, country: str, state: str, gender: str
         while identity in identities:
             identity = "C" + uuid4().hex
         append_literal_row(sheet, [identity, name, country, state, gender])
-        workbook.save(COMPETITOR_FILE)
+        save_workbook(workbook, COMPETITOR_FILE)
         return identity
     finally:
         workbook.close()

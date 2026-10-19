@@ -86,3 +86,11 @@ Editing a draft field or scratching/restoring a competitor invalidates its curre
 marks and day schedule while retaining previous drafts for recovery. Issued fields
 and recorded results lock destructive setup changes. Event IDs never change when
 the display order changes; only wholly unreferenced draft events can be removed.
+
+## Official records and imported rosters
+
+Rehearsal V3 marks are experimental and cannot become official schedules or
+results. Local competition fields must be explicitly issued before result entry.
+If a workbook changes an athlete's ID after review, result entry stops: reload the
+roster and review the field before recording. Names remain unchanged in saved
+records; printable schedules show invisible controls as visible escape text.

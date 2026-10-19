@@ -60,12 +60,12 @@ def test_verified_private_snapshot_survives_source_replacement(tmp_path):
     home = tmp_path / "installation"
     previous = os.umask(0)
     try:
-        with verified_bundle_snapshot(home, bundle) as (snapshot, manifest):
+        with verified_bundle_snapshot(home, bundle, sha(bundle / "release.json")) as (snapshot, manifest):
             (bundle / "package.whl").write_bytes(b"attacker replacement")
             assert (snapshot / "package.whl").read_bytes() == payload
             assert snapshot.stat().st_mode & 0o777 == 0o700
             assert (snapshot / "package.whl").stat().st_mode & 0o777 == 0o600
-            assert verify_bundle(snapshot) == manifest
+            assert verify_bundle(snapshot, sha(snapshot / "release.json")) == manifest
         assert not snapshot.exists()
     finally:
         os.umask(previous)
@@ -80,8 +80,8 @@ def test_replacement_after_initial_verification_never_reaches_uv(tmp_path, monke
     victim = tmp_path / "victim"
     victim.write_bytes(b"unrelated private bytes")
 
-    def racing_verify(path):
-        manifest = verify(path)
+    def racing_verify(path, manifest_sha256):
+        manifest = verify(path, manifest_sha256)
         target = path / "package.whl"
         if replacement == "symlink":
             target.unlink()
@@ -93,7 +93,15 @@ def test_replacement_after_initial_verification_never_reaches_uv(tmp_path, monke
     monkeypatch.setattr(install_portable, "verify_bundle", racing_verify)
     monkeypatch.setattr(subprocess, "run", lambda *_args, **_kwargs: pytest.fail("unverified bytes reached uv"))
     with pytest.raises((ValueError, OSError)):
-        install(tmp_path / "installation", bundle, tmp_path / "workbook", tmp_path / "backup", "uv", stage_only=True)
+        install(
+            tmp_path / "installation",
+            bundle,
+            tmp_path / "workbook",
+            tmp_path / "backup",
+            "uv",
+            manifest_sha256=sha(bundle / "release.json"),
+            stage_only=True,
+        )
     assert not (tmp_path / "installation/profiles").exists()
     assert not list((tmp_path / "installation").glob(".verified-bundle-*"))
     assert victim.read_bytes() == b"unrelated private bytes"
@@ -105,7 +113,7 @@ def test_shared_installation_home_is_rejected_without_chmod(tmp_path):
     home.mkdir()
     home.chmod(0o777)
     with pytest.raises(PermissionError, match="owner-controlled"):
-        with verified_bundle_snapshot(home, bundle):
+        with verified_bundle_snapshot(home, bundle, sha(bundle / "release.json")):
             pytest.fail("peer-writable staging accepted")
     assert home.stat().st_mode & 0o777 == 0o777
     assert list(home.iterdir()) == []
@@ -207,7 +215,7 @@ def test_corrupt_release_refused_before_profile_or_active_changes(tmp_path):
         },
     )
     with pytest.raises(ValueError, match="checksum"):
-        verify_bundle(bundle)
+        verify_bundle(bundle, sha(bundle / "release.json"))
     assert not (tmp_path / "active.json").exists()
 
 
@@ -338,7 +346,7 @@ def test_frozen_v2_identity_mandatory(tmp_path, field):
     manifest.pop(field)
     atomic_json(tmp_path / "release.json", manifest)
     with pytest.raises(ValueError, match="frozen V2"):
-        verify_bundle(tmp_path)
+        verify_bundle(tmp_path, sha(tmp_path / "release.json"))
 
 
 @pytest.mark.parametrize(
@@ -493,7 +501,15 @@ def test_install_refuses_unsafe_profiles_parent_before_uv(tmp_path, monkeypatch,
     workbook.write_bytes(b"synthetic workbook")
     monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: pytest.fail("unsafe profile reached uv"))
     with pytest.raises(PermissionError, match="owner-controlled"):
-        install(home, bundle, workbook, tmp_path / "not-mounted", "uv", stage_only=True)
+        install(
+            home,
+            bundle,
+            workbook,
+            tmp_path / "not-mounted",
+            "uv",
+            manifest_sha256=sha(bundle / "release.json"),
+            stage_only=True,
+        )
     assert retained.read_bytes() == b"unchanged original competition"
     assert not (profiles / "synthetic-verified").exists()
     assert not (home / "active.json").exists()
@@ -507,6 +523,7 @@ def test_install_provisions_private_profiles_parent_before_uv_with_umask_zero(tm
     bundle, _ = _synthetic_bundle(tmp_path)
     home = tmp_path / "installation"
     home.mkdir(mode=0o755)
+    home.chmod(0o755)
     workbook = tmp_path / "workbook.xlsx"
     workbook.write_bytes(b"synthetic workbook")
     called = []
@@ -521,7 +538,15 @@ def test_install_provisions_private_profiles_parent_before_uv_with_umask_zero(tm
     previous = os.umask(0)
     try:
         with pytest.raises(RuntimeError, match="synthetic installer"):
-            install(home, bundle, workbook, tmp_path / "not-mounted", "uv", stage_only=True)
+            install(
+                home,
+                bundle,
+                workbook,
+                tmp_path / "not-mounted",
+                "uv",
+                manifest_sha256=sha(bundle / "release.json"),
+                stage_only=True,
+            )
     finally:
         os.umask(previous)
     assert called == [True]
@@ -556,3 +581,80 @@ def test_cli_preserves_home_alias_evidence_before_locking(tmp_path, monkeypatch)
     monkeypatch.setattr(install_portable.sys, "argv", ["install_portable.py", "--home", str(alias), "list"])
     assert install_portable.main() == 2
     assert list(target.iterdir()) == []
+
+
+def test_self_consistent_replacement_cannot_supply_its_own_release_identity(tmp_path, monkeypatch):
+    from scripts import install_portable
+
+    bundle, _ = _synthetic_bundle(tmp_path)
+    trusted = sha(bundle / "release.json")
+    malicious = b"replacement executable wheel"
+    (bundle / "package.whl").write_bytes(malicious)
+    manifest = read_json(bundle / "release.json")
+    manifest["files"]["package.whl"].update(bytes=len(malicious), sha256=hashlib.sha256(malicious).hexdigest())
+    atomic_json(bundle / "release.json", manifest)
+    monkeypatch.setattr(install_portable.json, "loads", lambda *_a: pytest.fail("untrusted JSON was parsed"))
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: pytest.fail("untrusted bundle reached execution"))
+    with pytest.raises(ValueError, match="independent SHA256"):
+        install(tmp_path / "home", bundle, tmp_path / "workbook", tmp_path / "backup", "uv", manifest_sha256=trusted)
+    assert not (tmp_path / "home/profiles").exists()
+
+
+@pytest.mark.parametrize("pin", [None, "", "not-a-digest", "a" * 63])
+def test_independent_manifest_identity_is_required_before_parsing(tmp_path, pin):
+    bundle, _ = _synthetic_bundle(tmp_path)
+    with pytest.raises(ValueError, match="independently acquired"):
+        verify_bundle(bundle, pin)
+
+
+def test_modified_helper_cannot_execute_before_backup(tmp_path, monkeypatch):
+    from scripts import install_portable
+
+    home = tmp_path / "home"
+    home.mkdir()
+    marker = tmp_path / "payload-executed"
+    helper = tmp_path / "recovery_security.py"
+    helper.write_text(f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
+    monkeypatch.setattr(install_portable, "__file__", str(tmp_path / "install_portable.py"))
+    monkeypatch.setattr(install_portable, "require_independent", lambda *_a: None)
+    with pytest.raises(ValueError, match="trusted bootstrap"):
+        recovery_archive(home, tmp_path, tmp_path / "workbook.xlsx")
+    assert not marker.exists()
+    assert not list(tmp_path.glob("profile-switch-*"))
+
+
+def test_bootstrap_pins_its_release_paired_helper():
+    from scripts import install_portable
+
+    assert (
+        sha(Path(install_portable.__file__).with_name("recovery_security.py"))
+        == install_portable.RECOVERY_HELPER_SHA256
+    )
+
+
+def test_helper_execution_uses_verified_bytes_even_if_path_changes(tmp_path, monkeypatch):
+    import builtins
+
+    from scripts import install_portable
+
+    home = tmp_path / "home"
+    home.mkdir()
+    workbook = tmp_path / "synthetic.xlsx"
+    workbook.write_bytes(b"synthetic workbook")
+    helper = tmp_path / "recovery_security.py"
+    helper.write_bytes(Path(install_portable.__file__).with_name("recovery_security.py").read_bytes())
+    marker = tmp_path / "unexpected-execution"
+    monkeypatch.setattr(install_portable, "__file__", str(tmp_path / "install_portable.py"))
+    monkeypatch.setattr(install_portable, "require_independent", lambda *_a: None)
+
+    def swapped_after_check(contents, filename, mode):
+        helper.write_text(f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
+        return builtins.compile(contents, filename, mode)
+
+    monkeypatch.setattr(install_portable, "compile", swapped_after_check, raising=False)
+    with tempfile.TemporaryDirectory(dir="/dev/shm", prefix="strath-helper-bytes-") as directory:
+        if Path(directory).stat().st_dev == home.stat().st_dev:
+            pytest.skip("archive fixture needs independent storage")
+        archive = recovery_archive(home, Path(directory), workbook)
+        assert Path(archive).is_file()
+        assert not marker.exists()

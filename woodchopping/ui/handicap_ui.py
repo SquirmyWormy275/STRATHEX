@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 import pandas as pd
-from openpyxl import Workbook, load_workbook
 
 from config import paths, rules, sim_config
 from woodchopping.data import detect_results_sheet, get_competitor_id_name_mapping, load_results_df
@@ -22,6 +21,7 @@ from woodchopping.data.validation import (
     get_diameter_variance_warning,
     is_high_variance_diameter,
 )
+from woodchopping.data.workbook_access import load_workbook, save_workbook
 from woodchopping.handicaps import calculate_ai_enhanced_handicaps
 from woodchopping.simulation import simulate_and_assess_handicaps
 
@@ -659,6 +659,18 @@ def append_results_to_excel(
         tournament_state: NEW - Tournament state for context (optional)
     """
 
+    from woodchopping.data.workbook_guard import _restore_round_state, _snapshot_round_state
+
+    round_snapshot = _snapshot_round_state(round_object)
+    if tournament_state is not None and "prediction_authority_ref" in tournament_state:
+        from woodchopping.ui.official_eligibility import require_official_eligibility
+
+        try:
+            require_official_eligibility(tournament_state)
+        except ValueError as error:
+            print(f"[BLOCKED] {error}")
+            return False
+
     # Determine if using new tournament system or legacy single-heat system
     if round_object is not None:
         # NEW TOURNAMENT SYSTEM
@@ -694,6 +706,15 @@ def append_results_to_excel(
 
     # Get ID/name mapping
     _, name_to_id = get_competitor_id_name_mapping()
+    from woodchopping.data.excel_io import _bound_competitor_ids, _workbook_name_mapping
+
+    try:
+        name_to_id = _bound_competitor_ids(
+            tournament_state, round_object, heat_assignment_df, competitors_list, name_to_id
+        )
+    except ValueError as error:
+        print(f"[BLOCKED] {error}")
+        return False
 
     rows_to_write = []
     times_collected = {}
@@ -853,7 +874,7 @@ def append_results_to_excel(
     timestamp = datetime.now().isoformat(timespec="seconds")
 
     for name, time_val in times_collected.items():
-        competitor_id = name_to_id.get(str(name).strip().lower(), name)
+        competitor_id = name_to_id[str(name).strip().lower()]
 
         # Include Round and HeatID columns
         rows_to_write.append(
@@ -884,12 +905,14 @@ def append_results_to_excel(
 
     try:
         # Load or create workbook
-        try:
-            wb = load_workbook(RESULTS_FILE)
-        except Exception:
-            wb = Workbook()
-            if "Sheet" in wb.sheetnames and RESULTS_SHEET not in wb.sheetnames:
-                wb.remove(wb["Sheet"])
+        from woodchopping.data.excel_io import ensure_workbook
+
+        ensure_workbook(RESULTS_FILE)
+        wb = load_workbook(RESULTS_FILE)
+        live_mapping = _workbook_name_mapping(wb)
+        if any(live_mapping.get(name) != identity for name, identity in name_to_id.items()):
+            wb.close()
+            raise ValueError("Workbook competitor identities changed during result entry; nothing was written")
 
         ws = detect_results_sheet(wb)
 
@@ -912,7 +935,7 @@ def append_results_to_excel(
         for r in rows_to_write:
             append_literal_row(ws, r)
 
-        wb.save(RESULTS_FILE)
+        save_workbook(wb, RESULTS_FILE)
         wb.close()
         print("Results appended to Excel successfully.")
 
@@ -921,6 +944,7 @@ def append_results_to_excel(
             round_object["status"] = "in_progress"  # Mark as in progress (not completed until advancers selected)
 
     except Exception as e:
+        _restore_round_state(round_object, round_snapshot)
         print(f"Error appending results: {e}")
 
 

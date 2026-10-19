@@ -53,3 +53,12 @@ The public V2 `/calculate` route reads its request and is stateless. Its separat
 PredictionLedger is not automatically populated by STRATHEX's ordinary calculation.
 
 Keep these records together when backing up. See [Backups and recovery](Backups-and-Recovery).
+
+## Safe workbook input and publication
+
+Workbook parsing applies finite compressed, expanded, sheet, row and cell limits
+before loading the spreadsheet. Result saves and roster changes require an
+owner-controlled location and publish through a private temporary file only if
+the original workbook is unchanged. Shared writable paths or links stop without
+changing directory permissions. Competition JSON saves are limited to 16 MiB and
+must still match private installation evidence before parsing.

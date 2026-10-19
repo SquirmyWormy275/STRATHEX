@@ -10,10 +10,25 @@ Exports to TXT file with 70-character width standard.
 """
 
 import os
+import unicodedata
 from datetime import datetime
 from typing import Dict, List
 
 from woodchopping.ui.official_eligibility import require_official_eligibility
+from woodchopping.ui.terminal_rendering import fit_display, truncate_display
+
+
+def _schedule_text(value):
+    """Make untrusted labels visible as data inside one printable row."""
+    text = str(value)
+    text = text if len(text) <= 4096 else text[:4093] + "..."
+    return "".join(
+        f"\\u{ord(char):04x}" if unicodedata.category(char) in {"Cc", "Cf", "Cs", "Zl", "Zp"} else char for char in text
+    )
+
+
+def _line(value, align="left"):
+    return fit_display(_schedule_text(value), 68, align=align)
 
 
 def _contains_numeric_preview(value):
@@ -100,20 +115,20 @@ def _generate_single_event_schedule(tournament_state: Dict) -> str:
 
     # Event details
     event_name = tournament_state.get("event_name", "Unknown Event")
-    lines.append("║" + f"  Event: {event_name}".ljust(68) + "║")
+    lines.append("║" + _line(f"  Event: {event_name}") + "║")
 
     # Wood details
     wood_species = tournament_state.get("wood_species", "Unknown")
     wood_diameter = tournament_state.get("wood_diameter", 0)
     wood_quality = tournament_state.get("wood_quality", 0)
     wood_line = f"  Wood: {wood_species}, {wood_diameter}mm, Quality {wood_quality}"
-    lines.append("║" + wood_line.ljust(68) + "║")
+    lines.append("║" + _line(wood_line) + "║")
 
     # Tournament format
     format_type = tournament_state.get("format", "Unknown")
     num_stands = tournament_state.get("num_stands", 0)
     format_line = f"  Format: {format_type} | {num_stands} stands available"
-    lines.append("║" + format_line.ljust(68) + "║")
+    lines.append("║" + _line(format_line) + "║")
 
     lines.append("╠" + "═" * 68 + "╣")
 
@@ -142,11 +157,11 @@ def _generate_multi_event_schedule(tournament_state: Dict) -> str:
     # Tournament details
     tournament_name = tournament_state.get("tournament_name", "Unknown Tournament")
     tournament_date = tournament_state.get("tournament_date", "Unknown Date")
-    lines.append("║" + f"  Tournament: {tournament_name}".ljust(68) + "║")
-    lines.append("║" + f"  Date: {tournament_date}".ljust(68) + "║")
+    lines.append("║" + _line(f"  Tournament: {tournament_name}") + "║")
+    lines.append("║" + _line(f"  Date: {tournament_date}") + "║")
 
     total_events = tournament_state.get("total_events", 0)
-    lines.append("║" + f"  Total Events: {total_events}".ljust(68) + "║")
+    lines.append("║" + _line(f"  Total Events: {total_events}") + "║")
 
     lines.append("╠" + "═" * 68 + "╣")
 
@@ -171,14 +186,14 @@ def _add_event_to_schedule(lines: List[str], event: Dict, event_num: int):
 
     lines.append("║" + " " * 68 + "║")
     event_header = f"?? EVENT {event_num}: {event_name} ({status.upper()}) ??"
-    lines.append("║" + event_header.center(68) + "║")
+    lines.append("║" + _line(event_header, "center") + "║")
 
     # Event details
     wood_species = event.get("wood_species", "Unknown")
     wood_diameter = event.get("wood_diameter", 0)
     wood_quality = event.get("wood_quality", 0)
     wood_line = f"  Wood: {wood_species}, {wood_diameter}mm, Quality {wood_quality}"
-    lines.append("║" + wood_line.ljust(68) + "║")
+    lines.append("║" + _line(wood_line) + "║")
 
     # Rounds
     rounds = event.get("rounds", [])
@@ -206,11 +221,11 @@ def _add_round_to_schedule(lines: List[str], round_obj: Dict, indent: int = 0):
     round_header = f"{indent_str}{round_name.upper()}"
     if status != "pending":
         round_header += f" [{status.upper()}]"
-    lines.append("║" + f"  {round_header}".ljust(68) + "║")
+    lines.append("║" + _line(f"  {round_header}") + "║")
 
     # If round not generated yet
     if not competitors:
-        lines.append("║" + f"  {indent_str}(Not yet generated)".ljust(68) + "║")
+        lines.append("║" + _line(f"  {indent_str}(Not yet generated)") + "║")
         return
 
     # Build competitor-to-mark mapping
@@ -225,20 +240,22 @@ def _add_round_to_schedule(lines: List[str], round_obj: Dict, indent: int = 0):
     for stand_num, comp_name in enumerate(competitors, 1):
         mark = comp_marks.get(comp_name, 3)
 
+        display_name = truncate_display(_schedule_text(comp_name), 28)
+
         # Show actual result if completed
         results_dict = round_obj.get("results", {})
         if comp_name in results_dict and results_dict[comp_name] is not None:
             actual_time = results_dict[comp_name]
-            comp_line = f"  {indent_str}Stand {stand_num}: {comp_name} (Mark {mark}) - Result: {actual_time:.1f}s"
+            comp_line = f"  {indent_str}Stand {stand_num}: {display_name} (Mark {mark}) - Result: {actual_time:.1f}s"
         else:
-            comp_line = f"  {indent_str}Stand {stand_num}: {comp_name} (Mark {mark})"
+            comp_line = f"  {indent_str}Stand {stand_num}: {display_name} (Mark {mark})"
 
-        lines.append("║" + comp_line.ljust(68) + "║")
+        lines.append("║" + _line(comp_line) + "║")
 
     # Show advancers if completed
     advancers = round_obj.get("advancers", [])
     if advancers:
-        lines.append("║" + f"  {indent_str}-> Advanced: {', '.join(advancers)}".ljust(68) + "║")
+        lines.append("║" + _line(f"  {indent_str}-> Advanced: {', '.join(advancers)}") + "║")
 
 
 def display_and_export_schedule(tournament_state: Dict, *, authority_store=None):

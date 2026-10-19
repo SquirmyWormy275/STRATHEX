@@ -398,7 +398,7 @@ class Paths:
 
     # Excel file - resolved relative to config.py so it works from any working directory
     EXCEL_FILE: str = str(
-        _Path(_os.environ.get("STRATHEX_WORKBOOK", str(_BASE_DIR / "woodchopping.xlsx"))).expanduser().resolve()
+        _Path(_os.environ.get("STRATHEX_WORKBOOK", str(_BASE_DIR / "woodchopping.xlsx"))).expanduser().absolute()
     )
     """Main Excel workbook filename"""
 

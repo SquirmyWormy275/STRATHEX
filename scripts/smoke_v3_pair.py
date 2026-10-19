@@ -528,7 +528,10 @@ def main() -> None:
                         cwd=root,
                         env=env,
                         check=True,
-                        timeout=180,
+                        # This whole scenario performs 13 fresh runtime checks;
+                        # hosted Windows measured about 50 seconds per check.
+                        # Individual commands retain their own shorter limits.
+                        timeout=900 if os.name == "nt" else 180,
                     )
                     numeric_report = json.loads((numeric_root / "report.json").read_text("utf-8"))
                 result = {

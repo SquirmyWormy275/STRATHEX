@@ -32,6 +32,19 @@ Its outcome may be uncertain. Reopen the same saved competition and use the disp
 durable command ID for exact retry/recovery. Keep the original source, model and
 key. Do not create a replacement command or edit ledgers. See [Recovery](Backups-and-Recovery).
 
+## A selected runtime takes time to start on Windows
+
+Before a command starts, STRATHEX checks the selected runtime's ownership,
+permissions and installed identity again. In the hosted Windows rehearsal,
+checking roughly 13,700 inputs took 49–51 seconds per command. Repeated checks are
+intentional; do not disable them or broaden directory permissions to speed up
+startup. The complete synthetic numerical rehearsal performs 13 checks and allows
+15 minutes on Windows, while individual command limits stay unchanged.
+
+This is a measured Windows performance limitation, not a Linux timing estimate or
+Windows V7 production qualification. The separate qualification requirements still
+apply; see [Engine selection](Choosing-the-Prediction-Engine).
+
 ## A prediction is degraded or has optimizer warnings
 
 Review the warning, cutoff, model, interval and field evidence before approving.
@@ -47,7 +60,7 @@ writes are separate; a ResultStore failure does not undo Excel.
 
 ## A save file is malformed
 
-From 7.4.5, the loader compares the complete save bytes to the private installation's
+From 7.4.6, the loader compares the complete save bytes to the private installation's
 record. A changed, unbound, missing or historical save stops without activating its
 `.bak`. Preserve both files and the authority database. Resume the original retained
 profile where compatible, or independently review the complete recovery set. Do not

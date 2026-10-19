@@ -11,12 +11,15 @@ from __future__ import annotations
 import copy
 import hashlib
 import os
-import shutil
 import tempfile
+from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
 
-from openpyxl import load_workbook
+from strathmark.input_limits import read_bounded_file
+from strathmark.private_storage import verify_authority_parent
+
+from woodchopping.data.workbook_access import load_workbook
 
 _ROUND_STATE_KEYS = ("actual_results", "finish_order", "status")
 
@@ -44,11 +47,7 @@ def validate_complete_workbook(path: str, excel_io_module: ModuleType) -> None:
 
 
 def _file_digest(path: str) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as workbook_file:
-        for chunk in iter(lambda: workbook_file.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    return hashlib.sha256(read_bounded_file(path)).hexdigest()
 
 
 def _snapshot_round_state(round_object) -> dict[str, tuple[bool, Any]] | None:
@@ -84,6 +83,7 @@ def _actual_results_changed(
 
 def _create_backup(path: str) -> str:
     """Create a same-directory backup so restoration uses an atomic replace."""
+    verify_authority_parent(Path(path).absolute())
     directory = os.path.dirname(os.path.abspath(path)) or os.curdir
     os.makedirs(directory, exist_ok=True)
     descriptor, backup_path = tempfile.mkstemp(
@@ -91,9 +91,11 @@ def _create_backup(path: str) -> str:
         suffix=".prewrite-backup",
         dir=directory,
     )
-    os.close(descriptor)
     try:
-        shutil.copy2(path, backup_path)
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(read_bounded_file(path))
+            stream.flush()
+            os.fsync(stream.fileno())
     except Exception:
         try:
             os.remove(backup_path)
@@ -105,6 +107,7 @@ def _create_backup(path: str) -> str:
 
 def _restore_backup(backup_path: str, target_path: str) -> bool:
     try:
+        verify_authority_parent(Path(target_path).absolute())
         os.replace(backup_path, target_path)
         return True
     except OSError as exc:
@@ -187,7 +190,7 @@ def guarded_append_results_to_excel(
             return None
 
         after_digest = _file_digest(target_path)
-        if _actual_results_changed(round_object, round_snapshot) and after_digest == before_digest:
+        if result is False or (_actual_results_changed(round_object, round_snapshot) and after_digest == before_digest):
             _restore_round_state(round_object, round_snapshot)
             print("[X] Results were not written; tournament round state was restored.")
             return None

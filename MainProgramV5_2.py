@@ -794,6 +794,16 @@ def single_event_menu():
             if not prepare_field_change(tournament_state, reason="Single-event setup or recalculation"):
                 input("\nPress Enter to return to menu...")
                 continue
+        if menu_choice in {"9", "10", "11", "13"}:
+            if resolve_prediction_engine(tournament_state, _prediction_authority_store).engine == "v3":
+                from woodchopping.ui.official_eligibility import require_official_eligibility
+
+                try:
+                    require_official_eligibility(tournament_state, authority_store=_prediction_authority_store)
+                except ValueError as error:
+                    print(f"\n[BLOCKED] {error}")
+                    input("\nPress Enter to return to menu...")
+                    continue
         if menu_choice in {"9", "10", "11", "13"} and tournament_state.get("format") != "bracket":
             if resolve_prediction_engine(tournament_state, _prediction_authority_store).engine == "v2":
                 try:

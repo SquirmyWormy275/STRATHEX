@@ -45,6 +45,7 @@ def test_shared_nonempty_data_fails_without_mutation(tmp_path, monkeypatch):
 def test_existing_peer_readable_data_is_rejected_without_chmod(tmp_path):
     directory = tmp_path / "saved-data"
     directory.mkdir(mode=0o755)
+    directory.chmod(0o755)
     saved = directory / "competition.json"
     saved.write_bytes(b"retained competition")
     before = directory.stat().st_mode

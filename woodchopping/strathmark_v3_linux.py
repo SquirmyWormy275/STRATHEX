@@ -13,22 +13,26 @@ from pathlib import Path
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
+from woodchopping.runtime_execution import TrustedPython
 from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired, V3RuntimeConfigurationError
 from woodchopping.v3_authority_store import V3CommandStore
 
 LINUX_PROTOCOL = "strathmark.v3-linux-competition.v1"
 FROZEN_LINUX_SOURCE_COMMIT = "e5c3f2de6a316dc4a38aed05e4fc4092893a7c84"
 FROZEN_LINUX_IMPLEMENTATION_DIGEST = "29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7"
-# Retained rc7 and rc12 profiles keep their original interpreter, source,
-# model and installation signing identity; new installations use rc13.
+# Retained rc7, rc12 and rc13 profiles keep their original interpreter, source,
+# model and installation signing identity; new installations use rc14.
 PREVIOUS_LINUX_SECURITY_SOURCE_COMMIT = "5408939a9eeb40c9c03f47a28c0ddb181ff99894"
 PREVIOUS_LINUX_SECURITY_IMPLEMENTATION_DIGEST = "20fc54bea46bdfcb8d47a2b3746aedf4710bfc6b75e92aa905ce49434393f8df"
-LINUX_SECURITY_SOURCE_COMMIT = "f064d67abe4baf7672239a14796c0bdc4f8c2071"
-LINUX_SECURITY_IMPLEMENTATION_DIGEST = "b6e315d90a6248c6eda8fd3b3727a3272dc212f4d71484665ba4d2f8ba7c9e0b"
+RETAINED_RC13_SOURCE_COMMIT = "f064d67abe4baf7672239a14796c0bdc4f8c2071"
+RETAINED_RC13_IMPLEMENTATION_DIGEST = "b6e315d90a6248c6eda8fd3b3727a3272dc212f4d71484665ba4d2f8ba7c9e0b"
+LINUX_SECURITY_SOURCE_COMMIT = "c382b3f4e719a8621a373e3fa2ec2400bdb9ecd4"
+LINUX_SECURITY_IMPLEMENTATION_DIGEST = "81d474f831438a63064d1e3562fedfff76642225fdc67bcbbbf8f2c7bd9ca445"
 REVIEWED_LINUX_IMPLEMENTATIONS = {
     FROZEN_LINUX_IMPLEMENTATION_DIGEST: (FROZEN_LINUX_SOURCE_COMMIT, "3.0.0rc7"),
     PREVIOUS_LINUX_SECURITY_IMPLEMENTATION_DIGEST: (PREVIOUS_LINUX_SECURITY_SOURCE_COMMIT, "3.0.0rc12"),
-    LINUX_SECURITY_IMPLEMENTATION_DIGEST: (LINUX_SECURITY_SOURCE_COMMIT, "3.0.0rc13"),
+    RETAINED_RC13_IMPLEMENTATION_DIGEST: (RETAINED_RC13_SOURCE_COMMIT, "3.0.0rc13"),
+    LINUX_SECURITY_IMPLEMENTATION_DIGEST: (LINUX_SECURITY_SOURCE_COMMIT, "3.0.0rc14"),
 }
 # Frozen separately from the Windows V7 service and the earlier preview profile.
 LINUX_CONTRACT_DIGEST = "162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e"
@@ -128,6 +132,13 @@ class LinuxV3Competition:
         validate_local_trust(material["installation_identity"])
 
     def _run(self, operation, envelope=None):
+        try:
+            if not hasattr(self, "_runtime_guard"):
+                self._runtime_guard = TrustedPython(self.python)
+            else:
+                self._runtime_guard.verify()
+        except (OSError, ValueError) as error:
+            raise V3RuntimeConfigurationError(f"selected Python runtime is unsafe or changed: {error}") from error
         environment = {
             key: value
             for key, value in os.environ.items()

@@ -264,6 +264,9 @@ def test_review_menu_displays_local_previews_without_requesting_approval(tmp_pat
 def test_worker_timeout_is_a_typed_failure(tmp_path, monkeypatch):
     candidate = LocalV3Candidate.__new__(LocalV3Candidate)
     candidate.python, candidate.ml_bundle = tmp_path / "synthetic-python", tmp_path
+    # This test isolates response timeout handling; execution trust has its own
+    # real disposable-environment regressions in test_runtime_execution.py.
+    candidate._runtime_guard = type("ReviewedFixture", (), {"verify": lambda self: None})()
 
     def timeout(*_args, **_kwargs):
         raise subprocess.TimeoutExpired(["synthetic-worker"], 120)

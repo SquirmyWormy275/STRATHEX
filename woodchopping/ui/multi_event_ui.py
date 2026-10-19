@@ -60,7 +60,7 @@ _READINESS_LABELS = {
 }
 _SELECTION_REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _V2_CONTRACT_IDENTITY = "strathmark-v2/2.0.0"
-_V2_SOURCE_IDENTITY = "strathmark:f064d67abe4baf7672239a14796c0bdc4f8c2071"
+_V2_SOURCE_IDENTITY = "strathmark:c382b3f4e719a8621a373e3fa2ec2400bdb9ecd4"
 
 
 def configure_prediction_authority_store(authority_store: Any) -> None:
@@ -798,6 +798,9 @@ def record_and_settle_v3_round(
     authority = resolve_prediction_engine(root_state, authority_store)
     if authority.engine != "v3":
         return bool(write_action())
+    if authority.mode != "local":
+        print("\n[BLOCKED] V3 rehearsal cannot record official results. Select an eligible competition profile.")
+        return False
     from woodchopping.strathmark_v3_local import LOCAL_V3_CONTRACT_DIGEST
 
     if authority.contract_identity == LOCAL_V3_CONTRACT_DIGEST:
@@ -805,6 +808,8 @@ def record_and_settle_v3_round(
             "\n[BLOCKED] V3 numeric previews cannot record official results. Use the full V7 issue/settlement runtime."
         )
         return False
+    if not getattr(v3_adapter, "requires_explicit_issue", False):
+        raise RuntimeError("Official V3 results require an explicit-issue competition adapter")
     if getattr(v3_adapter, "requires_explicit_issue", False):
         rows = list(_v3_receipt_rows(round_object.get("handicap_results", [])))
         if not rows or any(not root_state.get("v3_issue_batches", {}).get(row["receipt_id"]) for row in rows):
@@ -849,19 +854,6 @@ def record_and_settle_v3_round(
             export_results(round_object, event, root_state)
             round_object["canonical_results_recorded"] = True
         return True
-    if not round_object.get("canonical_results_recorded"):
-        if not write_action():
-            return False
-        round_object["canonical_results_recorded"] = True
-    return _settle_v3_recorded_round(
-        root_state,
-        round_object,
-        authority_store=authority_store,
-        v3_adapter=v3_adapter,
-        checkpoint_callback=checkpoint_callback,
-        observed_at_utc=observed_at_utc,
-        input_fn=input_fn,
-    )
 
 
 def record_and_settle_v3_single_event(
