@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Mapping, MutableMapping
 from uuid import uuid4
 
+from strathmark.private_storage import private_file
+
 _ENGINES = frozenset({"v2", "v3"})
 _MODES = frozenset({"production", "rehearsal", "local"})
 _OWNER_KINDS = frozenset({"single_event", "tournament"})
@@ -125,11 +127,11 @@ class PredictionAuthorityStore:
     """Canonical SQLite store for engine selection, locking, and save binding."""
 
     def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = Path(private_file(path))
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
+        private_file(self.path)
         connection = sqlite3.connect(self.path)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -156,6 +158,11 @@ class PredictionAuthorityStore:
                     payload_json TEXT NOT NULL,
                     digest TEXT NOT NULL,
                     PRIMARY KEY (scope_id, revision)
+                );
+                CREATE TABLE IF NOT EXISTS authority_save_payloads (
+                    normalized_path TEXT PRIMARY KEY,
+                    current_digest TEXT NOT NULL,
+                    backup_digest TEXT
                 );
                 CREATE TABLE IF NOT EXISTS authority_save_bindings (
                     save_id TEXT PRIMARY KEY,
@@ -423,6 +430,34 @@ class PredictionAuthorityStore:
                 "abandoned_at": _required_text(abandoned_at, "abandoned_at"),
             },
         )
+
+    def save_payload_digests(self, path: str | Path) -> tuple[str | None, str | None]:
+        """Return installation-held save evidence; JSON cannot assert its own trust."""
+        normalized = str(Path(path).absolute())
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT current_digest, backup_digest FROM authority_save_payloads WHERE normalized_path = ?",
+                (normalized,),
+            ).fetchone()
+        return (None, None) if row is None else (row["current_digest"], row["backup_digest"])
+
+    def bind_save_payload(self, path: str | Path, digest: str, *, previous_digest: str | None) -> None:
+        """Record only bytes written by this process, retaining the previous backup identity."""
+        normalized = str(Path(path).absolute())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT current_digest FROM authority_save_payloads WHERE normalized_path = ?", (normalized,)
+            ).fetchone()
+            current = None if row is None else row["current_digest"]
+            if current != previous_digest:
+                raise AuthorityStateError("save changed concurrently; preserved files require recovery review")
+            connection.execute(
+                """INSERT INTO authority_save_payloads(normalized_path, current_digest, backup_digest)
+                   VALUES (?, ?, ?) ON CONFLICT(normalized_path) DO UPDATE SET
+                   current_digest=excluded.current_digest, backup_digest=excluded.backup_digest""",
+                (normalized, digest, previous_digest),
+            )
 
     def bind_save_path(self, reference: AuthorityReference, path: str | Path) -> None:
         self.resolve(reference)

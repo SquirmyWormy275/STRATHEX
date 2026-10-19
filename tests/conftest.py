@@ -33,3 +33,14 @@ def private_windows_test_root(request):
         from strathmark.private_storage import private_directory
 
         private_directory(request.getfixturevalue("tmp_path"))
+
+
+@pytest.fixture
+def local_save_authority(tmp_path, monkeypatch):
+    """Explicit local save evidence for synthetic legacy persistence fixtures."""
+    from woodchopping.ui import multi_event_ui
+    from woodchopping.ui.prediction_context import PredictionAuthorityStore
+
+    store = PredictionAuthorityStore(tmp_path / "local-save-authority.db")
+    monkeypatch.setattr(multi_event_ui, "_prediction_authority_store", store)
+    return store

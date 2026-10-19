@@ -36,12 +36,13 @@ from woodchopping.ui.tournament_ui import (
 # Import existing functions for reuse
 from woodchopping.ui.wood_ui import select_event_code, wood_menu
 from woodchopping.ui.workflow_integrity import (
+    approve_marks,
     bind_calculation,
     invalidate_draft,
     new_event_id,
     prepare_field_change,
     protect_evidence,
-    require_current_calculation,
+    require_approved_marks,
     require_removable_event,
 )
 
@@ -2414,7 +2415,11 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
         print(f"{'=' * 70}\n")
 
         for idx, event in enumerate(tournament_state["events"], 1):
-            approved = all(r.get("approved_by") for r in event.get("handicap_results_all", []))
+            try:
+                require_approved_marks(event, root_state=tournament_state)
+                approved = True
+            except ValueError:
+                approved = False
             analysis_done = event.get("analysis_completed", False)
 
             if approved:
@@ -2459,6 +2464,18 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
 
                 if initials:
                     # Mark all events as approved
+                    try:
+                        approvals = []
+                        for event in tournament_state["events"]:
+                            if event.get("event_type") != "championship":
+                                proposed = dict(event)
+                                approve_marks(proposed, initials, timestamp, root_state=tournament_state)
+                                approvals.append((event, proposed["mark_approval"]))
+                        for event, approval in approvals:
+                            event["mark_approval"] = approval
+                    except ValueError as error:
+                        print(f"\n[BLOCKED] {error}")
+                        continue
                     for event in tournament_state["events"]:
                         if event["handicap_results_all"]:
                             for result in event["handicap_results_all"]:
@@ -2482,6 +2499,12 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
 
         event_index = choice_num - 1
         event = tournament_state["events"][event_index]
+        if event.get("status") == "completed" or any(
+            item.get("status") == "in_progress" or (item.get("status") != "completed" and item.get("actual_results"))
+            for item in event.get("rounds", [])
+        ):
+            print("\n[BLOCKED] Started or completed marks require the result correction workflow.")
+            continue
 
         # Show approval menu for this event
         print(f"\n{'?' + '?' * 68 + '?'}")
@@ -2495,7 +2518,11 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
             continue
 
         # Check if already approved
-        already_approved = all(r.get("approved_by") for r in event["handicap_results_all"])
+        try:
+            require_approved_marks(event, root_state=tournament_state)
+            already_approved = True
+        except ValueError:
+            already_approved = False
         if already_approved:
             approver = event["handicap_results_all"][0].get("approved_by", "Unknown")
             approved_time = event["handicap_results_all"][0].get("approved_at", "Unknown")
@@ -2578,6 +2605,11 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
             initials, timestamp = judge_approval()
 
             if initials:
+                try:
+                    approve_marks(event, initials, timestamp, root_state=tournament_state)
+                except ValueError as error:
+                    print(f"\n[BLOCKED] {error}")
+                    continue
                 # Mark this event as approved
                 for result in event["handicap_results_all"]:
                     result["approved_by"] = initials
@@ -2670,6 +2702,7 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                     print("[WARN] Reason is required for adjustment tracking.")
                     reason = input("Reason: ").strip()
 
+                event.pop("mark_approval", None)
                 old_mark = result["mark"]
                 result["mark"] = int(new_mark)
                 result["manually_adjusted"] = True
@@ -2699,6 +2732,11 @@ def approve_event_handicaps(tournament_state: Dict) -> None:
                             adjustment_type="manual",
                         )
 
+                try:
+                    approve_marks(event, initials, timestamp, root_state=tournament_state)
+                except ValueError as error:
+                    print(f"\n[BLOCKED] {error}")
+                    continue
                 # Mark this event as approved
                 for result in event["handicap_results_all"]:
                     result["approved_by"] = initials
@@ -3281,11 +3319,12 @@ def generate_complete_day_schedule(
     if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
 
+    authority_store = _configured_authority_store(authority_store)
     if authority_store is not None:
+        from woodchopping.ui.official_eligibility import require_official_eligibility
+
         try:
-            for event in tournament_state["events"]:
-                if event.get("event_type") != "championship":
-                    require_current_calculation(event, tournament_state)
+            require_official_eligibility(tournament_state, authority_store=authority_store)
         except ValueError as error:
             print(f"\n[BLOCKED] {error}")
             return tournament_state
@@ -3744,6 +3783,13 @@ def sequential_results_workflow(
         choice = input("\nYour choice: ").strip()
 
         if choice == "1":
+            try:
+                require_official_eligibility(
+                    tournament_state, authority_store=_configured_authority_store(authority_store)
+                )
+            except ValueError as error:
+                print(f"\n[BLOCKED] {error}")
+                return tournament_state
             # Record results for current round
             print(f"\n{'=' * 70}")
             print(f"  RECORDING RESULTS: {round_obj['round_name']}")
@@ -3877,6 +3923,12 @@ def sequential_results_workflow(
 
                         # Add to event rounds
                         event_obj["rounds"].extend(next_rounds)
+                        if not use_v3_settlement:
+                            event_obj["handicap_results_all"] = [
+                                row for pending in next_rounds for row in pending["handicap_results"]
+                            ]
+                            bind_calculation(event_obj, tournament_state)
+                            print("Review and approve the new round marks before official use.")
                         print(f"[OK] {len(next_rounds)} {next_type} round(s) generated")
 
             else:

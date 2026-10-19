@@ -17,6 +17,8 @@ from woodchopping.ui.prediction_context import (
 )
 from woodchopping.ui.tournament_ui import load_tournament_state, save_tournament_state
 
+pytestmark = pytest.mark.usefixtures("local_save_authority")
+
 
 def test_multi_event_date_becomes_persisted_exclusive_cutoff():
     state = {"tournament_date": "2026-08-18"}

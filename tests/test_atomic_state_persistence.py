@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from woodchopping.ui import state_persistence
 from woodchopping.ui.bracket_ui import (
@@ -17,6 +18,16 @@ from woodchopping.ui.bracket_ui import (
     generate_double_elimination_bracket,
     initialize_bracket_tournament,
 )
+
+
+@pytest.fixture(autouse=True)
+def local_save_authority(tmp_path, monkeypatch):
+    from woodchopping.ui import multi_event_ui
+    from woodchopping.ui.prediction_context import PredictionAuthorityStore
+
+    store = PredictionAuthorityStore(tmp_path / "local-save-authority.db")
+    monkeypatch.setattr(multi_event_ui, "_prediction_authority_store", store)
+    return store
 
 
 def _single_state(label: str) -> dict:
@@ -83,22 +94,24 @@ def test_single_state_save_creates_directory_and_rolling_backup(tmp_path):
     assert not list(target.parent.glob("*.tmp"))
 
 
-def test_single_state_load_recovers_corrupt_primary_from_backup(tmp_path, capsys):
+def test_single_state_load_preserves_untrusted_corrupt_primary_from_backup(tmp_path, capsys):
     target = tmp_path / "tournament_state.json"
     assert state_persistence.save_tournament_state(_single_state("first"), str(target))
     assert state_persistence.save_tournament_state(_single_state("second"), str(target))
     target.write_text('{"event_name":', encoding="utf-8")
 
+    original = target.read_bytes()
+    backup = Path(str(target) + ".bak")
+    prior = backup.read_bytes()
     loaded = state_persistence.load_tournament_state(str(target))
 
-    assert loaded is not None
-    assert loaded["event_name"] == "first"
-    assert isinstance(loaded["all_competitors_df"], pd.DataFrame)
-    assert json.loads(target.read_text(encoding="utf-8"))["event_name"] == "first"
-    assert "Recovered tournament state from backup" in capsys.readouterr().out
+    assert loaded is None
+    assert target.read_bytes() == original
+    assert backup.read_bytes() == prior
+    assert "retained unchanged" in capsys.readouterr().out
 
 
-def test_single_state_load_recovers_structurally_invalid_primary_from_backup(tmp_path, capsys):
+def test_single_state_load_preserves_untrusted_structurally_invalid_primary_from_backup(tmp_path, capsys):
     target = tmp_path / "tournament_state.json"
     assert state_persistence.save_tournament_state(_single_state("first"), str(target))
     assert state_persistence.save_tournament_state(_single_state("second"), str(target))
@@ -106,14 +119,15 @@ def test_single_state_load_recovers_structurally_invalid_primary_from_backup(tmp
     invalid["rounds"][0]["status"] = "teleported"
     target.write_text(json.dumps(invalid), encoding="utf-8")
 
+    original = target.read_bytes()
+    backup = Path(str(target) + ".bak")
+    prior = backup.read_bytes()
     loaded = state_persistence.load_tournament_state(str(target))
 
-    assert loaded is not None
-    assert loaded["event_name"] == "first"
-    restored = json.loads(target.read_text(encoding="utf-8"))
-    assert restored["event_name"] == "first"
-    assert restored["rounds"][0]["status"] == "pending"
-    assert "Recovered tournament state from backup" in capsys.readouterr().out
+    assert loaded is None
+    assert target.read_bytes() == original
+    assert backup.read_bytes() == prior
+    assert "retained unchanged" in capsys.readouterr().out
 
 
 def test_failed_final_replace_preserves_previous_primary(tmp_path, monkeypatch):
@@ -201,7 +215,7 @@ def test_multi_event_state_round_trip_handles_dataframes_and_numpy(tmp_path):
     assert loaded["events"][0]["event_type"] == "handicap"
 
 
-def test_multi_state_load_recovers_structurally_invalid_primary_from_backup(tmp_path, capsys):
+def test_multi_state_load_preserves_untrusted_structurally_invalid_primary_from_backup(tmp_path, capsys):
     target = tmp_path / "multi_tournament_state.json"
     state_persistence.save_multi_event_tournament(_multi_state("first"), str(target))
     state_persistence.save_multi_event_tournament(_multi_state("second"), str(target))
@@ -209,14 +223,15 @@ def test_multi_state_load_recovers_structurally_invalid_primary_from_backup(tmp_
     invalid["events"][0]["rounds"][0]["competitors"] = "Alice"
     target.write_text(json.dumps(invalid), encoding="utf-8")
 
+    original = target.read_bytes()
+    backup = Path(str(target) + ".bak")
+    prior = backup.read_bytes()
     loaded = state_persistence.load_multi_event_tournament(str(target))
 
-    assert loaded is not None
-    assert loaded["tournament_name"] == "first"
-    restored = json.loads(target.read_text(encoding="utf-8"))
-    assert restored["tournament_name"] == "first"
-    assert restored["events"][0]["rounds"][0]["competitors"] == ["Alice"]
-    assert "Recovered tournament state from backup" in capsys.readouterr().out
+    assert loaded is None
+    assert target.read_bytes() == original
+    assert backup.read_bytes() == prior
+    assert "retained unchanged" in capsys.readouterr().out
 
 
 def test_single_state_rejects_malformed_bracket_match(tmp_path):

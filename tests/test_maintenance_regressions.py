@@ -14,6 +14,8 @@ from openpyxl import Workbook, load_workbook
 from woodchopping.ui import history_entry, personnel_ui, state_persistence, v52_helpers
 from woodchopping.ui.bracket_ui import render_match_box_compact
 
+pytestmark = pytest.mark.usefixtures("local_save_authority")
+
 
 def test_id_only_history_loads_all_rows_with_roster_display_names(tmp_path, monkeypatch, capsys):
     from woodchopping.data import excel_io
