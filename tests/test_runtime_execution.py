@@ -113,3 +113,67 @@ def test_managed_cli_executes_only_selected_installed_environment(runtime, capfd
     root, executable, _ = runtime
     assert run_cli(executable, ["capabilities"]) == 0
     assert Path(capfd.readouterr().out.strip()) == root
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Shared ELF/Mach-O base library protection")
+@pytest.mark.parametrize("change", ["writable", "bytes", "link"])
+def test_shared_base_library_is_checked_before_guarded_spawn(runtime, tmp_path, monkeypatch, change):
+    from woodchopping.managed_launcher import run_cli
+
+    root, executable, _ = runtime
+    base = tmp_path / "base"
+    (base / "bin").mkdir(parents=True, mode=0o700)
+    (base / "lib").mkdir(mode=0o700)
+    library = base / "lib/libpython3.13.so.1.0"
+    library.write_bytes(b"original synthetic library")
+    link = library.with_name("libpython3.13.so")
+    link.symlink_to(library.name)
+    config = root / "pyvenv.cfg"
+    lines = config.read_text().splitlines()
+    config.write_text("\n".join("home = " + str(base / "bin") if row.startswith("home =") else row for row in lines))
+    guard = TrustedPython(executable)
+    assert str(library) in guard.identity
+    assert str(link) in guard.identity
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_kw: pytest.fail("changed base library was executed"))
+    if change == "writable":
+        library.chmod(0o666)
+        with pytest.raises(PermissionError, match="another account"):
+            run_cli(executable, ["capabilities"])
+    else:
+        if change == "bytes":
+            library.write_bytes(b"substituted library bytes")
+        else:
+            replacement = library.with_name("replacement.so")
+            replacement.write_bytes(library.read_bytes())
+            link.unlink()
+            link.symlink_to(replacement.name)
+        with pytest.raises(ValueError, match="changed"):
+            guard.verify()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Native Windows directory ACE semantics")
+def test_ancestor_create_child_right_is_distinct_from_importable_directory_write(tmp_path):
+    from woodchopping.runtime_execution import _trusted
+
+    ancestor = tmp_path / "ancestor"
+    private_directory(ancestor)
+    environment = {key: value for key, value in os.environ.items() if key.upper() != "PSMODULEPATH"}
+    environment["CI_ANCESTOR_PATH"] = str(ancestor)
+    command = r"""
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+$path = $env:CI_ANCESTOR_PATH
+$acl = Get-Acl -LiteralPath $path
+$sid = [System.Security.Principal.SecurityIdentifier]::new('S-1-5-11')
+$rule = [System.Security.AccessControl.FileSystemAccessRule]::new(
+    $sid, [System.Security.AccessControl.FileSystemRights]::CreateDirectories,
+    [System.Security.AccessControl.AccessControlType]::Allow)
+$acl.AddAccessRule($rule)
+Set-Acl -LiteralPath $path -AclObject $acl
+"""
+    subprocess.run(
+        ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command], check=True, env=environment
+    )
+    _trusted(ancestor, directory=True, ancestor=True)
+    with pytest.raises(PermissionError, match="replaceable"):
+        _trusted(ancestor, directory=True)

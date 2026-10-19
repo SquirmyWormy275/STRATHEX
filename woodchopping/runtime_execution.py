@@ -28,7 +28,12 @@ def _trusted(path, *, directory=False, symlink=False, ancestor=False):
 
         # This read-only check accepts owner/admin/system installation files,
         # and rejects peer modification without changing their DACLs.
-        _windows().verify_ancestors(path, include_tool_input=True)
+        if ancestor:
+            # An ancestor's create-child right does not modify an existing
+            # protected child. Actual importable directories below stay strict.
+            _windows().verify_ancestors(path / ".runtime-child-check")
+        else:
+            _windows().verify_ancestors(path, include_tool_input=True)
     else:
         value = path.lstat()
         if value.st_uid not in (0, os.geteuid()) or (
@@ -49,7 +54,7 @@ def _trusted(path, *, directory=False, symlink=False, ancestor=False):
 def _resolved(path, identity, links=()):
     """Resolve only for inspection, retaining every protected link in identity."""
     if path.parent == path:
-        _trusted(path, directory=True)
+        _trusted(path, directory=True, ancestor=True)
         return path
     parent = _resolved(path.parent, identity, links)
     candidate = parent / path.name
@@ -139,6 +144,13 @@ class TrustedPython:
         for pattern in ("python*.dll", "python*.zip", "*._pth"):
             for adjacent in home.glob(pattern):
                 identity[str(adjacent)] = _trusted(adjacent)
+        if os.name == "posix":
+            for pattern in ("libpython*.so*", "libpython*.dylib"):
+                for library in (home.parent / "lib").glob(pattern):
+                    # Shared builds load this sibling of the stdlib. Preserve
+                    # both protected link names and the actual library bytes.
+                    resolved = _resolved(library, identity)
+                    identity[str(resolved)] = _trusted(resolved)
         return identity
 
     def verify(self):
