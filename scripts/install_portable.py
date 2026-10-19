@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-V2_SOURCE_COMMIT = "196b7270dff0acef72cb80bef12ffcbc27939ca3"
+V2_SOURCE_COMMIT = "c382b3f4e719a8621a373e3fa2ec2400bdb9ecd4"
 V2_SOURCE_DIGEST = "81d474f831438a63064d1e3562fedfff76642225fdc67bcbbbf8f2c7bd9ca445"
 # Paired helper bytes are authenticated by this independently acquired bootstrap.
 RECOVERY_HELPER_SHA256 = "953e34cc6323044dca016c6f6b0dd9052ee460fa8eb2c5f19647395742d26d0b"
