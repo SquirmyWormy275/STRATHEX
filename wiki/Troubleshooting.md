@@ -32,6 +32,19 @@ Its outcome may be uncertain. Reopen the same saved competition and use the disp
 durable command ID for exact retry/recovery. Keep the original source, model and
 key. Do not create a replacement command or edit ledgers. See [Recovery](Backups-and-Recovery).
 
+## A selected runtime takes time to start on Windows
+
+Before a command starts, STRATHEX checks the selected runtime's ownership,
+permissions and installed identity again. In the hosted Windows rehearsal,
+checking roughly 13,700 inputs took 49–51 seconds per command. Repeated checks are
+intentional; do not disable them or broaden directory permissions to speed up
+startup. The complete synthetic numerical rehearsal performs 13 checks and allows
+15 minutes on Windows, while individual command limits stay unchanged.
+
+This is a measured Windows performance limitation, not a Linux timing estimate or
+Windows V7 production qualification. The separate qualification requirements still
+apply; see [Engine selection](Choosing-the-Prediction-Engine).
+
 ## A prediction is degraded or has optimizer warnings
 
 Review the warning, cutoff, model, interval and field evidence before approving.
