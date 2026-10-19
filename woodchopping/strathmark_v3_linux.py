@@ -13,6 +13,7 @@ from pathlib import Path
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
+from woodchopping.runtime_execution import TrustedPython
 from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired, V3RuntimeConfigurationError
 from woodchopping.v3_authority_store import V3CommandStore
 
@@ -128,6 +129,12 @@ class LinuxV3Competition:
         validate_local_trust(material["installation_identity"])
 
     def _run(self, operation, envelope=None):
+        try:
+            if not hasattr(self, "_runtime_guard"):
+                self._runtime_guard = TrustedPython(self.python)
+            self._runtime_guard.verify()
+        except (OSError, ValueError) as error:
+            raise V3RuntimeConfigurationError(f"selected Python runtime is unsafe or changed: {error}") from error
         environment = {
             key: value
             for key, value in os.environ.items()

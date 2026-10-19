@@ -11,6 +11,7 @@ On Windows, a new or empty dedicated `--data-dir` is provisioned privately befor
 ```bash
 python3 scripts/install_portable.py install \
   --bundle /private/strath-release \
+  --manifest-sha256 TRUSTED_RELEASE_MANIFEST_SHA256 \
   --workbook /operator/woodchopping.xlsx \
   --backup-dir /independent-disk/recovery \
   --uv /path/to/uv
@@ -30,6 +31,8 @@ python3 scripts/install_portable.py launch --profile linux-competition-7.3.2
 ```
 
 Rollback selects the previous verified profile. It preserves later profiles and their competition history. It does not downgrade or rewrite a competition under another source identity. Both V2 and V3 remain deliberate per-competition choices. An existing competition never changes its selected engine because the active installation changes.
+
+The install command requires the SHA256 of the exact `release.json` bytes from a separately protected, reviewed private-bundle build record. It checks that identity before parsing the manifest or installing any wheels. Never derive this argument from the selected bundle or its adjacent checksums: a replacement supplier can change both. Acquire the bootstrap itself through the reviewed release; its embedded `RECOVERY_HELPER_SHA256` authenticates its paired helper before executing those exact checked bytes. These checks establish the supplied trusted artifact identity, not a new signing authority.
 
 Before making a new installation the normal launcher, verify the actual installed app outside a checkout, the engine selector, the full approval/issue/results/restart workflow, and a restored independent backup. The release bundle's SHA256 list verifies bytes; it is not a digital signature or a grant of Windows CNG qualification. Obtain the installer and release manifest from the reviewed release, and keep private bundle backups independently.
 
@@ -107,3 +110,25 @@ their permissions. Missing dedicated directories are created with mode 0700 rega
 of umask. New profile directories are never substituted for old ones, and failed staging
 does not change the active profile. Preserve the original 7.4.4/rc12 and 7.4.2/rc7
 profiles and their identities when provisioning 7.4.5/rc13.
+
+
+## Selected runtime execution
+
+Managed CLI, local preview and Linux competition clients require a separately
+installed Python virtual environment. Keep its interpreter, base Python, package
+files and import hooks under trusted ownership without peer write access. A
+shared runtime is rejected before it executes; the client never changes those
+folders' permissions. Ordinary protected venv and uv interpreter symlinks remain
+supported, and execution keeps the venv path so its own packages are selected.
+Environments inheriting system site packages are rejected.
+
+The client records the interpreter/link, configuration, installed-package and
+standard-library file identities before its first call, and rechecks them before
+each later call. Changing the selected installation stops that client; reopen its
+original profile rather than updating a running competition's runtime. Generated
+Python caches may appear, but their access permissions are still checked. This
+protects against another account replacing a runtime and detects changed owner
+installations between calls; it does not authenticate an initially malicious
+runtime deliberately installed by the operator. Use reviewed artifacts for new
+installations. Retained rc7, rc12 and rc13 profiles keep their original source,
+model, signing keys and saved competitions.

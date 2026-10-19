@@ -11,7 +11,6 @@ import argparse
 import contextlib
 import fcntl
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -21,12 +20,15 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import types
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
 V2_SOURCE_COMMIT = "f064d67abe4baf7672239a14796c0bdc4f8c2071"
 V2_SOURCE_DIGEST = "b6e315d90a6248c6eda8fd3b3727a3272dc212f4d71484665ba4d2f8ba7c9e0b"
+# Paired helper bytes are authenticated by this independently acquired bootstrap.
+RECOVERY_HELPER_SHA256 = "953e34cc6323044dca016c6f6b0dd9052ee460fa8eb2c5f19647395742d26d0b"
 
 
 def require_independent(home, backup, workbook):
@@ -141,7 +143,7 @@ def verify_content_identity(selected, *, allow_missing_model=False):
         raise ValueError("installed model identity changed")
 
 
-def read_json(path):
+def read_json(path, *, expected_sha256=None):
     descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     with os.fdopen(descriptor, "rb") as stream:
         status = os.fstat(stream.fileno())
@@ -150,6 +152,8 @@ def read_json(path):
         contents = stream.read(1_000_001)
         if len(contents) > 1_000_000:
             raise ValueError("installation manifest exceeds 1 MB")
+        if expected_sha256 is not None and hashlib.sha256(contents).hexdigest() != expected_sha256:
+            raise ValueError("release manifest differs from its independent SHA256")
         return json.loads(contents)
 
 
@@ -235,11 +239,18 @@ def recovery_archive(home, backup, workbook):
     )
     encryption_policy = home / "recovery-encryption-policy.json"
     helper = Path(__file__).with_name("recovery_security.py")
-    if not helper.is_file() or helper.is_symlink():
-        raise ValueError("install the release's standalone recovery_security.py beside this bootstrap")
-    spec = importlib.util.spec_from_file_location("strath_portable_recovery_security", helper)
-    recovery = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(recovery)
+    descriptor = os.open(helper, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        status = os.fstat(stream.fileno())
+        if not stat.S_ISREG(status.st_mode) or status.st_size > 1_000_000:
+            raise ValueError("recovery helper must be a bounded regular file")
+        contents = stream.read(1_000_001)
+    if hashlib.sha256(contents).hexdigest() != RECOVERY_HELPER_SHA256:
+        raise ValueError("recovery helper differs from this trusted bootstrap's release")
+    # Execute the exact checked bytes, never reopen a replaceable sibling path.
+    recovery = types.ModuleType("strath_portable_recovery_security")
+    recovery.__file__ = str(helper)
+    exec(compile(contents, str(helper), "exec"), recovery.__dict__)
     encryption = None
     if encryption_policy.exists():
         encryption = recovery
@@ -334,8 +345,10 @@ def activate(home, release):
     return selected
 
 
-def verify_bundle(bundle):
-    manifest = read_json(bundle / "release.json")
+def verify_bundle(bundle, manifest_sha256):
+    if not isinstance(manifest_sha256, str) or not re.fullmatch(r"[0-9a-f]{64}", manifest_sha256):
+        raise ValueError("an independently acquired release manifest SHA256 is required")
+    manifest = read_json(bundle / "release.json", expected_sha256=manifest_sha256)
     if manifest["schema_version"] != "strath-portable-release-v1" or manifest["python"] != "3.13":
         raise ValueError("unsupported portable release")
     if manifest.get("v2_source_commit") != V2_SOURCE_COMMIT or manifest.get("v2_source_digest") != V2_SOURCE_DIGEST:
@@ -414,11 +427,11 @@ def _snapshot_bundle_file(bundle, relative, destination, identity):
 
 
 @contextlib.contextmanager
-def verified_bundle_snapshot(home, bundle):
+def verified_bundle_snapshot(home, bundle, manifest_sha256):
     """Only privately staged, verified bytes may reach an installer or model copy."""
     home = prepare_installation_home(home)
     bundle = bundle.resolve(strict=True)
-    manifest = verify_bundle(bundle)
+    manifest = verify_bundle(bundle, manifest_sha256)
     with tempfile.TemporaryDirectory(prefix=".verified-bundle-", dir=home) as name:
         snapshot = Path(name)
         for relative, identity in manifest["files"].items():
@@ -427,9 +440,9 @@ def verified_bundle_snapshot(home, bundle):
         yield snapshot, manifest
 
 
-def install(home, bundle, workbook, backup, uv, *, stage_only=False):
+def install(home, bundle, workbook, backup, uv, *, manifest_sha256, stage_only=False):
     home = prepare_installation_home(home)
-    with verified_bundle_snapshot(home, bundle) as (snapshot, manifest):
+    with verified_bundle_snapshot(home, bundle, manifest_sha256) as (snapshot, manifest):
         return _install_verified(home, snapshot, manifest, workbook, backup, uv, stage_only=stage_only)
 
 
@@ -652,6 +665,11 @@ def main():
     sub = parser.add_subparsers(dest="operation", required=True)
     setup = sub.add_parser("install")
     setup.add_argument("--bundle", type=Path, required=True)
+    setup.add_argument(
+        "--manifest-sha256",
+        required=True,
+        help="SHA256 of release.json from a separately protected reviewed build record, never the bundle itself",
+    )
     setup.add_argument("--workbook", type=Path, required=True)
     setup.add_argument("--backup-dir", type=Path, required=True)
     setup.add_argument("--uv", default=shutil.which("uv"))
@@ -677,7 +695,15 @@ def main():
                     raise ValueError("uv is required to provision Python 3.13 environments")
                 print(
                     json.dumps(
-                        install(home, args.bundle, args.workbook, args.backup_dir, args.uv, stage_only=args.stage_only),
+                        install(
+                            home,
+                            args.bundle,
+                            args.workbook,
+                            args.backup_dir,
+                            args.uv,
+                            manifest_sha256=args.manifest_sha256,
+                            stage_only=args.stage_only,
+                        ),
                         indent=2,
                     )
                 )

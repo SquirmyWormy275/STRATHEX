@@ -1,6 +1,5 @@
 """Explicit optional shared workspace/process access, without legacy startup."""
 
-from pathlib import Path
 from urllib.parse import quote, urlsplit
 
 from strathmark.events.contracts import identifier
@@ -32,9 +31,10 @@ def workspace_url(base, event_id):
 def run_cli(interpreter, arguments):
     import subprocess
 
-    executable = Path(interpreter).expanduser().absolute()
-    if not executable.is_file():
-        raise ValueError("Select an installed STRATHMARK interpreter with managed-event support.")
+    from woodchopping.runtime_execution import TrustedPython
+
+    runtime = TrustedPython(interpreter)
+    executable = runtime.verify()
     # The component owns parsing, numerical authority, lifecycle and storage.
     # A failed selected interpreter never falls back to STRATHEX's V2 adapter.
     return subprocess.run([str(executable), "-I", "-m", "strathmark", *arguments], check=False).returncode

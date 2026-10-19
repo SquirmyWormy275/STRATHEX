@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any, Mapping
 
 from woodchopping.engine_selection import PredictionExecutionContext
+from woodchopping.runtime_execution import TrustedPython
 from woodchopping.strathmark_v3_client import V3ClientError, V3RuntimeConfigurationError
 
 LOCAL_V3_PROTOCOL = "strathmark.v3-linux-numeric-candidate.v1"
@@ -76,6 +77,12 @@ class LocalV3Candidate:
         ).hexdigest()
 
     def _run(self, operation: str, payload: Mapping[str, Any] | None = None) -> dict:
+        try:
+            if not hasattr(self, "_runtime_guard"):
+                self._runtime_guard = TrustedPython(self.python)
+            self._runtime_guard.verify()
+        except (OSError, ValueError) as error:
+            raise V3RuntimeConfigurationError(f"selected Python runtime is unsafe or changed: {error}") from error
         child_environment = {
             key: value
             for key, value in os.environ.items()
