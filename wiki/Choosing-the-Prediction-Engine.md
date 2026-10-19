@@ -50,7 +50,7 @@ are not copied from a previous heat.
 ## Resuming saved work
 
 Keep the original source, trained model, authority key and runtime. Existing
-7.4.5/rc13, 7.4.4/rc12 and 7.4.2/rc7 profiles retain their exact original installations; the rc13 pair is for new
+7.4.5/rc13, 7.4.4/rc12 and 7.4.2/rc7 profiles retain their exact original installations; the rc14 pair is for new
 profiles. The adapter accepts only its explicitly reviewed implementations, and a saved
 scope still requires its original recorded identity. Resume the original profile instead
 of replacing its runtime, switching engines or creating a new key. See
