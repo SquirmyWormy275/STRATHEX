@@ -76,8 +76,10 @@ def gpg_archive(tmp_path):
     subprocess.run(["gpgconf", "--homedir", str(home), "--kill", "gpg-agent"], capture_output=True)
 
 
-def test_native_encrypt_decrypt_and_complete_member_readback(gpg_archive):
+@pytest.mark.parametrize("archive_mode", [0o700, 0o777])
+def test_native_encrypt_decrypt_and_complete_member_readback(gpg_archive, archive_mode):
     source, destination, policy = gpg_archive
+    destination.parent.chmod(archive_mode)
     original = source.read_bytes()
     result = encrypt_file(source, destination, policy)
     assert result["authenticated_decryption_readback"] is True
@@ -113,6 +115,23 @@ def test_private_key_and_archive_cannot_share_filesystem(gpg_archive):
     source, _, policy = gpg_archive
     with pytest.raises(ValueError, match="different filesystems"):
         encrypt_file(source, source.parent / "same-filesystem.gpg", policy)
+
+
+def test_native_gpg_uses_validated_paths_after_aliases_change(gpg_archive, tmp_path):
+    source, destination, policy = gpg_archive
+    value = json.loads(policy.read_bytes())
+    binary_alias, home_alias = tmp_path / "gpg-alias", tmp_path / "home-alias"
+    binary_alias.symlink_to(value["gpg_binary"])
+    home_alias.symlink_to(value["gpg_home"], target_is_directory=True)
+    value.update(gpg_binary=str(binary_alias), gpg_home=str(home_alias))
+    policy.write_text(json.dumps(value))
+    encrypt_file(source, destination, policy)
+    configured = load_policy(policy)
+    binary_alias.unlink()
+    home_alias.unlink()
+    binary_alias.symlink_to(tmp_path / "missing-program")
+    home_alias.symlink_to(tmp_path / "missing-key-home", target_is_directory=True)
+    assert plaintext_sha(destination, configured) == hashlib.sha256(source.read_bytes()).hexdigest()
 
 
 def test_bulk_streaming_and_truncated_authenticated_tail(gpg_archive):

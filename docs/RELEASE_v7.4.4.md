@@ -20,6 +20,9 @@ Formula, trained model and per-competition V2/V3 choice are unchanged.
   processing limits. Profile-switch backups use an exact local file inventory
   to preserve large snapshots through bounded plaintext or encrypted readback.
   Both bootstrap scripts must come from the same release.
+- Local GPG policy, executable and key-home paths must be protected from peer
+  replacement. The verified canonical executable is used for encryption and
+  readback; encrypted archives still support permissive removable-drive storage.
 
 See [the security repair details](SECURITY_CLOUD_2026-10-19.md) for changed operator
 requirements, [the runtime contract](CURRENT_RUNTIME_CONTRACT.md) for supported
