@@ -9,6 +9,34 @@ New scopes have no default. A single event selects once at setup. A tournament s
 
 The choice locks before the first numeric operation. Neither engine may call the other after timeout, incompatibility, partial response, or outage. An ambiguous V3 command is shown with its durable identity and requires an exact judge-directed retry. A locked scope never changes engine in place.
 
+## Supported release profiles
+
+STRATHEX 7.4.4 uses the reviewed STRATHMARK 3.0.0rc12 security source for new
+installations. The package still supplies the established V2 numerical engine
+and its frozen `2.0.0` calculation contract. Package installation never selects
+an engine on behalf of a competition.
+
+| Profile | Runtime boundary |
+| --- | --- |
+| New local Linux competition | STRATHEX 7.4.4 with the separately installed reviewed STRATHMARK 3.0.0rc12 runtime, exact model and persistent installation key. |
+| Retained rc7 competition, including the 7.4.2 recovery profile | Original rc7 interpreter, source, model, key and saved authority. Keep the original profile available for resumption. |
+| Retained numeric preview or V7 service rehearsal | Its separately frozen source and contract. The new Linux pair does not replace either profile. |
+
+The [Linux adapter](../woodchopping/strathmark_v3_linux.py) lists the exact reviewed
+source, implementation digest and package-version pairs. The
+[portable installer](../scripts/install_portable.py) records and verifies the
+installed file identities. Accepting both reviewed Linux implementations does not
+let a saved competition change its recorded source identity. Stage new profiles
+separately and activate them deliberately after backup and installed-workflow
+verification; see [portable installation and rollback](PORTABLE_INSTALLATION.md).
+
+Native Windows compatibility coverage does not grant Windows V7 production
+eligibility or provision a CNG identity. STRATHMARK rc12's operational V3 SQLite
+event authority also requires a separately provisioned independent witness; see
+[authority trust](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/AUTHORITY_TRUST.md).
+The Linux profile uses its separate signed local lifecycle. Installing this
+release neither supplies the witness nor migrates an existing Linux profile.
+
 ## Ownership
 
 The following ownership describes retained retro/workbook competitions.
@@ -35,7 +63,7 @@ V2 and the full V7 field contract include predicted time, legal mark, method, co
 
 ## Transport
 
-The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. The reviewed Linux producer source is `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84`, implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. It binds the code, Formula, ML, and persistent installation key into the source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
+The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. New profiles use the reviewed rc12 implementation listed in the [Linux adapter](../woodchopping/strathmark_v3_linux.py). Retained rc7 profiles keep source `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84` and implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. Each profile binds the code, package version, Formula, ML, and persistent installation key into its source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
 
 The explicit Linux V3 numeric profile runs a separate Python 3.13 subprocess with
 verified trained ML, Formula, distribution pooling, and the V3 optimizer. Its
@@ -64,6 +92,13 @@ Simulation remains local. Championship simulation uses at most 250,000 races and
 ## Persistence
 
 Excel is judge-canonical. ResultStore is a derived, best-effort second write. The two stores are not one atomic transaction and a ResultStore failure does not undo Excel.
+
+New authority storage uses explicit owner-only permissions. On Windows, the
+application provisions only a new or empty dedicated data directory. An existing
+nonempty directory is verified without changing its ACL or saved files. Shared
+write access, unsafe ancestry, links and unsupported permission checks stop
+startup. Keep data beneath a trusted private location; do not select a home root
+or shared project directory as the application's data directory.
 
 Tournament JSON saves are schema-validated, written to a same-directory temporary file, flushed, verified, atomically replaced, and backed up. Load can recover a valid backup when the primary is malformed.
 

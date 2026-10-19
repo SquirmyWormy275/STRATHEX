@@ -8,9 +8,31 @@ operation locks it. See [Engine selection](Choosing-the-Prediction-Engine).
 
 ## Can V3 run a full competition?
 
-Yes, with the separately configured Linux competition runtime: STRATHEX 7.4.3 and
-STRATHMARK 3.0.0rc7, labeled `LINUX READY`. Older numeric previews cannot issue or
-settle, and Windows V7 production qualification remains incomplete.
+Yes, with the separately configured Linux competition runtime: new profiles use
+STRATHEX 7.4.4 and STRATHMARK 3.0.0rc12, labeled `LINUX READY`. The runtime also
+needs its reviewed model, signing authority and independent backups. Older numeric
+previews cannot issue or settle. Windows compatibility checks do not establish
+Windows V7 production qualification.
+
+## Will installing 7.4.4 upgrade a saved competition?
+
+No. Existing 7.4.2/rc7 profiles and other saved competitions keep their original
+runtime and recorded source identity. Preserve their interpreter, model, keys,
+data and backups, and resume through the original profile. New profiles have
+separate authority and saved-data directories. The portable installer's
+`install --stage-only` prepares a new profile while leaving the active profile
+selected. Activation and rollback follow the documented backup checks and never
+change a saved competition's locked engine choice. See
+[Backups and recovery](Backups-and-Recovery).
+
+## Why can Windows reject my data directory?
+
+Authority storage must be private to your account. A new dedicated data directory
+is provisioned privately; an existing nonempty directory is checked without
+rewriting its permissions or files. A shared writable parent also causes refusal.
+Use a dedicated reviewed location under your account, preserving the original
+profile and backups before any move. See the
+[installation guide](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/PORTABLE_INSTALLATION.md).
 
 ## Does race day need a network connection?
 
