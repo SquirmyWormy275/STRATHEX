@@ -54,8 +54,10 @@ records as well as the JSON save.
 ## V2 HTTP mode fails
 
 Set both `STRATHMARK_TRANSPORT=http` and `STRATHMARK_API_URL` in the STRATHEX shell.
-The API origin must have no credentials, path, query or fragment. Plain HTTP is
-accepted on loopback; a remote endpoint needs HTTPS. Redirects are rejected.
+The API origin must have no credentials, path, query or fragment. Verified HTTPS is
+required even on loopback. Provision a certificate for the configured hostname and,
+for a private CA, set `STRATHMARK_API_CA_BUNDLE` to its trusted certificate file.
+Redirects are rejected.
 
 A schema mismatch or unavailable API stops calculation. Restore the configured
 transport. A deliberate V2 transport change must preserve the reviewed contract
@@ -63,7 +65,7 @@ and evidence cutoff; it does not change the competition's selected engine.
 
 For the local API setup, use
 [STRATHMARK's API guide](https://github.com/SquirmyWormy275/STRATHMARK/wiki/REST-API).
-The public V2 calculation route is stateless and unauthenticated; keep it on loopback.
+The public V2 calculation route is stateless and has no client authentication; keep it on loopback behind the certificate-authenticated TLS endpoint.
 
 ## Migration or test failures
 

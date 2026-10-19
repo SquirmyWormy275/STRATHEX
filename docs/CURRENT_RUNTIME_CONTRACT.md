@@ -1,6 +1,6 @@
 # Current Runtime Contract
 
-**Applies to:** STRATHEX 7.4.3
+**Applies to:** STRATHEX 7.4.4
 **Prediction authority:** the competition-root selection persisted by STRATHEX; V2 remains the production baseline and V3 remains opt-in under exact readiness evidence
 
 ## Competition authority
@@ -8,6 +8,34 @@
 New scopes have no default. A single event selects once at setup. A tournament selects once at creation and all child events, heats, and later rounds inherit that choice. The persisted SQLite authority records the engine, mode, actor assertion, time, reason, exact contract/source identity, and lock. JSON saves carry only its immutable reference.
 
 The choice locks before the first numeric operation. Neither engine may call the other after timeout, incompatibility, partial response, or outage. An ambiguous V3 command is shown with its durable identity and requires an exact judge-directed retry. A locked scope never changes engine in place.
+
+## Supported release profiles
+
+STRATHEX 7.4.4 uses the reviewed STRATHMARK 3.0.0rc12 security source for new
+installations. The package still supplies the established V2 numerical engine
+and its frozen `2.0.0` calculation contract. Package installation never selects
+an engine on behalf of a competition.
+
+| Profile | Runtime boundary |
+| --- | --- |
+| New local Linux competition | STRATHEX 7.4.4 with the separately installed reviewed STRATHMARK 3.0.0rc12 runtime, exact model and persistent installation key. |
+| Retained rc7 competition, including the 7.4.2 recovery profile | Original rc7 interpreter, source, model, key and saved authority. Keep the original profile available for resumption. |
+| Retained numeric preview or V7 service rehearsal | Its separately frozen source and contract. The new Linux pair does not replace either profile. |
+
+The [Linux adapter](../woodchopping/strathmark_v3_linux.py) lists the exact reviewed
+source, implementation digest and package-version pairs. The
+[portable installer](../scripts/install_portable.py) records and verifies the
+installed file identities. Accepting both reviewed Linux implementations does not
+let a saved competition change its recorded source identity. Stage new profiles
+separately and activate them deliberately after backup and installed-workflow
+verification; see [portable installation and rollback](PORTABLE_INSTALLATION.md).
+
+Native Windows compatibility coverage does not grant Windows V7 production
+eligibility or provision a CNG identity. STRATHMARK rc12's operational V3 SQLite
+event authority also requires a separately provisioned independent witness; see
+[authority trust](https://github.com/SquirmyWormy275/STRATHMARK/blob/main/docs/AUTHORITY_TRUST.md).
+The Linux profile uses its separate signed local lifecycle. Installing this
+release neither supplies the witness nor migrates an existing Linux profile.
 
 ## Ownership
 
@@ -35,7 +63,7 @@ V2 and the full V7 field contract include predicted time, legal mark, method, co
 
 ## Transport
 
-The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. The reviewed Linux producer source is `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84`, implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. It binds the code, Formula, ML, and persistent installation key into the source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
+The full Linux local competition profile is `strathmark.v3-linux-competition.v1`, frozen contract `162a5317adce4c2efd037d50e9d0239a49dc849dfaa365d935356a6240bc455e`. New profiles use the reviewed rc12 implementation listed in the [Linux adapter](../woodchopping/strathmark_v3_linux.py). Retained rc7 profiles keep source `e5c3f2de6a316dc4a38aed05e4fc4092893a7c84` and implementation digest `29ef522ac52409055f5353682528a8005fe0df8087ce94adbcdcf6ebf235f7d7`. Each profile binds the code, package version, Formula, ML, and persistent installation key into its source identity, validates signed exact-command responses, and records an acknowledged/recovery outbox. See [complete Linux workflow](V3_LINUX_COMPETITION.md). The preview restrictions below apply only to the retained numeric-preview profile.
 
 The explicit Linux V3 numeric profile runs a separate Python 3.13 subprocess with
 verified trained ML, Formula, distribution pooling, and the V3 optimizer. Its
@@ -49,10 +77,10 @@ weights, and bootstrap dependence are disclosed; no accuracy qualification is cl
 
 - `python` is the default: direct in-process `HandicapCalculator.calculate()`, offline-capable.
 - `http` is explicit: one stateless `POST /calculate` per common-wood field after validating the audited `/openapi.json` 2.0.0 request/response shape.
-- The V3 V7 profile uses a separate authenticated loopback-only HTTP client pinned to one reviewed V3 consumer-contract digest and source commit. Its credentials are referenced through an environment-variable name or OS keyring and are never persisted.
+- The V3 V7 profile uses a separate authenticated loopback-only HTTPS client pinned to one reviewed V3 consumer-contract digest and source commit. Its credentials are referenced through an environment-variable name or OS keyring and are never persisted.
 - Credential rotation and revocation are installation-administration operations, not judge or competition-root actions. The judge client deliberately does not persist the one-time credential returned by `/v3/credentials/rotate`; it resolves its configured environment/keyring reference for every request, so an administrator can rotate the service credential out of band without rewriting tournament state. The authenticated deployment procedure must store the replacement before revoking the prior digest.
 - HTTP mode never falls back to Python.
-- Loopback HTTP is allowed. Remote API URLs require HTTPS. Redirects and URLs containing credentials, paths, queries, or fragments are rejected. OpenAPI and calculation response bodies are bounded to 4 MiB.
+- All HTTP transports require verified HTTPS, including loopback. The V7 client also requires an independently provisioned signer identity digest; see [security boundary repairs](SECURITY_CLOUD_2026-10-19.md). Redirects and URLs containing credentials, paths, queries, or fragments are rejected. OpenAPI and calculation response bodies are bounded to 4 MiB.
 - The HTTP calculation endpoint does not read ResultStore and does not write PredictionLedger.
 
 Both V2 transports enforce the public API's 64-competitor field-size and value bounds before calculation. A malformed or incomplete result aborts the complete field. Championship scenarios group competitors that share target wood and history context; distinct target wood or curated peak windows require separate calls. The simulator fixes the cutoff, requires one consistent engine/model/calibration bundle, and aborts rather than mixing snapshots or producing a partial field.
@@ -64,6 +92,13 @@ Simulation remains local. Championship simulation uses at most 250,000 races and
 ## Persistence
 
 Excel is judge-canonical. ResultStore is a derived, best-effort second write. The two stores are not one atomic transaction and a ResultStore failure does not undo Excel.
+
+New authority storage uses explicit owner-only permissions. On Windows, the
+application provisions only a new or empty dedicated data directory. An existing
+nonempty directory is verified without changing its ACL or saved files. Shared
+write access, unsafe ancestry, links and unsupported permission checks stop
+startup. Keep data beneath a trusted private location; do not select a home root
+or shared project directory as the application's data directory.
 
 Tournament JSON saves are schema-validated, written to a same-directory temporary file, flushed, verified, atomically replaced, and backed up. Load can recover a valid backup when the primary is malformed.
 
@@ -82,3 +117,5 @@ A STRATHEX release is acceptable only when:
 5. maintained docs, dated solution labels, and versioned wiki source describe this contract;
 6. published wikis are synced and verified separately;
 7. no test touches the production workbook or ResultStore.
+
+Single-event V2 official use requires judge approval bound to the current context and full mark sheet. Setup changes invalidate draft calculations and schedules; issued or recorded fields are retained through correction/recovery. Event identities remain immutable across display reordering and removal of unreferenced drafts.

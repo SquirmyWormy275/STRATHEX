@@ -12,9 +12,13 @@ From the repository root, create and activate a virtual environment as shown in
 python -m pip install -e ".[dev,api-test]"
 ```
 
-STRATHMARK V2 is pinned to reviewed commit
-`a231ad65fe82317516cc82a282761d73adb0c0e3`. Changing that dependency requires
-fixed-cutoff Python/HTTP parity checks and a migration decision.
+The reviewed STRATHMARK 3.0.0rc12 security source is pinned by immutable commit
+in `pyproject.toml` and `scripts/install_portable.py`. It preserves V2 numerical
+behavior and the `2.0.0` calculation contract. Changing that dependency requires
+fixed-cutoff Python/HTTP parity checks and a migration decision. New V2 roots
+record the new reviewed source; saved roots retain their original receipts and
+identities. Existing immutable Linux V3 profiles keep their original runtime,
+model, keys and backups. See the [portable installation runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/PORTABLE_INSTALLATION.md).
 
 ## Isolate tests before imports
 

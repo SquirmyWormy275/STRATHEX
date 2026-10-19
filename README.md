@@ -14,6 +14,17 @@ days, results, saves and Excel exports.
 cutting times and handicap marks. STRATHEX gives judges the workflow to review
 those marks and run the competition.
 
+## Security maintenance
+
+STRATHEX 7.4.4 protects exported text and preserves competition evidence when
+setup changes. Single-event V2 marks need approval before official use. HTTP
+connections require verified HTTPS; the V7 rehearsal also needs an independently
+provisioned signer identity. See the [security update and migration notes](docs/SECURITY_CLOUD_2026-10-19.md)
+before upgrading. Keep the original runtime and backups for saved V3 competitions.
+New 7.4.4 installations use the reviewed STRATHMARK 3.0.0rc12 security release.
+Its V2 engine retains the established calculation contract. Installing application
+code does not select V3 or configure a local competition profile.
+
 ## Start here
 
 You need **Python 3.13**, a UTF-8 terminal and a competition workbook with the
@@ -39,8 +50,11 @@ Launch with explicit paths to your workbook and a directory for saved work:
 strathex --workbook /absolute/path/to/competition.xlsx --data-dir /absolute/path/to/operator-data
 ```
 
-On Windows, use Windows paths such as `C:\Competition\competition.xlsx` and
-`C:\Competition\operator-data`. Quote any path containing spaces.
+On Windows, use paths under your account, such as
+`C:\Users\YourName\Competitions\competition.xlsx` and a separate
+`C:\Users\YourName\STRATHEX-data` directory. Quote paths containing spaces.
+A new dedicated data directory is made private. Existing nonempty data directories
+are checked without changing their permissions; unsafe shared access stops startup.
 
 The [quick start](wiki/Quick-Start.md) walks through your first event. For a portable
 Linux installation with separate release profiles and rollback, use the
@@ -59,11 +73,16 @@ stops the selected workflow instead of switching engines.
 | **V3 — NUMERIC PREVIEW ONLY** | Older preview installation. Proposed times and marks; no official issue or settlement. |
 | **V3 — REHEARSAL** | Development service. Windows production qualification is incomplete. |
 
-The current Linux competition pair is **STRATHEX 7.4.3 + STRATHMARK 3.0.0rc7**.
+The new Linux competition pair is **STRATHEX 7.4.4 + STRATHMARK 3.0.0rc12**.
 Follow the [Linux V3 setup guide](docs/V3_LINUX_COMPETITION.md) for its separate
 Python environment, trained model, signing key and independent backup directory.
 The Linux LLM council is unavailable, so fields require explicit degraded or
 individual judge review.
+
+Existing **7.4.2/rc7 profiles** and other retained competitions keep their original
+interpreter, source identity, model, signing authority and saved data. Resume them
+with their original profile; a new installation does not migrate an active event.
+Windows compatibility checks do not grant Windows V7 production qualification.
 
 A V3 pre-field forecast is forbidden from carrying a mark. Create the actual heats
 and stands before calculating field marks, then approve and confirm issue

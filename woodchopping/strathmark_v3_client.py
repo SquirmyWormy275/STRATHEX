@@ -106,12 +106,12 @@ def _digest_text(value: str) -> str:
 
 def _loopback_url(value: str) -> str:
     parsed = urlparse(value)
-    if parsed.scheme != "http" or parsed.hostname not in {
+    if parsed.scheme != "https" or parsed.hostname not in {
         "127.0.0.1",
         "localhost",
         "::1",
     }:
-        raise ValueError("STRATHMARK V3 client requires an explicit loopback HTTP URL")
+        raise ValueError("STRATHMARK V3 client requires an explicit loopback HTTPS URL with certificate verification")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError("STRATHMARK V3 base URL cannot contain credentials, query, or fragment")
     if parsed.path not in {"", "/"}:
@@ -273,8 +273,16 @@ class V3HttpClient:
         connect_timeout_seconds: float = 1.0,
         bundle_id: str = "bundle:strathex-current",
         clock: UtcClock | None = None,
+        signer_identity_digest: str | None = None,
+        ca_bundle: str | None = None,
     ) -> None:
         self.base_url = _loopback_url(base_url)
+        if not isinstance(signer_identity_digest, str) or re.fullmatch(r"[0-9a-f]{64}", signer_identity_digest) is None:
+            raise ValueError("An independently provisioned V3 signer identity digest is required")
+        self._signer_identity_digest = signer_identity_digest
+        if ca_bundle is not None and (not isinstance(ca_bundle, str) or not Path(ca_bundle).is_file()):
+            raise ValueError("V3 CA bundle must identify an existing certificate file")
+        self._tls_verify = ca_bundle or True
         if not callable(credential_provider):
             raise TypeError("credential_provider must be callable")
         if not isinstance(command_store, V3CommandStore):
@@ -306,8 +314,7 @@ class V3HttpClient:
             raise V3ClientError("V3 field hard deadline expired before completion")
         return min(maximum_ms, remaining_ms)
 
-    @staticmethod
-    def _validate_context(context: PredictionExecutionContext) -> None:
+    def _validate_context(self, context: PredictionExecutionContext) -> None:
         if not isinstance(context, PredictionExecutionContext) or context.selected_engine != "v3":
             raise V3ClientError("V3 client requires a locked V3 execution context")
         if context.contract_identity != FROZEN_V3_CONTRACT_DIGEST:
@@ -315,10 +322,10 @@ class V3HttpClient:
         if context.source_identity != FROZEN_V3_SOURCE_COMMIT:
             raise V3ClientError("V3 source pin does not match the frozen source commit")
         try:
-            _validated_pre_field_signer_trust(
-                json.loads(context.pre_field_signer_trust_json or "null"),
-                source_commit=context.source_identity,
-            )
+            trust = json.loads(context.pre_field_signer_trust_json or "null")
+            _validated_pre_field_signer_trust(trust, source_commit=context.source_identity)
+            if trust["identity_digest"] != self._signer_identity_digest:
+                raise ValueError("saved signer differs from the installation trust anchor")
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise V3ClientError("V3 pre-field signer trust is absent or invalid") from exc
 
@@ -360,6 +367,7 @@ class V3HttpClient:
                 headers=self._headers(action="read_status"),
                 timeout=(self._connect_timeout, 5.0),
                 allow_redirects=False,
+                verify=self._tls_verify,
             )
             body = self._body(response, "strathmark-v3-status-response-v1")
         except (requests.RequestException, V3ClientError) as exc:
@@ -443,6 +451,8 @@ class V3HttpClient:
                 body.get("pre_field_signer_trust"),
                 source_commit=returned_source,
             )
+            if json.loads(signer_trust_json)["identity_digest"] != self._signer_identity_digest:
+                raise ValueError("service signer differs from the installation trust anchor")
         except (TypeError, ValueError) as exc:
             return V3Readiness(
                 "ineligible",
@@ -530,6 +540,7 @@ class V3HttpClient:
                 json=dict(payload),
                 timeout=(self._connect_timeout, read_timeout),
                 allow_redirects=False,
+                verify=self._tls_verify,
             )
         except requests.RequestException as exc:
             self.command_store.mark_recovery_required(command_key, type(exc).__name__)
@@ -675,6 +686,7 @@ class V3HttpClient:
                 headers=self._headers(action="read_projection"),
                 timeout=(self._connect_timeout, 5.0),
                 allow_redirects=False,
+                verify=self._tls_verify,
             )
         except requests.RequestException as exc:
             raise V3ClientError("V3 read request failed") from exc
@@ -1129,6 +1141,8 @@ def build_v3_client(
             command_store=V3CommandStore(Path(command_database)),
             transport=transport,
             bundle_id=bundle_id,
+            signer_identity_digest=str(runtime.get("STRATHMARK_V3_SIGNER_IDENTITY_DIGEST", "")).strip(),
+            ca_bundle=str(runtime.get("STRATHMARK_V3_CA_BUNDLE", "")).strip() or None,
         )
     except (OSError, TypeError, ValueError) as exc:
         raise V3RuntimeConfigurationError("The configured V3 runtime could not be constructed") from exc

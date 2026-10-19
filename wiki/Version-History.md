@@ -5,6 +5,21 @@ This page records how the application changed; older limitations apply to those
 versions. Full dated notes remain in the
 [repository](https://github.com/SquirmyWormy275/STRATHEX/tree/main/docs).
 
+## 7.4.4
+
+Closes the October security findings: exports preserve spreadsheet text and escape
+HTML, terminal output filters control characters, remote prediction connections
+verify transport and service identity, and judge approvals bind to the exact
+competition context. Issued marks and completed results retain their evidence;
+changes to a draft require a fresh approval. Application state uses private storage.
+
+New installations use the reviewed STRATHMARK 3.0.0rc12 source while retaining the
+V2 numerical contract and the existing Formula and model. New Linux competition
+profiles accept only the reviewed source and implementation pair. Existing profiles,
+including rc7 competitions, keep their original installation, data and signing keys.
+The separate operational V3 service requires independent authority provisioning;
+this release does not claim Windows production qualification.
+
 ## 7.4.3
 
 Adds explicit shared managed CLI/workspace access while preserving the retro

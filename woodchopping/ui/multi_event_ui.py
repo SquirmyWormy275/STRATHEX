@@ -35,6 +35,15 @@ from woodchopping.ui.tournament_ui import (
 
 # Import existing functions for reuse
 from woodchopping.ui.wood_ui import select_event_code, wood_menu
+from woodchopping.ui.workflow_integrity import (
+    bind_calculation,
+    invalidate_draft,
+    new_event_id,
+    prepare_field_change,
+    protect_evidence,
+    require_current_calculation,
+    require_removable_event,
+)
 
 V3ReadinessProvider = Callable[[], Mapping[str, Any]]
 _prediction_authority_store: Any = None
@@ -50,7 +59,7 @@ _READINESS_LABELS = {
 }
 _SELECTION_REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _V2_CONTRACT_IDENTITY = "strathmark-v2/2.0.0"
-_V2_SOURCE_IDENTITY = "strathmark:a231ad65fe82317516cc82a282761d73adb0c0e3"
+_V2_SOURCE_IDENTITY = "strathmark:5408939a9eeb40c9c03f47a28c0ddb181ff99894"
 
 
 def configure_prediction_authority_store(authority_store: Any) -> None:
@@ -1513,6 +1522,15 @@ def setup_tournament_roster(tournament_state: Dict, comp_df: pd.DataFrame) -> Di
     Returns:
         dict: Updated tournament_state with tournament_roster
     """
+    if any(
+        comp.get("events_entered") or comp.get("entry_fees_paid")
+        for comp in tournament_state.get("tournament_roster", [])
+    ):
+        print("\n[BLOCKED] Keep the assigned roster and fee history; change event assignments instead.")
+        return tournament_state
+    if not prepare_field_change(tournament_state, reason="Tournament roster replacement"):
+        return tournament_state
+
     # Check if roster already exists
     if tournament_state.get("tournament_roster"):
         print("\n[WARN] Tournament roster already configured")
@@ -1679,7 +1697,7 @@ def add_event_to_tournament(
 
     # Generate event ID
     event_order = tournament_state["total_events"] + 1
-    event_id = f"event_{event_order}"
+    event_id = new_event_id()
 
     # Step 1: Wood characteristics
     print(f"\n{'=' * 70}")
@@ -1982,6 +2000,17 @@ def calculate_all_event_handicaps(
             input("\nPress Enter to continue...")
             return tournament_state
 
+    try:
+        protect_evidence(tournament_state)
+        for event in tournament_state["events"]:
+            protect_evidence(event)
+    except ValueError as error:
+        print(f"\n[BLOCKED] {error}")
+        return tournament_state
+    for event in tournament_state["events"]:
+        if event.get("event_type") != "championship":
+            invalidate_draft(event, reason="Handicap recalculation", root_state=tournament_state)
+
     total_events = len(tournament_state["events"])
     total_competitors = sum(len(e["all_competitors"]) for e in tournament_state["events"])
     event_label = "event" if total_events == 1 else "events"
@@ -2032,36 +2061,40 @@ def calculate_all_event_handicaps(
         event_cutoff = ensure_prediction_as_of(staged_event, fallback=tournament_cutoff)
         from woodchopping.ui.handicap_ui import calculate_authoritative_seeding
 
-        if authority_store is None or engine_router is None:
-            handicap_results = calculate_ai_enhanced_handicaps(
-                event["all_competitors_df"],
-                event["wood_species"],
-                event["wood_diameter"],
-                event["wood_quality"],
-                event["event_code"],
-                results_df,
-                progress_callback=show_progress,
-                prediction_as_of=event_cutoff,
-            )
-        else:
-            handicap_results = calculate_authoritative_seeding(
-                root_state=tournament_state,
-                child=event,
-                authority_store=authority_store,
-                engine_router=engine_router,
-                field_local_id=f"event:{event.get('event_id', event.get('event_name', event_idx))}:initial",
-                round_local_id=f"event-{event.get('event_id', event.get('event_name', event_idx))}",
-                competitors_df=event["all_competitors_df"],
-                wood_species=event["wood_species"],
-                wood_diameter=event["wood_diameter"],
-                wood_quality=event["wood_quality"],
-                event_code=event["event_code"],
-                results_df=results_df,
-                progress_callback=show_progress,
-                prediction_as_of=event_cutoff,
-                forecast_adapter=forecast_adapter,
-                checkpoint_callback=checkpoint_callback,
-            )
+        try:
+            if authority_store is None or engine_router is None:
+                handicap_results = calculate_ai_enhanced_handicaps(
+                    event["all_competitors_df"],
+                    event["wood_species"],
+                    event["wood_diameter"],
+                    event["wood_quality"],
+                    event["event_code"],
+                    results_df,
+                    progress_callback=show_progress,
+                    prediction_as_of=event_cutoff,
+                )
+            else:
+                handicap_results = calculate_authoritative_seeding(
+                    root_state=tournament_state,
+                    child=event,
+                    authority_store=authority_store,
+                    engine_router=engine_router,
+                    field_local_id=f"event:{event.get('event_id', event.get('event_name', event_idx))}:initial",
+                    round_local_id=f"event-{event.get('event_id', event.get('event_name', event_idx))}",
+                    competitors_df=event["all_competitors_df"],
+                    wood_species=event["wood_species"],
+                    wood_diameter=event["wood_diameter"],
+                    wood_quality=event["wood_quality"],
+                    event_code=event["event_code"],
+                    results_df=results_df,
+                    progress_callback=show_progress,
+                    prediction_as_of=event_cutoff,
+                    forecast_adapter=forecast_adapter,
+                    checkpoint_callback=checkpoint_callback,
+                )
+        except (ValueError, RuntimeError) as error:
+            print(f"\n[BLOCKED] Calculation failed: {error}")
+            handicap_results = []
 
         if not handicap_results:
             progress_display.finish("No handicap results returned")
@@ -2085,6 +2118,7 @@ def calculate_all_event_handicaps(
         event["handicap_results_all"] = handicap_results
         event["prediction_as_of"] = prediction_as_of
         event["status"] = "ready"
+        bind_calculation(event, tournament_state)
     for event in failed_events:
         invalidated_schedule = bool(event.get("rounds")) or invalidated_schedule
         event["rounds"] = []
@@ -2916,6 +2950,13 @@ def remove_event_from_tournament(tournament_state: Dict) -> Dict:
 
         event_to_remove = tournament_state["events"][choice - 1]
 
+        try:
+            require_removable_event(tournament_state, event_to_remove)
+        except ValueError as error:
+            print(f"\n[BLOCKED] {error}")
+            input("\nPress Enter to continue...")
+            return tournament_state
+
         # Confirm deletion
         print("\n[WARN] WARNING: You are about to remove:")
         print(f"  Event: {event_to_remove['event_name']}")
@@ -2939,7 +2980,6 @@ def remove_event_from_tournament(tournament_state: Dict) -> Dict:
         # Reorder remaining events
         for i, event in enumerate(tournament_state["events"], 1):
             event["event_order"] = i
-            event["event_id"] = f"event_{i}"
 
         print(f"\n[OK] Event '{event_to_remove['event_name']}' removed successfully")
         print("[OK] Remaining events reordered")
@@ -2982,6 +3022,9 @@ def assign_competitors_to_events(tournament_state: Dict) -> Dict:
         print("\n[WARN] ERROR: No events configured.")
         print("Please add events first.")
         input("\nPress Enter to continue...")
+        return tournament_state
+
+    if not prepare_field_change(tournament_state, reason="Event competitor assignment"):
         return tournament_state
 
     roster = tournament_state["tournament_roster"]
@@ -3237,6 +3280,15 @@ def generate_complete_day_schedule(
 
     if _reject_unsupported_bracket_events(tournament_state):
         return tournament_state
+
+    if authority_store is not None:
+        try:
+            for event in tournament_state["events"]:
+                if event.get("event_type") != "championship":
+                    require_current_calculation(event, tournament_state)
+        except ValueError as error:
+            print(f"\n[BLOCKED] {error}")
+            return tournament_state
 
     v3_results_df = None
 

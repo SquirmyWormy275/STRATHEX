@@ -107,6 +107,7 @@ from woodchopping.ui.progress_ui import ProgressDisplay
 from woodchopping.ui.scratch_management import (
     manage_tournament_scratches,
 )
+from woodchopping.ui.terminal_rendering import install_terminal_output
 from woodchopping.ui.tournament_status import (
     check_can_calculate_handicaps,
     check_can_generate_schedule,
@@ -124,6 +125,16 @@ from woodchopping.ui.tournament_ui import (
     select_heat_advancers,
     view_tournament_status,
 )
+from woodchopping.ui.workflow_integrity import (
+    approve_marks,
+    bind_calculation,
+    prepare_field_change,
+    protect_evidence,
+    require_approved_marks,
+)
+
+# Sanitize every UI output path, including redirected output and error messages.
+install_terminal_output(force=True, include_stderr=True)
 
 # STRATHEX Banner
 try:
@@ -779,6 +790,19 @@ def single_event_menu():
             }
             menu_choice = bracket_mapping.get(menu_choice, menu_choice)
 
+        if menu_choice in {"1", "2", "3", "5"} and tournament_state.get("format") != "bracket":
+            if not prepare_field_change(tournament_state, reason="Single-event setup or recalculation"):
+                input("\nPress Enter to return to menu...")
+                continue
+        if menu_choice in {"9", "10", "11", "13"} and tournament_state.get("format") != "bracket":
+            if resolve_prediction_engine(tournament_state, _prediction_authority_store).engine == "v2":
+                try:
+                    require_approved_marks(tournament_state, include_rounds=menu_choice != "9")
+                except ValueError as error:
+                    print(f"\n[BLOCKED] {error}")
+                    input("\nPress Enter to return to menu...")
+                    continue
+
         if menu_choice == "1":
             # Configure wood characteristics
             # Block if bracket has been generated (rounds exist)
@@ -1077,26 +1101,32 @@ def single_event_menu():
             # Use existing calculate_ai_enhanced_handicaps function with progress
             results_df = load_results_df()
             prediction_as_of = ensure_prediction_as_of(tournament_state)
-            handicap_results = calculate_authoritative_seeding(
-                root_state=tournament_state,
-                authority_store=_prediction_authority_store,
-                engine_router=_prediction_engine_router,
-                field_local_id="single-event:initial",
-                competitors_df=tournament_state["all_competitors_df"],
-                wood_species=wood_selection["species"],
-                wood_diameter=wood_selection["size_mm"],
-                wood_quality=wood_selection["quality"],
-                event_code=wood_selection["event"],
-                results_df=results_df,
-                progress_callback=show_progress,
-                prediction_as_of=prediction_as_of,
-                forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
-                checkpoint_callback=_checkpoint_single_prediction_state,
-            )
+            try:
+                handicap_results = calculate_authoritative_seeding(
+                    root_state=tournament_state,
+                    authority_store=_prediction_authority_store,
+                    engine_router=_prediction_engine_router,
+                    field_local_id="single-event:initial",
+                    competitors_df=tournament_state["all_competitors_df"],
+                    wood_species=wood_selection["species"],
+                    wood_diameter=wood_selection["size_mm"],
+                    wood_quality=wood_selection["quality"],
+                    event_code=wood_selection["event"],
+                    results_df=results_df,
+                    progress_callback=show_progress,
+                    prediction_as_of=prediction_as_of,
+                    forecast_adapter=(_v3_engine_adapter.forecast_seeding if _v3_engine_adapter is not None else None),
+                    checkpoint_callback=_checkpoint_single_prediction_state,
+                )
+            except (ValueError, RuntimeError) as error:
+                print(f"\n[BLOCKED] Calculation failed: {error}")
+                handicap_results = []
 
             if not handicap_results:
                 progress_display.finish("STRATHMARK calculation failed")
-                print("\n[WARN] No mark sheet was produced. Tournament state was not changed.")
+                print("\n[WARN] No mark sheet was produced. Previous draft marks and schedules are invalidated.")
+                tournament_state["status"] = "recalculation_failed"
+                _checkpoint_single_prediction_state(tournament_state)
                 input("\nPress Enter to return to menu...")
                 continue
 
@@ -1109,6 +1139,7 @@ def single_event_menu():
             tournament_state["wood_diameter"] = wood_selection["size_mm"]
             tournament_state["wood_quality"] = wood_selection["quality"]
             tournament_state["event_code"] = wood_selection["event"]
+            bind_calculation(tournament_state)
 
             # Success message with axe icon
             print("\n" + "=" * 70)
@@ -1146,6 +1177,14 @@ def single_event_menu():
                 input("\nPress Enter to return to menu...")
                 continue
 
+            if tournament_state.get("rounds"):
+                _stage_type, review_rounds = current_stage_rounds(tournament_state["rounds"])
+                if any(item.get("status") != "pending" for item in review_rounds):
+                    display_basic_prediction_table(tournament_state["handicap_results_all"], wood_selection)
+                    print("\n[BLOCKED] This stage has started. Its approved marks must be retained.")
+                    input("\nPress Enter to return to menu...")
+                    continue
+
             # PHASE 1: Display initial handicap marks with basic prediction table
             display_basic_prediction_table(tournament_state["handicap_results_all"], wood_selection)
 
@@ -1175,6 +1214,7 @@ def single_event_menu():
             print("\n1. Accept handicaps as calculated")
             print("2. Manually adjust individual handicaps")
 
+            tournament_state.pop("mark_approval", None)
             approval_choice = input("\nYour choice (1 or 2): ").strip()
 
             if approval_choice == "2":
@@ -1203,6 +1243,7 @@ def single_event_menu():
                     for result in adjusted_results:
                         result["approved_by"] = initials
                         result["approved_at"] = timestamp
+                    approve_marks(tournament_state, initials, timestamp)
                     print(f"\n[OK] Handicaps approved by {initials} at {timestamp}")
                 else:
                     print("\n[WARN] Adjustment cancelled - handicaps NOT approved")
@@ -1215,6 +1256,7 @@ def single_event_menu():
                     for result in tournament_state["handicap_results_all"]:
                         result["approved_by"] = initials
                         result["approved_at"] = timestamp
+                    approve_marks(tournament_state, initials, timestamp)
                     print(f"\n[OK] Handicaps approved by {initials} at {timestamp}")
                 else:
                     print("\n[WARN] Approval cancelled - handicaps NOT approved")
@@ -1275,6 +1317,12 @@ def single_event_menu():
 
             # Check if heats already exist
             if tournament_state.get("rounds"):
+                try:
+                    protect_evidence(tournament_state)
+                except ValueError as error:
+                    print(f"\n[BLOCKED] {error}")
+                    input("\nPress Enter to return to menu...")
+                    continue
                 print("\n" + "=" * 70)
                 print("  [WARN] WARNING: HEATS ALREADY EXIST")
                 print("=" * 70)
@@ -1693,6 +1741,12 @@ def single_event_menu():
                 continue
 
             tournament_state["rounds"].extend(next_rounds)
+            if resolve_prediction_engine(tournament_state, _prediction_authority_store).engine == "v2":
+                tournament_state["handicap_results_all"] = [
+                    row for item in next_rounds for row in item["handicap_results"]
+                ]
+                bind_calculation(tournament_state)
+                print("Review and approve the new round marks in View Handicaps before official use.")
 
             print(f"\n[OK] {len(next_rounds)} {next_type} heat(s) generated")
             for round_obj in next_rounds:

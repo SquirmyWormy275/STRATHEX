@@ -25,12 +25,19 @@ They preserve the retro application and saved competition authority.
 
 ## What works today?
 
-**V2** runs locally on Linux and Windows. **Linux V3**, with STRATHEX 7.4.3 and
-STRATHMARK 3.0.0rc7, supports review, issue, results, recovery and later-round
-learning. It requires a separately configured runtime and trained model.
+**V2** runs locally on Linux and Windows. New **Linux V3** profiles pair STRATHEX
+7.4.4 with STRATHMARK 3.0.0rc12 and support review, issue, results, recovery and
+later-round learning. They require a separately configured runtime, trained model,
+signing authority and independent backups.
+
+Existing 7.4.2/rc7 profiles keep their original runtime and saved competition
+identity. Select a new profile through the documented installer workflow; saved
+work is never migrated in place. Read the [engine selection guide](Choosing-the-Prediction-Engine) and
+[backup guidance](Backups-and-Recovery) before upgrading.
 
 Older V3 numeric previews cannot issue official marks or settle results. The
-Windows V7 service is for rehearsal; Windows production qualification is incomplete.
+Windows V7 service is for rehearsal; native Windows compatibility tests do not
+establish Windows production qualification.
 Read the engine label when choosing V3.
 
 The accuracy changes are available in a separate

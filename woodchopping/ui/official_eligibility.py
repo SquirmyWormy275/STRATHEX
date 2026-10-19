@@ -17,3 +17,15 @@ def require_official_eligibility(root_state, *, authority_store=None):
     receipt = authority_store.resolve(AuthorityReference.from_json(root_state["prediction_authority_ref"]))
     if receipt.engine == "v3" and receipt.contract_identity in LOCAL_V3_PREVIEW_CONTRACTS:
         raise ValueError("V3 numeric previews cannot be exported or recorded as official schedules or results")
+
+    if receipt.engine == "v2":
+        from woodchopping.ui.workflow_integrity import require_approved_marks, require_current_calculation
+
+        if root_state.get("tournament_mode") == "multi_event":
+            for event in root_state.get("events", []):
+                if event.get("event_type") != "championship" and any(
+                    item.get("status") != "completed" for item in event.get("rounds", [])
+                ):
+                    require_current_calculation(event, root_state)
+        elif root_state.get("format") != "bracket":
+            require_approved_marks(root_state)

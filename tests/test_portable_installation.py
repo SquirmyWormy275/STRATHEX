@@ -17,12 +17,62 @@ from scripts.install_portable import (
     installation_lock,
     launch,
     read_json,
+    recovery_archive,
     require_atomic_archive_publication,
     require_independent,
     sha,
     verify_bundle,
     verify_content_identity,
 )
+
+
+def test_profile_archive_uses_local_inventory_for_large_saved_file(tmp_path):
+    from scripts.recovery_security import MAX_MEMBER_BYTES
+
+    home = tmp_path / "installation"
+    data = home / "data"
+    data.mkdir(parents=True)
+    retained = data / "synthetic-large-history.bin"
+    with retained.open("wb") as stream:
+        stream.truncate(MAX_MEMBER_BYTES + 512)
+    workbook = tmp_path / "synthetic.xlsx"
+    workbook.write_bytes(b"synthetic workbook")
+    with tempfile.TemporaryDirectory(dir="/dev/shm", prefix="strath-large-recovery-") as directory:
+        backup = Path(directory)
+        if backup.stat().st_dev == home.stat().st_dev:
+            pytest.skip("an independent filesystem is required for this recovery test")
+        archive = Path(recovery_archive(home, backup, workbook))
+        receipt = read_json(archive.with_suffix(".verified.json"))
+        assert receipt["files"] == {
+            "installation/data/synthetic-large-history.bin": sha(retained),
+            "operator-workbook.xlsx": sha(workbook),
+        }
+        assert retained.stat().st_size == MAX_MEMBER_BYTES + 512
+        assert not (home / "active.json").exists()
+
+
+def test_profile_archive_rejects_writer_name_change_before_selection(tmp_path, monkeypatch):
+    home = tmp_path / "installation"
+    home.mkdir()
+    workbook = tmp_path / "synthetic.xlsx"
+    workbook.write_bytes(b"irreplaceable synthetic workbook")
+    original = workbook.read_bytes()
+    add = tarfile.TarFile.add
+
+    def altered(archive, name, arcname=None, **kwargs):
+        return add(archive, name, arcname="unexpected-name", **kwargs)
+
+    monkeypatch.setattr(tarfile.TarFile, "add", altered)
+    with tempfile.TemporaryDirectory(dir="/dev/shm", prefix="strath-changed-recovery-") as directory:
+        backup = Path(directory)
+        if backup.stat().st_dev == home.stat().st_dev:
+            pytest.skip("an independent filesystem is required for this recovery test")
+        with pytest.raises(ValueError, match="trusted inventory"):
+            recovery_archive(home, backup, workbook)
+        assert list(backup.glob("*.tar.gz"))
+        assert not list(backup.glob("*.verified.json"))
+    assert workbook.read_bytes() == original
+    assert not (home / "active.json").exists()
 
 
 def test_unsupported_encrypted_archive_filesystem_is_rejected_without_residue(tmp_path, monkeypatch):

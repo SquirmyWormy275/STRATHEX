@@ -52,6 +52,39 @@ def verify_wheel_installation(name: str, wheel: Path) -> str:
     return hashlib.sha256(wheel.read_bytes()).hexdigest()
 
 
+def synthetic_tls_certificate(directory: Path) -> tuple[Path, Path]:
+    """Provision the isolated fixture's TLS identity outside its network listener."""
+    import ipaddress
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from cryptography.x509.oid import NameOID
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Synthetic STRATHMARK")])
+    now = datetime.now(__import__("datetime").timezone.utc)
+    certificate = (
+        x509.CertificateBuilder()
+        .subject_name(subject)
+        .issuer_name(subject)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(minutes=1))
+        .not_valid_after(now + timedelta(days=1))
+        .add_extension(x509.SubjectAlternativeName([x509.IPAddress(ipaddress.ip_address("127.0.0.1"))]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .sign(key, hashes.SHA256())
+    )
+    cert_path, key_path = directory / "tls-ca.pem", directory / "tls-key.pem"
+    cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
+    )
+    key_path.chmod(0o600)
+    return cert_path, key_path
+
+
 def service_worker(args: argparse.Namespace) -> None:
     import strathmark
     import uvicorn
@@ -83,7 +116,15 @@ def service_worker(args: argparse.Namespace) -> None:
     )
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
-    config = uvicorn.Config(client.app, log_level="warning", access_log=False)
+    certificate, key = synthetic_tls_certificate(args.state)
+    local_status = client.get(
+        "/v3/status", headers={"Authorization": f"Bearer {credential}", "X-STRATHMARK-Upstream-Action": "read_status"}
+    )
+    local_status.raise_for_status()
+    signer_digest = local_status.json()["pre_field_signer_trust"]["identity_digest"]
+    config = uvicorn.Config(
+        client.app, log_level="warning", access_log=False, ssl_certfile=str(certificate), ssl_keyfile=str(key)
+    )
     server = uvicorn.Server(config)
     thread = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
     thread.start()
@@ -95,7 +136,9 @@ def service_worker(args: argparse.Namespace) -> None:
     write_json(
         args.state / "connection.json",
         {
-            "base_url": f"http://127.0.0.1:{listener.getsockname()[1]}",
+            "base_url": f"https://127.0.0.1:{listener.getsockname()[1]}",
+            "ca_bundle": str(certificate),
+            "signer_identity_digest": signer_digest,
             "credential": credential,
             "installed_module": installed,
             "service_version": version("strathmark"),
@@ -158,6 +201,8 @@ def consumer_worker(args: argparse.Namespace) -> None:
     def make_client(transport=None):
         return V3HttpClient(
             base_url=connection["base_url"],
+            ca_bundle=connection["ca_bundle"],
+            signer_identity_digest=connection["signer_identity_digest"],
             credential_provider=lambda: connection["credential"],
             command_store=V3CommandStore(args.state / "consumer-commands.sqlite3"),
             transport=transport,
@@ -408,6 +453,21 @@ def main() -> None:
                         ]
                     )
                 subprocess.run(install, cwd=root, env=env, check=True, timeout=300)
+        # The new consumer provisions this fresh shared fixture root. The
+        # historical service wheel and its frozen fixture remain unchanged.
+        subprocess.run(
+            [
+                str(args.consumer_python.absolute()),
+                "-I",
+                "-c",
+                "import sys; from strathmark.private_storage import private_directory; private_directory(sys.argv[1])",
+                str(state),
+            ],
+            cwd=root,
+            env=env,
+            check=True,
+            timeout=30,
+        )
         common = [
             "-I",
             script,

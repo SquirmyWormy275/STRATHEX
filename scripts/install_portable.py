@@ -24,8 +24,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-V2_SOURCE_COMMIT = "a231ad65fe82317516cc82a282761d73adb0c0e3"
-V2_SOURCE_DIGEST = "9033a9086661cab47e76344dbca7cc425f6cb9b215bb9661f6fe193dc712c530"
+V2_SOURCE_COMMIT = "5408939a9eeb40c9c03f47a28c0ddb181ff99894"
+V2_SOURCE_DIGEST = "20fc54bea46bdfcb8d47a2b3746aedf4710bfc6b75e92aa905ce49434393f8df"
 
 
 def require_independent(home, backup, workbook):
@@ -202,14 +202,15 @@ def recovery_archive(home, backup, workbook):
         "profile-switch-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid4().hex + ".tar.gz"
     )
     encryption_policy = home / "recovery-encryption-policy.json"
+    helper = Path(__file__).with_name("recovery_security.py")
+    if not helper.is_file() or helper.is_symlink():
+        raise ValueError("install the release's standalone recovery_security.py beside this bootstrap")
+    spec = importlib.util.spec_from_file_location("strath_portable_recovery_security", helper)
+    recovery = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(recovery)
     encryption = None
     if encryption_policy.exists():
-        helper = Path(__file__).with_name("recovery_security.py")
-        if not helper.is_file() or helper.is_symlink():
-            raise ValueError("install the release's standalone recovery_security.py beside this bootstrap")
-        spec = importlib.util.spec_from_file_location("strath_portable_recovery_security", helper)
-        encryption = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(encryption)
+        encryption = recovery
         encryption.load_policy(encryption_policy)
         require_atomic_archive_publication(backup)
         destination = destination.with_name(destination.name + ".gpg")
@@ -246,6 +247,7 @@ def recovery_archive(home, backup, workbook):
             files[prefix + "/operator-workbook.xlsx"] = saved_workbook
     if any(path.stat().st_dev == backup.stat().st_dev for path in files.values()):
         raise ValueError("recovery archive must be independent from every retained source")
+    expected_sizes = {name: path.stat().st_size for name, path in files.items()}
     expected = {name: sha(path) for name, path in files.items()}
     # The signing key archive must be private from its first byte, irrespective
     # of the caller's umask. Some removable filesystems lack POSIX permissions.
@@ -260,14 +262,10 @@ def recovery_archive(home, backup, workbook):
             os.fsync(stream.fileno())
         if encryption is not None:
             encryption.encrypt_file(local_archive, destination, encryption_policy)
-            actual = encryption.tar_digests(destination, encryption_policy)
+            actual = encryption.tar_digests(destination, encryption_policy, expected_sizes=expected_sizes)
         else:
-            with tarfile.open(destination, "r:gz") as archive:
-                actual = {
-                    item.name: hashlib.sha256(archive.extractfile(item).read()).hexdigest()
-                    for item in archive.getmembers()
-                    if item.isfile()
-                }
+            with destination.open("rb") as stream:
+                actual = recovery.tar_stream_digests(stream, expected_sizes=expected_sizes)
     if actual != expected or any(sha(path) != expected[name] for name, path in files.items()):
         raise ValueError("independent rollback archive failed read-back verification")
     atomic_json(

@@ -118,8 +118,12 @@ def main() -> None:
             parser.error(f"workbook does not exist: {workbook}")
         os.environ["STRATHEX_WORKBOOK"] = str(workbook)
     if args.data_dir is not None:
-        directory = args.data_dir.expanduser().resolve()
-        directory.mkdir(parents=True, exist_ok=True)
+        from woodchopping.app_storage import prepare_data_directory
+
+        try:
+            directory = prepare_data_directory(args.data_dir, workbook=args.workbook)
+        except (OSError, ValueError) as exc:
+            parser.error(str(exc))
         os.environ.setdefault("STRATHMARK_DB_PATH", str(directory / "results.db"))
         os.environ.setdefault("STRATHEX_PREDICTION_AUTHORITY_DB", str(directory / "prediction_authority.db"))
         os.environ.setdefault("STRATHEX_V3_COMMAND_DB", str(directory / "v3_commands.db"))

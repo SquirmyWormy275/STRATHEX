@@ -11,10 +11,12 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from woodchopping.engine_selection import PredictionExecutionContext
-from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired
+from woodchopping.strathmark_v3_client import V3ClientError, V3RecoveryRequired, V3RuntimeConfigurationError
 from woodchopping.strathmark_v3_linux import (
+    FROZEN_LINUX_IMPLEMENTATION_DIGEST,
     LINUX_CONTRACT_DIGEST,
     LINUX_PROTOCOL,
+    LINUX_SECURITY_IMPLEMENTATION_DIGEST,
     LinuxV3Competition,
     digest,
     encoded,
@@ -145,6 +147,43 @@ def test_retained_competition_source_is_checked_before_cached_ack(authority, mon
     assert client.settle_result(context, payload) == {"settled": True}
     with pytest.raises(V3ClientError, match="source identity"):
         client.settle_result(replace(context, source_identity=client.source_identity), payload)
+
+
+@pytest.mark.parametrize(
+    ("source", "version"),
+    [(FROZEN_LINUX_IMPLEMENTATION_DIGEST, "3.0.0rc7"), (LINUX_SECURITY_IMPLEMENTATION_DIGEST, "3.0.0rc12")],
+)
+def test_exact_reviewed_linux_source_version_pairs_preserve_signed_identity(authority, source, version):
+    client, _context, _sealed = authority
+    material = {
+        "source_digest": source,
+        "package_version": version,
+        "formula_digest": "d" * 64,
+        "ml_bundle_digest": "e" * 64,
+        "installation_identity": client.trust,
+    }
+    identity = {
+        **material,
+        "source_identity": digest(material),
+        "protocol": LINUX_PROTOCOL,
+        "contract_digest": LINUX_CONTRACT_DIGEST,
+        "purpose": "competition_lifecycle",
+        "mode": "local",
+        "windows_production_qualified": False,
+    }
+    before = encoded(identity)
+    LinuxV3Competition._validate_identity(identity)
+    assert encoded(identity) == before
+
+    for changed in (
+        {"source_digest": "0" * 64},
+        {"source_digest": []},
+        {"package_version": "3.0.0rc12" if version == "3.0.0rc7" else "3.0.0rc7"},
+        {"formula_digest": "f" * 64},
+        {"ml_bundle_digest": "f" * 64},
+    ):
+        with pytest.raises(V3RuntimeConfigurationError):
+            LinuxV3Competition._validate_identity({**identity, **changed})
 
 
 def test_duplicate_names_keep_id_bound_outcomes_and_corrected_projections():

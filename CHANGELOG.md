@@ -1,5 +1,14 @@
 # Changelog
 
+## [7.4.4] - 2026-10-19
+
+- Store roster/result text literally in XLSX; escape bracket HTML and filter terminal controls.
+- Require verified HTTPS for V2/V7 HTTP and an independent V7 signer trust anchor.
+- Preserve stable event identities and dependent evidence; invalidate changed draft fields.
+- Bind single-event V2 judge approval to the exact current field and mark sheet.
+- See [repair details and migration behavior](docs/SECURITY_CLOUD_2026-10-19.md).
+
+
 ## [7.4.3] - 2026-10-16
 
 - Add explicit launch/resume paths to the optional shared STRATHMARK CLI and

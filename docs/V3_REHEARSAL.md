@@ -54,7 +54,9 @@ Create separate Python 3.13 environments for the STRATHEX consumer and STRATHMAR
 For the consumer, configure absolute paths and one loopback endpoint:
 
 ```bash
-export STRATHMARK_V3_BASE_URL=http://127.0.0.1:8787
+export STRATHMARK_V3_BASE_URL=https://127.0.0.1:8787
+export STRATHMARK_V3_CA_BUNDLE=/absolute/path/to/installation-ca.pem
+export STRATHMARK_V3_SIGNER_IDENTITY_DIGEST=independently-provisioned-64-character-sha256
 export STRATHMARK_V3_BUNDLE_ID=reviewed-installed-bundle-id
 export STRATHMARK_V3_CREDENTIAL_ENV=STRATHMARK_V3_SERVICE_CREDENTIAL
 export STRATHMARK_V3_CONTRACT_DIGEST=20174ab13d32c74419e90bfdc73e6b5d5e3e888e1a6cf098f20e585c3bf2ec24
@@ -63,6 +65,8 @@ export STRATHEX_V3_COMMAND_DB=/absolute/path/to/rehearsal/v3_commands.db
 export STRATHEX_PREDICTION_AUTHORITY_DB=/absolute/path/to/rehearsal/prediction_authority.db
 export STRATHMARK_DB_PATH=/absolute/path/to/rehearsal/v2_results.db
 ```
+
+Provision TLS with a certificate valid for the configured host. Replace the signer digest placeholder with the identity digest from the trusted installation signer configuration, before contacting the service; never copy it from an untrusted readiness response. The CA bundle is optional when the certificate already chains to the system trust store. Plain loopback HTTP is rejected. [Security boundary details](SECURITY_CLOUD_2026-10-19.md) explain the retained V7 signature limits.
 
 Replace the bundle placeholder with the reviewed installed bundle identity. There is no default credential reference. Inject the service credential into `STRATHMARK_V3_SERVICE_CREDENTIAL` through the installation's secret mechanism; the client reads the variable named by `STRATHMARK_V3_CREDENTIAL_ENV`. Alternatively configure both `STRATHMARK_V3_CREDENTIAL_KEYRING_SERVICE` and `STRATHMARK_V3_CREDENTIAL_KEYRING_ACCOUNT` for the OS keyring. Never put credentials in tracked files or URLs. Confirm authenticated status reports the exact reviewed source and contract plus a valid pre-field signer binding before selecting V3.
 
@@ -87,4 +91,4 @@ python scripts/smoke_v3_pair.py \
 
 The script creates and removes two isolated environments and synthetic service/consumer databases. Use Windows paths on Windows. Alternatively, provide both `--consumer-python` and `--service-python` for existing separate installed environments. Installed files must match the supplied wheels, and the service environment must match every entry in its release lock. The clean service checkout supplies only reviewed test fixtures and public artifacts; application code loads from installed packages.
 
-The report names its wheel and fixture digests and declares `evidence_tier=synthetic_development_key` and `authority_changed=false`. It exercises real HTTP, signed no-mark forecasts, exact fields, distinct approval/issue, response loss after a committed settlement, and recovery from a new consumer process. Test cards and settlement reactions do not prove model execution, next-round capability updates, or production eligibility. The designated installation rehearsal in issue 16 remains required.
+The report names its wheel and fixture digests and declares `evidence_tier=synthetic_development_key` and `authority_changed=false`. It exercises real certificate-verified HTTPS, signed no-mark forecasts, exact fields, distinct approval/issue, response loss after a committed settlement, and recovery from a new consumer process. Test cards and settlement reactions do not prove model execution, next-round capability updates, or production eligibility. The designated installation rehearsal in issue 16 remains required.

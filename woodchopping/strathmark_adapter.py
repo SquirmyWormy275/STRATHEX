@@ -555,8 +555,8 @@ def _resolve_api_url(value: Optional[str]) -> str:
         raise ValueError("STRATHMARK_API_URL must not contain a path")
     if parsed.query or parsed.fragment:
         raise ValueError("STRATHMARK_API_URL must not contain a query string or fragment")
-    if parsed.scheme == "http" and parsed.hostname not in {"127.0.0.1", "localhost", "::1"}:
-        raise ValueError("Remote STRATHMARK API URLs must use HTTPS")
+    if parsed.scheme != "https":
+        raise ValueError("All STRATHMARK API URLs must use verified HTTPS, including loopback")
     return api_url
 
 
@@ -746,6 +746,7 @@ def _calculate_over_http(
             timeout=timeout,
             allow_redirects=False,
             stream=True,
+            verify=os.environ.get("STRATHMARK_API_CA_BUNDLE") or True,
         )
         _reject_http_redirect(contract_response)
         contract_response.raise_for_status()
@@ -771,6 +772,7 @@ def _calculate_over_http(
             timeout=timeout,
             allow_redirects=False,
             stream=True,
+            verify=os.environ.get("STRATHMARK_API_CA_BUNDLE") or True,
         )
         _reject_http_redirect(response)
         response.raise_for_status()

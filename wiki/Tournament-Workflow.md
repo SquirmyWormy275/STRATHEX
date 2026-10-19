@@ -71,3 +71,15 @@ correction instructions are in the
 [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md).
 
 See [Backups and recovery](Backups-and-Recovery) before moving installations.
+
+## Current approval and field-change safeguards
+
+V2 single-event marks must be reviewed and approved before generating heats,
+recording results or exporting a start schedule. Approval binds the complete sheet,
+ordered competitor identities, wood, cutoff and selected authority. New later-round
+marks require fresh review. Older unfinished saves must be recalculated and reviewed.
+
+Editing a draft field or scratching/restoring a competitor invalidates its current
+marks and day schedule while retaining previous drafts for recovery. Issued fields
+and recorded results lock destructive setup changes. Event IDs never change when
+the display order changes; only wholly unreferenced draft events can be removed.

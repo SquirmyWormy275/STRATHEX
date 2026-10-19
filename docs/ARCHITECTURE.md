@@ -4,7 +4,7 @@
 
 STRATHEX 7.4.3 preserves V2 production operation and adds a complete separate Linux V3 competition profile. The [Linux competition runbook](https://github.com/SquirmyWormy275/STRATHEX/blob/main/docs/V3_LINUX_COMPETITION.md) covers real Formula + trained ML, signed local authority, mark-free seeding, exact handicap/championship receipts, deliberate approval and separate issue confirmation, complete outcomes, settlement, restart, official corrections, verified recovery and later-round learning. The LLM council is unavailable; degraded or individual review is required. Existing numeric previews and authenticated V7 rehearsal scopes retain their original contracts. Windows CNG production qualification remains separate.
 
-The authenticated V7 profile uses signed lifecycle receipts and requires full backend composition and installation qualification. Its lifecycle behavior described below applies only when that full runtime is configured and ready. The checked-in transport rehearsal uses fixtures and does not prove a real numeric lifecycle. A judge deliberately selects V2 or an available V3 profile once per competition root; failures stop the selected workflow.
+The authenticated V7 profile uses certificate-verified HTTPS lifecycle replies and signed pre-field receipts and requires full backend composition and installation qualification. Its lifecycle behavior described below applies only when that full runtime is configured and ready. The checked-in transport rehearsal uses fixtures and does not prove a real numeric lifecycle. A judge deliberately selects V2 or an available V3 profile once per competition root; failures stop the selected workflow.
 
 ## System boundary
 
@@ -82,7 +82,7 @@ ResultStore stores historical results. PredictionLedger stores immutable predict
 ## Failure behavior
 
 - Direct mode has no calculation network dependency.
-- HTTP mode fails visibly for missing/credential-bearing/path-bearing URL, remote plaintext, redirect, oversized response, request failure, malformed OpenAPI/response shape, version mismatch, or missing v2 audit metadata.
+- HTTP mode fails visibly for missing/credential-bearing/path-bearing URL, plaintext URLs (including loopback), redirect, oversized response, request failure, malformed OpenAPI/response shape, version mismatch, or missing v2 audit metadata.
 - Both transports apply the API's 64-competitor and numeric/string bounds before calculation.
 - A failed field or championship competitor aborts the whole operation; partial mark sheets are not accepted.
 - Multi-event recalculation is prohibited after results entry begins. Recalculating a scheduled event invalidates its generated heats. A failed recalculation clears both old marks and pending rounds, sets `recalculation_failed`, and blocks results entry and schedule export until the event is calculated and scheduled again.

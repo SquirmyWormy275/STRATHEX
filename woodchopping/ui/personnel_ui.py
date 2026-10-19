@@ -18,6 +18,7 @@ from woodchopping.data import (
     load_competitors_df,
     save_time_to_results,
 )
+from woodchopping.data.excel_io import append_literal_row
 
 # File/sheet names from config
 COMPETITOR_FILE = paths.EXCEL_FILE
@@ -158,7 +159,7 @@ def _add_competitor_to_workbook(name: str, country: str, state: str, gender: str
         identity = "C" + uuid4().hex
         while identity in identities:
             identity = "C" + uuid4().hex
-        sheet.append([identity, name, country, state, gender])
+        append_literal_row(sheet, [identity, name, country, state, gender])
         workbook.save(COMPETITOR_FILE)
         return identity
     finally:
