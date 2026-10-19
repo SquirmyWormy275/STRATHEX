@@ -453,6 +453,21 @@ def main() -> None:
                         ]
                     )
                 subprocess.run(install, cwd=root, env=env, check=True, timeout=300)
+        # The new consumer provisions this fresh shared fixture root. The
+        # historical service wheel and its frozen fixture remain unchanged.
+        subprocess.run(
+            [
+                str(args.consumer_python.absolute()),
+                "-I",
+                "-c",
+                "import sys; from strathmark.private_storage import private_directory; private_directory(sys.argv[1])",
+                str(state),
+            ],
+            cwd=root,
+            env=env,
+            check=True,
+            timeout=30,
+        )
         common = [
             "-I",
             script,

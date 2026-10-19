@@ -46,6 +46,9 @@ def main():
         STRATHEX_PREDICTION_AUTHORITY_DB=str(root / "authority.db"),
         STRATHEX_V3_COMMAND_DB=str(root / "commands.db"),
     )
+    from strathmark.private_storage import private_directory
+
+    private_directory(root)
     from woodchopping.strathmark_v3_linux import LinuxV3Competition
     from woodchopping.ui.handicap_ui import (
         build_engine_router,

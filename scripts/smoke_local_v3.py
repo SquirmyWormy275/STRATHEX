@@ -63,6 +63,9 @@ def main():
         STRATHEX_V3_COMMAND_DB=str(root / "commands.db"),
     )
     # Select disposable paths before importing any application module.
+    from strathmark.private_storage import private_directory
+
+    private_directory(root)
     from woodchopping.strathmark_v3_client import V3ClientError
     from woodchopping.strathmark_v3_local import LocalV3Candidate
     from woodchopping.ui.handicap_ui import (
