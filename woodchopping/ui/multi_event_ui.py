@@ -60,7 +60,7 @@ _READINESS_LABELS = {
 }
 _SELECTION_REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 _V2_CONTRACT_IDENTITY = "strathmark-v2/2.0.0"
-_V2_SOURCE_IDENTITY = "strathmark:f064d67abe4baf7672239a14796c0bdc4f8c2071"
+_V2_SOURCE_IDENTITY = "strathmark:196b7270dff0acef72cb80bef12ffcbc27939ca3"
 
 
 def configure_prediction_authority_store(authority_store: Any) -> None:

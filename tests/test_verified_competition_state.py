@@ -26,7 +26,7 @@ def selected_state(tmp_path, monkeypatch):
         reason_code="known_baseline",
         mode="production",
         contract_identity="strathmark-v2/2.0.0",
-        source_identity="strathmark:f064d67abe4baf7672239a14796c0bdc4f8c2071",
+        source_identity="strathmark:196b7270dff0acef72cb80bef12ffcbc27939ca3",
     )
     rows = [{"name": "Alice", "mark": 3, "predicted_time": 20.0}, {"name": "Bob", "mark": 15, "predicted_time": 8.0}]
     event = {

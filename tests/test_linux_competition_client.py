@@ -18,6 +18,7 @@ from woodchopping.strathmark_v3_linux import (
     LINUX_PROTOCOL,
     LINUX_SECURITY_IMPLEMENTATION_DIGEST,
     PREVIOUS_LINUX_SECURITY_IMPLEMENTATION_DIGEST,
+    RETAINED_RC13_IMPLEMENTATION_DIGEST,
     LinuxV3Competition,
     digest,
     encoded,
@@ -155,7 +156,8 @@ def test_retained_competition_source_is_checked_before_cached_ack(authority, mon
     [
         (FROZEN_LINUX_IMPLEMENTATION_DIGEST, "3.0.0rc7"),
         (PREVIOUS_LINUX_SECURITY_IMPLEMENTATION_DIGEST, "3.0.0rc12"),
-        (LINUX_SECURITY_IMPLEMENTATION_DIGEST, "3.0.0rc13"),
+        (RETAINED_RC13_IMPLEMENTATION_DIGEST, "3.0.0rc13"),
+        (LINUX_SECURITY_IMPLEMENTATION_DIGEST, "3.0.0rc14"),
     ],
 )
 def test_exact_reviewed_linux_source_version_pairs_preserve_signed_identity(authority, source, version):
