@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sqlite3
 import subprocess
 import tarfile
 import tempfile
@@ -66,24 +67,31 @@ def main() -> None:
             key: value for key, value in os.environ.items() if not key.startswith(("STRATHMARK_", "STRATHEX_"))
         }
         child_env.update(STRATHMARK_TEST_DB="1", PYTHONUTF8="1")
-        completed = subprocess.run(
-            [str(python), "-m", "strathex_cli", "--workbook", str(workbook_path), "--data-dir", str(root / "data")],
-            input="9\nn\n",
-            cwd=root,
-            env=child_env,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            timeout=60,
-        )
-        if (
-            completed.returncode
-            or "Goodbye!" not in completed.stdout
-            or "Error loading results" in completed.stdout
-            or "migrated 2 historical results" not in completed.stdout
-        ):
-            raise RuntimeError(completed.stdout + completed.stderr)
-        print("Installed STRATHEX started and exited successfully with synthetic data outside the checkout.")
+        for attempt in range(2):
+            completed = subprocess.run(
+                [str(python), "-m", "strathex_cli", "--workbook", str(workbook_path), "--data-dir", str(root / "data")],
+                input="9\nn\n",
+                cwd=root,
+                env=child_env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                timeout=60,
+            )
+            if (
+                completed.returncode
+                or "Goodbye!" not in completed.stdout
+                or "Error loading results" in completed.stdout
+                or (attempt == 0 and "migrated 2 historical results" not in completed.stdout)
+            ):
+                raise RuntimeError(completed.stdout + completed.stderr)
+        connection = sqlite3.connect(root / "data" / "results.db")
+        try:
+            if connection.execute("SELECT COUNT(*) FROM results").fetchone()[0] != 2:
+                raise RuntimeError("Installed restart changed the synthetic history")
+        finally:
+            connection.close()
+        print("Installed STRATHEX started and restarted with unchanged synthetic history outside the checkout.")
 
 
 if __name__ == "__main__":
