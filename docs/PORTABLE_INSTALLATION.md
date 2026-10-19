@@ -41,7 +41,7 @@ The retained rc6 private profile is `strathex-7.4.1-strathmark-3.0.0rc6-release-
 
 `install --stage-only` provisions and verifies a new profile without changing the active selection. It can retain the intended archive path while the drive is unavailable; activation and launch still enforce the independent-backup prerequisite. Use `activate RELEASE_ID` after the drive is recognized. Staging is not proof of a durable backup.
 
-Encrypted archives publish through a locked private temporary file. Full authenticated readback finishes before the final ciphertext appears; interrupted publication can be retried without overwriting a completed archive. The verification receipt alone is not a completed backup.
+Encrypted archives publish through a locked private temporary file. Full authenticated readback finishes before the final ciphertext appears; interrupted publication can be retried without overwriting a completed archive. The verification receipt alone is not a completed backup or proof of its producer. Use the independent content check described below before treating a later archive as trusted recovery evidence.
 
 Encrypted recovery requires hard-link support for atomic publication without overwriting an existing archive. The bootstrap checks this capability before staging an activation/rollback archive and before launching an encrypted competition profile. Filesystems without hard links, including exFAT, are rejected before an archive starts. Use an independent filesystem that passes the check.
 
@@ -56,3 +56,46 @@ Keep both public bootstrap scripts from the same release beside each other, incl
 Profile selection and rollback can preserve larger existing snapshots. Before creating the archive, the installer records the exact names, file sizes and SHA256 hashes from local source files. Both plaintext and encrypted readback use that caller-owned inventory: every archived file must have the expected name and size, every expected file must be present, and final hashes must agree with unchanged source files. The expansion allowance includes only those sizes, block padding and 32 KiB per file plus 32 KiB for TAR overhead. Archive headers cannot increase it. The processing deadline is 30 seconds plus one second per MiB of source data, capped at six hours; checks occur between bounded reads and do not cancel a stalled operating-system read.
 
 These checks change verification, not the saved archive format or retained profile identity. Encryption still requires complete authenticated GPG readback. Failure leaves the active profile and source files unchanged and does not delete the rejected archive. Preserve old recovery helpers and exact old runtimes with their profiles; use the new release's bootstrap pair for new profile selection. A large archive without a trusted local inventory must not be granted a larger budget using sizes supplied by the archive itself.
+
+
+## 7.4.5 independent recovery identity
+
+A holder of the public recovery key can encrypt chosen content and write matching
+unsigned receipt hashes. Successful authenticated decryption therefore proves
+ciphertext integrity, not the backup's origin. Later standalone `verify` calls now
+require `--expected-plaintext-sha256` from an independently protected plaintext
+identity. Keep that value from the trusted source archive or a protected creation
+record; never copy it from the archive's adjacent `.verified.json`. A matching pin
+identifies that exact content, not a signer, a claimed installation label or the
+latest recovery point. Verify the intended competition/recovery point independently
+and retain the same content check on the actual decryption used for restoration.
+
+For example, use `python recovery_security.py verify --policy /private/policy.json --source /independent/backup.tar.gz.gpg --expected-plaintext-sha256 TRUSTED_SHA256`.
+Without an independent identity, `inspect` remains available for legacy forensic
+inspection and reports `verification_scope: integrity_only` and
+`origin_authenticated: false`. It must not authorize recovery by itself. `verify`
+reports `trusted_plaintext_identity` after checking the independent pin; it does not
+claim a sender signature. The archive and receipt schema, existing certification-only
+keys, encryption subkeys and private policies remain unchanged. Archives lacking a
+trusted pin remain decryptable; obtain independent source/inventory evidence before
+using them for recovery rather than inventing an identity from their receipts.
+
+The GPG input must be a regular file without a final symlink; its ciphertext hash
+and decryption consume the same opened descriptor. Receipt inputs are likewise
+bounded regular files. The default plaintext-container allowance is 128 MiB, with a
+ciphertext allowance of twice that amount plus 1 MiB. A receipt's plaintext byte
+count must be an integer within the caller's allowance and match actual decryption;
+it can never increase a budget. `--max-plaintext-bytes` accepts a larger independently
+known source/inventory allowance up to 1 TiB. Creation derives its limit from the
+opened local source, and installer TAR readback derives its limit from the trusted
+inventory described above. Large existing profile backups remain supported without
+trusting attacker-declared sizes.
+
+A watchdog kills each GPG process after 30 seconds plus one second per MiB of
+allowance, capped at six hours, including when the GPG output pipe is blocked.
+An operating-system read stalled on the source drive can still delay feeder cleanup
+until the OS returns; bounded TAR checks likewise do not cancel a stalled OS read.
+The new checks preserve source files and rejected archives, retain permissive
+removable-drive ciphertext storage, and do not change saved profile source identities.
+Keep the new installer and standalone helper paired with their release, and retain
+historical helpers/runtimes with their original profiles.
